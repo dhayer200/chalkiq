@@ -385,12 +385,18 @@ def region_bracket_svg(
             p.append(draw_box(rx, ya, a, p_a,     is_a))
             p.append(draw_box(rx, yb, b, 1 - p_a, not is_a))
 
-            # Elbow connector from winner to next-round slot
+            # Elbow connector from winner to next-round slot.
+            # In mirrored regions, rounds flow right->left, so anchor on the
+            # left edge of current box and right edge of next box.
             if r < 3:
                 wy     = ya if is_a else yb
                 w_cy   = wy + BH / 2
                 next_cy = all_ys[r + 1][gi] + BH / 2
-                p.append(draw_line(rx + BW, w_cy, RX[r + 1], next_cy))
+                next_rx = RX[r + 1]
+                going_right = next_rx >= rx
+                x1 = rx + BW if going_right else rx
+                x2 = next_rx if going_right else next_rx + BW
+                p.append(draw_line(x1, w_cy, x2, next_cy))
 
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" '
