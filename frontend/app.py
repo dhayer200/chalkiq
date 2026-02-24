@@ -395,6 +395,62 @@ def region_bracket_svg(seed_map: dict, win_prob_fn, color: str) -> str:
     )
 
 
+# ── Combined bracket HTML (all 4 regions, zoomable) ──────────────────────────
+
+def combined_bracket_html(regions: dict, win_prob_fn, color: str) -> str:
+    """HTML with all 4 region brackets in a zoomable 2x2 grid."""
+    svgs = {r: region_bracket_svg(regions[r], win_prob_fn, color) for r in REGIONS}
+
+    blocks = ""
+    for r in REGIONS:
+        blocks += (
+            f'<div style="background:{NORD["bg"]};display:inline-block">'
+            f'<div style="font-size:13px;font-weight:700;letter-spacing:.1em;'
+            f'margin-bottom:6px;font-family:ui-sans-serif,system-ui,Arial,sans-serif;'
+            f'color:{color}">{r.upper()}</div>'
+            + svgs[r]
+            + "</div>"
+        )
+
+    return f"""
+<style>
+#zm-wrap{{overflow:auto;background:{NORD["bg"]};border-radius:8px;padding:8px;width:100%}}
+#zm-grid{{display:grid;grid-template-columns:1fr 1fr;gap:20px;
+  width:fit-content;zoom:.5;transform-origin:top left}}
+.zm-btn{{background:{NORD["bg2"]};border:1px solid {NORD["bg3"]};color:{NORD["snow1"]};
+  padding:4px 16px;border-radius:5px;cursor:pointer;font-size:15px;
+  font-family:ui-sans-serif,system-ui,Arial,sans-serif}}
+.zm-btn:hover{{background:{NORD["bg3"]}}}
+</style>
+<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+  <button class="zm-btn" onclick="adjZ(-.1)">&#8722;</button>
+  <button class="zm-btn" onclick="adjZ(.1)">+</button>
+  <button class="zm-btn" onclick="setZ(1)">100%</button>
+  <span id="zm-lbl"
+    style="color:{NORD["snow0"]};font-size:12px;font-family:ui-sans-serif,sans-serif">
+    50%
+  </span>
+  <span style="color:{NORD["bg3"]};font-size:11px;
+    font-family:ui-sans-serif,sans-serif;margin-left:8px">
+    Scroll to pan &bull; +/- to zoom
+  </span>
+</div>
+<div id="zm-wrap">
+  <div id="zm-grid">{blocks}</div>
+</div>
+<script>
+var _z=.5;
+function setZ(s){{
+  _z=Math.max(.15,Math.min(2,s));
+  document.getElementById('zm-grid').style.zoom=_z;
+  document.getElementById('zm-lbl').textContent=Math.round(_z*100)+'%';
+}}
+function adjZ(d){{setZ(_z+d);}}
+setZ(.5);
+</script>
+"""
+
+
 # ── Region advancement table ───────────────────────────────────────────────────
 
 def region_table(seed_map: dict, adv_odds: dict, champ_odds: dict) -> pd.DataFrame:
@@ -423,7 +479,7 @@ def style_region_table(df: pd.DataFrame, color: str):
 
     def fmt(v):
         if isinstance(v, float):
-            return f"{v:.0%}" if v >= 0.005 else "—"
+            return f"{v:.0%}" if v >= 0.005 else "-"
         return v
 
     styled = (
@@ -517,7 +573,7 @@ tab_rank, tab_bracket, tab_eval, tab_matchup, tab_math = st.tabs([
 # ════════════════════════════════════════════════════════════════════════════ #
 
 with tab_rank:
-    st.subheader(f"Top 64 — {cfg['label']} Division")
+    st.subheader(f"Top 64 | {cfg['label']} Division")
     st.caption("The 64 teams most likely to receive an at-large or automatic bid on Selection Sunday, ranked by Elo.")
 
     all_rows = []
@@ -539,7 +595,7 @@ with tab_rank:
     def _fmt_pct(v):
         if isinstance(v, float) and v > 0:
             return f"{v:.1%}"
-        return "—"
+        return "-"
 
     styled_all = (
         df_all.style
@@ -567,7 +623,7 @@ with tab_rank:
 # ════════════════════════════════════════════════════════════════════════════ #
 
 with tab_bracket:
-    st.subheader(f"Tournament Bracket — {cfg['label']} Division")
+    st.subheader(f"Tournament Bracket | {cfg['label']} Division")
     st.caption(
         "Bracket seeded by current Elo (S-curve). "
         "Probabilities from 10,000 simulations per region. "
@@ -581,36 +637,28 @@ with tab_bracket:
 
     st.markdown("---")
 
-    # Per-region detail tabs
-    reg_tabs = st.tabs([f"🗺️ {r}" for r in REGIONS])
-    for reg_tab, region_name in zip(reg_tabs, REGIONS):
-        with reg_tab:
-            seed_map = regions[region_name]
+    # Combined bracket — all 4 regions in one zoomable view
+    bracket_html = combined_bracket_html(regions, engine.win_prob, color)
+    components.html(bracket_html, height=900, scrolling=True)
+    st.caption(
+        "Highlighted box = projected winner.  "
+        "Win% shown bottom-right of each team.  "
+        "Elo shown bottom-left.  Neutral court assumption."
+    )
 
-            # Full bracket SVG
-            svg      = region_bracket_svg(seed_map, engine.win_prob, color)
-            svg_h    = int(_bracket_slot_ys()[-1] + 38 + 22) + 12
-            components.html(
-                f'<div style="overflow-x:auto;background:{NORD["bg"]};padding:4px">{svg}</div>',
-                height=svg_h,
-                scrolling=False,
-            )
-            st.caption(
-                "Highlighted box = projected winner.  "
-                "Win% shown bottom-right of each team.  "
-                "Elo shown bottom-left.  Neutral court assumption."
-            )
-
-            # Advancement probability table (collapsible)
-            with st.expander("Show advancement probability table"):
-                df_reg = region_table(seed_map, adv_odds, champ_odds)
+    # Advancement probability tables (per region, collapsible)
+    with st.expander("Show advancement probability tables"):
+        reg_sub_tabs = st.tabs(REGIONS)
+        for rsub, region_name in zip(reg_sub_tabs, REGIONS):
+            with rsub:
+                df_reg = region_table(regions[region_name], adv_odds, champ_odds)
                 styled = style_region_table(df_reg, color)
                 st.dataframe(styled, use_container_width=True, height=420)
-                st.caption(
-                    "**R64** = survives first round  ·  **R32** = Round of 32  ·  "
-                    "**S16** = Sweet 16  ·  **E8** = Elite 8  ·  "
-                    "**FF** = Final Four  ·  **Title** = Championship"
-                )
+        st.caption(
+            "**R64** = survives first round  ·  **R32** = Round of 32  ·  "
+            "**S16** = Sweet 16  ·  **E8** = Elite 8  ·  "
+            "**FF** = Final Four  ·  **Title** = Championship"
+        )
 
 
 # ════════════════════════════════════════════════════════════════════════════ #
@@ -618,7 +666,7 @@ with tab_bracket:
 # ════════════════════════════════════════════════════════════════════════════ #
 
 with tab_eval:
-    st.subheader(f"Model Evaluation — {cfg['label']} Division")
+    st.subheader(f"Model Evaluation | {cfg['label']} Division")
 
     ll   = metrics.get("log_loss",            0)
     bs   = metrics.get("brier_score",         0)
@@ -629,21 +677,21 @@ with tab_eval:
     m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("Games evaluated", f"{n:,}")
     m2.metric(
-        "Log Loss — Elo", f"{ll:.4f}",
+        "Log Loss: Elo", f"{ll:.4f}",
         help="−[y·log(p) + (1−y)·log(1−p)] per game. Lower = better. "
              "Coin-flip baseline ≈ 0.693.",
     )
     m3.metric(
-        "Log Loss — baseline", f"{ll_b:.4f}",
+        "Log Loss: Baseline", f"{ll_b:.4f}",
         delta=f"{ll - ll_b:+.4f}", delta_color="inverse",
         help="Negative delta = Elo beats the 50/50 baseline.",
     )
     m4.metric(
-        "Brier Score — Elo", f"{bs:.4f}",
+        "Brier Score: Elo", f"{bs:.4f}",
         help="(p − y)² per game. Lower = better. Baseline = 0.25.",
     )
     m5.metric(
-        "Brier Score — baseline", f"{bs_b:.4f}",
+        "Brier Score: Baseline", f"{bs_b:.4f}",
         delta=f"{bs - bs_b:+.4f}", delta_color="inverse",
     )
 
@@ -651,7 +699,7 @@ with tab_eval:
 
     cal_col, txt_col = st.columns([2, 1])
     with cal_col:
-        st.markdown("**Calibration — predicted vs observed win rate**")
+        st.markdown("**Calibration: predicted vs observed win rate**")
         fig_cal = plotly_calibration(metrics.get("calibration", []), color)
         st.plotly_chart(fig_cal, use_container_width=True)
 
@@ -671,7 +719,7 @@ with tab_eval:
         st.markdown(
             "**Log loss** punishes overconfident wrong predictions "
             "very hard (logarithmic penalty). "
-            "**Brier score** is the squared error — softer, easier to interpret. "
+            "**Brier score** is the squared error, softer and easier to interpret. "
             "Using both gives a rounder picture of forecast quality."
         )
 
@@ -681,7 +729,7 @@ with tab_eval:
 # ════════════════════════════════════════════════════════════════════════════ #
 
 with tab_matchup:
-    st.subheader(f"Head-to-Head Matchup — {cfg['label']} Division")
+    st.subheader(f"Head-to-Head Matchup | {cfg['label']} Division")
 
     all_teams = [(tid, name) for tid, name, _ in rankings]
     team_options = {name: tid for tid, name in all_teams}
@@ -693,7 +741,7 @@ with tab_matchup:
             "Team A",
             names_list,
             index=0,
-            help="First team — assumed neutral court.",
+            help="First team (neutral court assumed).",
         )
     with col_b:
         remaining = [n for n in names_list if n != name_a]
@@ -701,7 +749,7 @@ with tab_matchup:
             "Team B",
             remaining,
             index=min(4, len(remaining) - 1),
-            help="Second team — win probability = 1 − P(Team A).",
+            help="Second team. Win probability = 1 - P(Team A).",
         )
 
     tid_a = team_options[name_a]
@@ -719,7 +767,7 @@ with tab_matchup:
             f"|---|---|---|\n"
             f"| **Elo** | {m['rating_a']} | {m['rating_b']} |\n"
             f"| **Win prob** | **{m['prob_a']:.1%}** | **{m['prob_b']:.1%}** |\n"
-            f"| **Rating diff** | {m['rating_diff']:+.1f} | — |"
+            f"| **Rating diff** | {m['rating_diff']:+.1f} | - |"
         )
         st.markdown(
             f"**Favorite:** {m['favorite']}  \n"
@@ -758,7 +806,7 @@ with tab_matchup:
 with tab_math:
     st.subheader("The Math Behind This Dashboard")
     st.markdown(
-        "Everything shown — rankings, win probabilities, bracket odds — comes from a small set "
+        "Everything shown (rankings, win probabilities, bracket odds) comes from a small set "
         "of clean mathematical ideas. This page walks through each one with the formula and a "
         "plain-English explanation of what it means and why it works."
     )
@@ -774,10 +822,10 @@ Y_{ij} = \begin{cases} 1 & \text{team } i \text{ wins} \\ 0 & \text{team } i \te
 """)
             st.latex(r"Y_{ij} \sim \text{Bernoulli}(p_{ij})")
         with col_e:
-            st.markdown("**What this means**")
+            st.markdown("**Simple explanation**")
             st.markdown(
                 "A basketball game has exactly two outcomes for team $i$: win or lose. "
-                "We model that as a **Bernoulli random variable** — a coin flip with a "
+                "We model that as a **Bernoulli random variable**, a coin flip with a "
                 "weighted coin. The weight $p_{ij}$ is the probability that team $i$ beats "
                 "team $j$. The model's entire job is to figure out what $p_{ij}$ should be "
                 "for every possible matchup."
@@ -790,19 +838,19 @@ Y_{ij} = \begin{cases} 1 & \text{team } i \text{ wins} \\ 0 & \text{team } i \te
             st.markdown("**Formula**")
             st.latex(r"p_{ij} = \frac{1}{1 + 10^{\,(R_j - R_i)\,/\,400}}")
             st.markdown("where $R_i$ and $R_j$ are the current Elo ratings of each team.")
-            st.markdown("**Worked example** — Duke (1692) vs Houston (1580):")
+            st.markdown("**Worked example:** Duke (1692) vs Houston (1580):")
             st.latex(r"p = \frac{1}{1 + 10^{(1580 - 1692)/400}} = \frac{1}{1 + 10^{-0.28}} \approx 0.63")
         with col_e:
-            st.markdown("**What this means**")
+            st.markdown("**Simple explanation**")
             st.markdown(
                 "This is a **logistic curve** scaled to base-10 notation. "
                 "A few things to notice:\n\n"
-                "- When $R_i = R_j$ (equal teams), $p = 0.5$ exactly — a coin flip.\n"
+                "- When $R_i = R_j$ (equal teams), $p = 0.5$ exactly (a coin flip).\n"
                 "- A **400-point gap** gives the stronger team about a **91%** win probability.\n"
                 "- A **100-point gap** ≈ 64% for the stronger team.\n"
                 "- The formula is symmetric: $p_{ji} = 1 - p_{ij}$ always.\n\n"
                 "The '400' and 'base 10' are historical convention from chess Elo. "
-                "They set the *sensitivity* of the scale — how much a rating difference matters."
+                "They set the *sensitivity* of the scale: how much a rating difference matters."
             )
 
     # ── 3. Why base 10 / 400? ────────────────────────────────────────────────
@@ -823,7 +871,7 @@ Y_{ij} = \begin{cases} 1 & \text{team } i \text{ wins} \\ 0 & \text{team } i \te
                 "| 800 | 99.0% |"
             )
         with col_e:
-            st.markdown("**What this means**")
+            st.markdown("**Simple explanation**")
             st.markdown(
                 "Using $10^x = e^{x \\ln 10}$, the Elo formula is just a logistic sigmoid with slope "
                 "$\\ln(10)/400 \\approx 0.00576$. So Elo is actually a **logistic regression model** "
@@ -850,20 +898,20 @@ Y_{ij} = \begin{cases} 1 & \text{team } i \text{ wins} \\ 0 & \text{team } i \te
                 "- $E_i = p_{ij}$ = predicted win probability\n"
                 "- $K = 24$ = update step size (this project)\n"
             )
-            st.markdown("**Worked example** — Duke expected to win (80%), but loses:")
+            st.markdown("**Worked example:** Duke expected to win (80%), but loses:")
             st.latex(r"R_{\text{Duke}}' = R_{\text{Duke}} + 24\,(0 - 0.80) = R_{\text{Duke}} - 19.2")
         with col_e:
-            st.markdown("**What this means**")
+            st.markdown("**Simple explanation**")
             st.markdown(
                 "The update rule is beautifully simple. It says:\n\n"
                 "> *Move your rating up or down in proportion to how surprised you should be.*\n\n"
-                "- $(S_i - E_i)$ is the **prediction error** — the gap between what happened and "
+                "- $(S_i - E_i)$ is the **prediction error**, the gap between what happened and "
                 "what the model expected.\n"
                 "- If the favorite wins as expected, the surprise is small, so the rating barely moves.\n"
                 "- If the underdog wins, the surprise is large, so the rating shifts significantly.\n"
                 "- $K$ controls the **learning rate**. Higher $K$ = faster updates but more "
                 "volatile ratings. $K=24$ is a common basketball choice (original chess Elo used $K=10$).\n\n"
-                "This is essentially **stochastic gradient descent** on the prediction error — "
+                "This is essentially **stochastic gradient descent** on the prediction error, "
                 "the same core idea used in neural network training."
             )
 
@@ -877,12 +925,12 @@ Y_{ij} = \begin{cases} 1 & \text{team } i \text{ wins} \\ 0 & \text{team } i \te
             st.markdown("**Effect of H = 100:**")
             st.latex(r"p = \frac{1}{1 + 10^{-100/400}} = \frac{1}{1 + 10^{-0.25}} \approx 0.64")
         with col_e:
-            st.markdown("**What this means**")
+            st.markdown("**Simple explanation**")
             st.markdown(
                 "Playing at home is worth 100 Elo points, which translates to roughly "
                 "a **64% win probability** in an otherwise even matchup.\n\n"
                 "This is added as a temporary boost to the home team's effective rating "
-                "during the win probability calculation — it does **not** change the stored Elo. "
+                "during the win probability calculation; it does **not** change the stored Elo. "
                 "The stored rating is home-adjusted away after each game update, so ratings "
                 "reflect true team strength rather than schedule luck.\n\n"
                 "Tournament games are played on **neutral courts**, so $H = 0$ applies. "
@@ -908,7 +956,7 @@ Y_{ij} = \begin{cases} 1 & \text{team } i \text{ wins} \\ 0 & \text{team } i \te
                 "If you say *'I'm 60% sure'* and get it wrong, you only lose a little.\n\n"
                 "Log loss is just the average amount of money you lose per game. "
                 "**Lower is better.** A model that says 50/50 every time scores 0.693. "
-                f"Our model scores **{ll:.3f}** — which means it's meaningfully better than "
+                f"Our model scores **{ll:.3f}**, which means it's meaningfully better than "
                 "just shrugging and saying 'I dunno, coin flip' for every game.\n\n"
                 "The key rule: **never be extremely confident unless you're sure.** "
                 "Being wrong with 99% confidence is catastrophically punished. "
@@ -931,9 +979,9 @@ Y_{ij} = \begin{cases} 1 & \text{team } i \text{ wins} \\ 0 & \text{team } i \te
             st.markdown(
                 "Think of this like measuring how far off your guess was on a number line "
                 "from 0 to 1, then squaring it.\n\n"
-                "- You say **90%**, team wins → you were 10% off → $(0.1)^2 = 0.01$ — great.\n"
-                "- You say **90%**, team loses → you were 90% off → $(0.9)^2 = 0.81$ — bad.\n"
-                "- You say **50%**, team wins → you were 50% off → $(0.5)^2 = 0.25$ — that's the baseline.\n\n"
+                "- You say **90%**, team wins: you were 10% off, $(0.1)^2 = 0.01$ (great).\n"
+                "- You say **90%**, team loses: you were 90% off, $(0.9)^2 = 0.81$ (bad).\n"
+                "- You say **50%**, team wins: you were 50% off, $(0.5)^2 = 0.25$ (that's the baseline).\n\n"
                 "**Why use both log loss and Brier?** They're grading you differently. "
                 "Log loss is the strict teacher who goes nuclear if you're confidently wrong. "
                 "Brier score is the lenient teacher who just measures how far off you were. "
@@ -960,9 +1008,9 @@ Y_{ij} = \begin{cases} 1 & \text{team } i \text{ wins} \\ 0 & \text{team } i \te
                 "Imagine you looked at every game where our model said the favorite had "
                 "exactly a 70% chance to win. If the model is well-calibrated, that team "
                 "should actually win about 70 out of every 100 such games.\n\n"
-                "If they only win 55 out of 100, the model is **overconfident** — it keeps "
+                "If they only win 55 out of 100, the model is **overconfident**: it keeps "
                 "saying 70% but reality is closer to 55%.\n\n"
-                "If they win 85 out of 100, the model is **underconfident** — it's better "
+                "If they win 85 out of 100, the model is **underconfident**: it's better "
                 "than it thinks it is.\n\n"
                 "The chart in the Model Evaluation tab shows this visually. "
                 "Every dot sitting on the dashed diagonal line = perfect calibration."
@@ -992,7 +1040,7 @@ Y_{ij} = \begin{cases} 1 & \text{team } i \text{ wins} \\ 0 & \text{team } i \te
             st.markdown("**Simple explanation**")
             st.markdown(
                 "The full bracket has over **9 quintillion** possible outcomes. "
-                "There is no way to calculate every one exactly — it would take longer "
+                "There is no way to calculate every one exactly; it would take longer "
                 "than the age of the universe.\n\n"
                 "So instead we just **play the whole tournament 100,000 times** on the "
                 "computer, each time flipping weighted coins for every game. Then we count: "
@@ -1037,7 +1085,7 @@ Y_{ij} = \begin{cases} 1 & \text{team } i \text{ wins} \\ 0 & \text{team } i \te
                 "- Made the Elite 8 in 21,000 → **21% Elite 8 odds**\n"
                 "- Made the Final Four in 13,000 → **13% Final Four odds**\n"
                 "- Won the title in 9,000 → **9% title odds**\n\n"
-                "Notice the numbers get smaller each round — that makes sense, "
+                "Notice the numbers get smaller each round, which makes sense, "
                 "because to make the Final Four you first have to make the Elite 8. "
                 "Each round is a harder hurdle. The formula $w_i^{(s)} \\geq r$ just "
                 "means *'did team i win at least r games in simulation s?'*"
@@ -1062,14 +1110,14 @@ Y_{ij} = \begin{cases} 1 & \text{team } i \text{ wins} \\ 0 & \text{team } i \te
                 "1 vs 16, 8 vs 9, 5 vs 12, 4 vs 13, 6 vs 11, 3 vs 14, 7 vs 10, 2 vs 15"
             )
         with col_e:
-            st.markdown("**What this means**")
+            st.markdown("**Simple explanation**")
             st.markdown(
                 "The NCAA uses the S-curve to **balance strength across the four regions**. "
                 "No region should have three #1-caliber teams while another has none.\n\n"
                 "The snake pattern ensures each region gets exactly one team from every group of "
                 "four consecutive overall seeds. So the East gets the #1 overall team, the Midwest "
                 "gets the #4 overall team, but in the next group the Midwest gets #5 and the East "
-                "gets #8 — balancing out.\n\n"
+                "gets #8, balancing out.\n\n"
                 "In this dashboard, we assign seeds by **current Elo rating**, not the actual "
                 "Selection Committee's rankings. The real bracket will differ based on subjective "
                 "factors, conference tournaments, and the committee's own metrics."
@@ -1091,9 +1139,9 @@ Y_{ij} = \begin{cases} 1 & \text{team } i \text{ wins} \\ 0 & \text{team } i \te
         st.markdown(
             "**Why K = 24?** Chess originally used K = 10 for experienced players. "
             "Basketball has more variance per game and a shorter season relative to chess, "
-            "so a larger K is appropriate — ratings need to move faster to stay meaningful. "
+            "so a larger K is appropriate: ratings need to move faster to stay meaningful. "
             "K = 24 is a widely-used starting point for college basketball Elo models.\n\n"
-            "**Why 1500?** It's arbitrary — only rating *differences* matter, not absolute values. "
+            "**Why 1500?** It's arbitrary: only rating *differences* matter, not absolute values. "
             "1500 is the chess convention; you could start at 0 or 1000 and the win probabilities "
             "would be identical as long as all teams start at the same value.\n\n"
             "**Why 100 points for home advantage?** Empirical studies of college basketball "
