@@ -418,7 +418,7 @@ def region_table(seed_map: dict, adv_odds: dict, champ_odds: dict) -> pd.DataFra
     return df
 
 
-def style_region_table(df: pd.DataFrame, color: str) -> pd.io.formats.style.Styler:
+def style_region_table(df: pd.DataFrame, color: str):
     pct_cols = [c for c in df.columns if c not in ("Team", "Elo")]
 
     def fmt(v):
