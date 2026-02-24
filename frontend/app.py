@@ -406,70 +406,229 @@ def region_bracket_svg(
     )
 
 
-# ── Combined bracket HTML (all 4 regions, zoomable) ──────────────────────────
+# ── Combined bracket HTML (single-canvas, classic layout) ────────────────────
+
+def _draw_region_svg(
+    seed_map: dict,
+    region_name: str,
+    win_prob_fn,
+    color: str,
+    side: str,
+    x_rounds: list[int],
+    y_offset: float,
+    bh: int,
+    bw: int,
+    hgap: int,
+) -> tuple[list[str], dict, tuple[float, float]]:
+    """Render one region on a shared canvas and return champion anchor."""
+    line_clr = "#7C8694"
+    text_clr = "#1F2937"
+    muted    = "#6B7280"
+
+    slot_y = [y_offset + y for y in _bracket_slot_ys(bh=bh, pad=0)]
+    all_ys = _all_round_ys(slot_y, bh=bh)
+    rounds = _project_bracket(seed_map, win_prob_fn)
+    going_right = side == "left"
+
+    p: list[str] = []
+    p.append(
+        f'<text x="{x_rounds[2] + bw/2:.1f}" y="{y_offset - 18:.1f}" text-anchor="middle" '
+        f'font-size="18" font-weight="800" fill="{text_clr}" letter-spacing="0.07em">'
+        f'{_html.escape(region_name.upper())}</text>'
+    )
+
+    def draw_line(x1: float, y1: float, x2: float, y2: float) -> str:
+        mx = x1 + hgap / 2 if going_right else x1 - hgap / 2
+        return (
+            f'<polyline points="{x1:.1f},{y1:.1f} {mx:.1f},{y1:.1f} '
+            f'{mx:.1f},{y2:.1f} {x2:.1f},{y2:.1f}" '
+            f'fill="none" stroke="{line_clr}" stroke-width="1.2"/>'
+        )
+
+    def draw_box(rx: float, y: float, team: dict, p_win: float, is_winner: bool) -> str:
+        name = _html.escape(str(team["name"])[:22])
+        fill = color if is_winner else "#FFFFFF"
+        tclr = "#0F172A" if is_winner else text_clr
+        return "\n".join([
+            f'<rect x="{rx:.1f}" y="{y:.1f}" width="{bw}" height="{bh}" rx="2.5" '
+            f'fill="{fill}" stroke="{line_clr}" stroke-width="1"/>',
+            f'<text x="{rx+7:.1f}" y="{y+13:.1f}" font-size="9.3" font-weight="700" fill="{tclr}">'
+            f'{team["s"]}</text>',
+            f'<text x="{rx+21:.1f}" y="{y+13:.1f}" font-size="9.3" font-weight="500" fill="{tclr}">'
+            f'{name}</text>',
+            f'<text x="{rx+bw-6:.1f}" y="{y+13:.1f}" text-anchor="end" font-size="8.2" fill="{muted}">'
+            f'{p_win:.0%}</text>',
+        ])
+
+    for r, (rx, games) in enumerate(zip(x_rounds, rounds)):
+        ys = all_ys[r]
+        for gi, game in enumerate(games):
+            a, b = game["a"], game["b"]
+            ya, yb = ys[2 * gi], ys[2 * gi + 1]
+            is_a = game["winner"]["tid"] == a["tid"]
+
+            p.append(draw_box(rx, ya, a, game["p_a"], is_a))
+            p.append(draw_box(rx, yb, b, 1 - game["p_a"], not is_a))
+
+            if r < 3:
+                wy = ya if is_a else yb
+                w_cy = wy + bh / 2
+                next_cy = all_ys[r + 1][gi] + bh / 2
+                next_rx = x_rounds[r + 1]
+                x1 = rx + bw if going_right else rx
+                x2 = next_rx if going_right else next_rx + bw
+                p.append(draw_line(x1, w_cy, x2, next_cy))
+
+    champion = rounds[-1][0]["winner"]
+    champ_y = all_ys[3][0] + bh / 2
+    champ_x = x_rounds[3] + (bw if going_right else 0)
+    return p, champion, (champ_x, champ_y)
+
 
 def combined_bracket_html(
-    regions: dict, win_prob_fn, color: str, mirror_right_side: bool = True
+    regions: dict, win_prob_fn, color: str, division_label: str
 ) -> str:
-    """HTML with all 4 region brackets in a traditional zoomable 2x2 layout."""
-    # Traditional quadrant placement:
-    # East (top-left), South (top-right), West (bottom-left), Midwest (bottom-right)
-    region_layout = [["East", "South"], ["West", "Midwest"]]
-    right_side_regions = {"South", "Midwest"} if mirror_right_side else set()
-    svgs = {
-        r: region_bracket_svg(
-            regions[r], win_prob_fn, color, mirror=(r in right_side_regions)
-        )
-        for r in REGIONS
-    }
+    """Single-canvas bracket styled like a classic print bracket."""
+    region_order = ["South", "East", "Midwest", "West"]
+    available = set(regions.keys())
+    if not set(region_order).issubset(available):
+        region_order = list(REGIONS)
 
-    blocks = ""
-    for row in region_layout:
-        for r in row:
-            blocks += (
-                f'<div style="background:{NORD["bg"]};display:inline-block">'
-                f'<div style="font-size:13px;font-weight:700;letter-spacing:.1em;'
-                f'margin-bottom:6px;font-family:ui-sans-serif,system-ui,Arial,sans-serif;'
-                f'color:{color}">{r.upper()}</div>'
-                + svgs[r]
-                + "</div>"
-            )
+    left_top, left_bottom, right_top, right_bottom = region_order
+
+    W, H = 2230, 1180
+    BH, BW, HGAP = 22, 190, 34
+    LX = [28, 252, 476, 700]
+    RX = [2012, 1788, 1564, 1340]
+    top_y, bottom_y = 105, 640
+
+    svg_parts: list[str] = [
+        f'<rect width="{W}" height="{H}" fill="#F3F4F6"/>',
+        '<rect x="8" y="8" width="2214" height="56" rx="8" fill="#1F2A44"/>',
+        '<rect x="8" y="29" width="2214" height="2" fill="#D9534F"/>',
+        '<text x="1115" y="44" text-anchor="middle" font-size="38" font-style="italic" '
+        f'font-weight="700" fill="#EAF0F7">{SEASON_END.year} NCAA DIVISION I {division_label.upper()} '
+        "BASKETBALL CHAMPIONSHIP</text>",
+    ]
+
+    lt_parts, lt_champ, lt_anchor = _draw_region_svg(
+        regions[left_top], left_top, win_prob_fn, color, "left", LX, top_y, BH, BW, HGAP
+    )
+    lb_parts, lb_champ, lb_anchor = _draw_region_svg(
+        regions[left_bottom], left_bottom, win_prob_fn, color, "left", LX, bottom_y, BH, BW, HGAP
+    )
+    rt_parts, rt_champ, rt_anchor = _draw_region_svg(
+        regions[right_top], right_top, win_prob_fn, color, "right", RX, top_y, BH, BW, HGAP
+    )
+    rb_parts, rb_champ, rb_anchor = _draw_region_svg(
+        regions[right_bottom], right_bottom, win_prob_fn, color, "right", RX, bottom_y, BH, BW, HGAP
+    )
+    svg_parts.extend(lt_parts + lb_parts + rt_parts + rb_parts)
+
+    line_clr = "#7C8694"
+    text_clr = "#111827"
+    sf_w, sf_h = 180, 26
+    sf_left_x, sf_right_x = 930, 1120
+    sf_y = 548
+    champ_w, champ_h = 210, 30
+    champ_x, champ_y = 1010, 490
+
+    left_p = win_prob_fn(lt_champ["tid"], lb_champ["tid"])
+    left_winner = lt_champ if left_p >= 0.5 else lb_champ
+    right_p = win_prob_fn(rt_champ["tid"], rb_champ["tid"])
+    right_winner = rt_champ if right_p >= 0.5 else rb_champ
+    title_p = win_prob_fn(left_winner["tid"], right_winner["tid"])
+    champion = left_winner if title_p >= 0.5 else right_winner
+
+    def line(a: tuple[float, float], b: tuple[float, float], toward_right: bool) -> str:
+        mx = (a[0] + b[0]) / 2 if toward_right else (a[0] + b[0]) / 2
+        return (
+            f'<polyline points="{a[0]:.1f},{a[1]:.1f} {mx:.1f},{a[1]:.1f} '
+            f'{mx:.1f},{b[1]:.1f} {b[0]:.1f},{b[1]:.1f}" '
+            f'fill="none" stroke="{line_clr}" stroke-width="1.4"/>'
+        )
+
+    svg_parts.append(line(lt_anchor, (sf_left_x, sf_y + sf_h / 2), True))
+    svg_parts.append(line(lb_anchor, (sf_left_x, sf_y + sf_h / 2), True))
+    svg_parts.append(line(rt_anchor, (sf_right_x + sf_w, sf_y + sf_h / 2), False))
+    svg_parts.append(line(rb_anchor, (sf_right_x + sf_w, sf_y + sf_h / 2), False))
+
+    svg_parts.append(
+        f'<rect x="{sf_left_x}" y="{sf_y}" width="{sf_w}" height="{sf_h}" rx="4" '
+        f'fill="{color}" stroke="{line_clr}" stroke-width="1"/>'
+    )
+    svg_parts.append(
+        f'<text x="{sf_left_x + sf_w/2:.1f}" y="{sf_y - 8}" text-anchor="middle" '
+        'font-size="10" font-weight="700" fill="#374151">SEMIFINAL</text>'
+    )
+    svg_parts.append(
+        f'<text x="{sf_left_x + sf_w/2:.1f}" y="{sf_y + 17:.1f}" text-anchor="middle" '
+        f'font-size="11" font-weight="700" fill="#0B1220">{_html.escape(left_winner["name"][:24])}</text>'
+    )
+
+    svg_parts.append(
+        f'<rect x="{sf_right_x}" y="{sf_y}" width="{sf_w}" height="{sf_h}" rx="4" '
+        f'fill="{color}" stroke="{line_clr}" stroke-width="1"/>'
+    )
+    svg_parts.append(
+        f'<text x="{sf_right_x + sf_w/2:.1f}" y="{sf_y - 8}" text-anchor="middle" '
+        'font-size="10" font-weight="700" fill="#374151">SEMIFINAL</text>'
+    )
+    svg_parts.append(
+        f'<text x="{sf_right_x + sf_w/2:.1f}" y="{sf_y + 17:.1f}" text-anchor="middle" '
+        f'font-size="11" font-weight="700" fill="#0B1220">{_html.escape(right_winner["name"][:24])}</text>'
+    )
+
+    svg_parts.append(line((sf_left_x + sf_w, sf_y + sf_h / 2), (champ_x, champ_y + champ_h / 2), True))
+    svg_parts.append(line((sf_right_x, sf_y + sf_h / 2), (champ_x + champ_w, champ_y + champ_h / 2), False))
+
+    svg_parts.append(
+        f'<rect x="{champ_x}" y="{champ_y}" width="{champ_w}" height="{champ_h}" rx="4" '
+        'fill="#FFFFFF" stroke="#0F172A" stroke-width="1.2"/>'
+    )
+    svg_parts.append(
+        f'<text x="{champ_x + champ_w/2:.1f}" y="{champ_y - 11}" text-anchor="middle" '
+        'font-size="12" font-weight="800" fill="#111827" letter-spacing=".06em">NATIONAL CHAMPIONSHIP</text>'
+    )
+    svg_parts.append(
+        f'<text x="{champ_x + champ_w/2:.1f}" y="{champ_y + 19:.1f}" text-anchor="middle" '
+        f'font-size="12" font-weight="800" fill="{text_clr}">{_html.escape(champion["name"][:27])}</text>'
+    )
+
+    svg = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" '
+        'style="display:block;background:#F3F4F6">'
+        + "".join(svg_parts)
+        + "</svg>"
+    )
 
     return f"""
 <style>
-#zm-wrap{{overflow:auto;background:{NORD["bg"]};border-radius:8px;padding:8px;width:100%}}
-#zm-grid{{display:grid;grid-template-columns:1fr 1fr;gap:20px;
-  width:fit-content;zoom:.5;transform-origin:top left}}
-.zm-btn{{background:{NORD["bg2"]};border:1px solid {NORD["bg3"]};color:{NORD["snow1"]};
-  padding:4px 16px;border-radius:5px;cursor:pointer;font-size:15px;
-  font-family:ui-sans-serif,system-ui,Arial,sans-serif}}
-.zm-btn:hover{{background:{NORD["bg3"]}}}
+#full-wrap{{overflow:auto;background:#E5E7EB;border-radius:10px;padding:10px;width:100%}}
+#full-stage{{width:fit-content;zoom:.64;transform-origin:top left}}
+.full-btn{{background:#1F2937;border:1px solid #374151;color:#E5E7EB;padding:4px 14px;
+  border-radius:5px;cursor:pointer;font-size:14px;font-family:ui-sans-serif,system-ui,Arial,sans-serif}}
+.full-btn:hover{{background:#111827}}
 </style>
 <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
-  <button class="zm-btn" onclick="adjZ(-.1)">&#8722;</button>
-  <button class="zm-btn" onclick="adjZ(.1)">+</button>
-  <button class="zm-btn" onclick="setZ(1)">100%</button>
-  <span id="zm-lbl"
-    style="color:{NORD["snow0"]};font-size:12px;font-family:ui-sans-serif,sans-serif">
-    50%
-  </span>
-  <span style="color:{NORD["bg3"]};font-size:11px;
-    font-family:ui-sans-serif,sans-serif;margin-left:8px">
-    Scroll to pan &bull; +/- to zoom
+  <button class="full-btn" onclick="adjZ(-.08)">&#8722;</button>
+  <button class="full-btn" onclick="adjZ(.08)">+</button>
+  <button class="full-btn" onclick="setZ(.64)">Reset</button>
+  <span id="full-lbl" style="color:#111827;font-size:12px;font-family:ui-sans-serif,sans-serif">64%</span>
+  <span style="color:#4B5563;font-size:11px;font-family:ui-sans-serif,sans-serif;margin-left:8px">
+    Scroll to pan
   </span>
 </div>
-<div id="zm-wrap">
-  <div id="zm-grid">{blocks}</div>
-</div>
+<div id="full-wrap"><div id="full-stage">{svg}</div></div>
 <script>
-var _z=.5;
+var _z=.64;
 function setZ(s){{
-  _z=Math.max(.15,Math.min(2,s));
-  document.getElementById('zm-grid').style.zoom=_z;
-  document.getElementById('zm-lbl').textContent=Math.round(_z*100)+'%';
+  _z=Math.max(.38,Math.min(1.2,s));
+  document.getElementById('full-stage').style.zoom=_z;
+  document.getElementById('full-lbl').textContent=Math.round(_z*100)+'%';
 }}
 function adjZ(d){{setZ(_z+d);}}
-setZ(.5);
+setZ(.64);
 </script>
 """
 
@@ -660,19 +819,9 @@ with tab_bracket:
 
     st.markdown("---")
 
-    # Combined bracket — all 4 regions in one zoomable view
-    mirror_right = st.toggle(
-        "Mirror right-side regions (traditional)",
-        value=True,
-        help=(
-            "On: South/Midwest rounds progress toward center. "
-            "Off: all regions render left-to-right."
-        ),
-    )
-    bracket_html = combined_bracket_html(
-        regions, engine.win_prob, color, mirror_right_side=mirror_right
-    )
-    components.html(bracket_html, height=900, scrolling=True)
+    # Combined bracket — all 4 regions in one classic single-canvas view
+    bracket_html = combined_bracket_html(regions, engine.win_prob, color, cfg["label"])
+    components.html(bracket_html, height=980, scrolling=True)
     st.caption(
         "Highlighted box = projected winner.  "
         "Win% shown bottom-right of each team.  "
