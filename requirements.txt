@@ -1,0 +1,6 @@
+requests>=2.32
+tqdm>=4.67
+pandas>=2.0
+streamlit>=1.35
+plotly>=5.20
+matplotlib>=3.8

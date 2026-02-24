@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# Cached game data (fetched at runtime)
+data/raw/
+**/data/raw/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Misc
+.DS_Store
+streamlit.log
+notebooks/
+toy-madness/
