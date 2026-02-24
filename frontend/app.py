@@ -319,7 +319,7 @@ def region_bracket_svg(
         RX = list(reversed(RX))
     RND_LBL  = ["First Round", "Round of 32", "Sweet 16", "Elite Eight"]
     SVG_H    = int(slot_y[-1] + BH + PAD)
-    SVG_W    = int(RX[-1] + BW + PAD)
+    SVG_W    = int(max(RX) + BW + PAD)
     FONT     = "ui-sans-serif,system-ui,Arial,sans-serif"
     LINE_CLR = NORD["bg3"]   # #4C566A — Nord subtle border
 
