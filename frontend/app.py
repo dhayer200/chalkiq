@@ -306,13 +306,17 @@ def _project_bracket(seed_map: dict, win_prob_fn) -> list[list[dict]]:
     return rounds   # [R64×8, R32×4, S16×2, E8×1]
 
 
-def region_bracket_svg(seed_map: dict, win_prob_fn, color: str) -> str:
+def region_bracket_svg(
+    seed_map: dict, win_prob_fn, color: str, mirror: bool = False
+) -> str:
     """Generate an SVG string for a full 16-team single-region bracket."""
     BH, BW, HGAP, PAD = 38, 182, 54, 22
     slot_y   = _bracket_slot_ys(BH, PAD)
     all_ys   = _all_round_ys(slot_y, BH)
     rounds   = _project_bracket(seed_map, win_prob_fn)
     RX       = [PAD + r * (BW + HGAP) for r in range(4)]
+    if mirror:
+        RX = list(reversed(RX))
     RND_LBL  = ["First Round", "Round of 32", "Sweet 16", "Elite Eight"]
     SVG_H    = int(slot_y[-1] + BH + PAD)
     SVG_W    = int(RX[-1] + BW + PAD)
@@ -362,7 +366,8 @@ def region_bracket_svg(seed_map: dict, win_prob_fn, color: str) -> str:
         ])
 
     def draw_line(x1: float, y1: float, x2: float, y2: float) -> str:
-        mx = x1 + HGAP / 2
+        # Route connectors toward the next-round column, left or right.
+        mx = x1 + HGAP / 2 if x2 >= x1 else x1 - HGAP / 2
         return (
             f'<polyline points="{x1:.1f},{y1:.1f} {mx:.1f},{y1:.1f} '
             f'{mx:.1f},{y2:.1f} {x2:.1f},{y2:.1f}" '
@@ -397,20 +402,32 @@ def region_bracket_svg(seed_map: dict, win_prob_fn, color: str) -> str:
 
 # ── Combined bracket HTML (all 4 regions, zoomable) ──────────────────────────
 
-def combined_bracket_html(regions: dict, win_prob_fn, color: str) -> str:
-    """HTML with all 4 region brackets in a zoomable 2x2 grid."""
-    svgs = {r: region_bracket_svg(regions[r], win_prob_fn, color) for r in REGIONS}
+def combined_bracket_html(
+    regions: dict, win_prob_fn, color: str, mirror_right_side: bool = True
+) -> str:
+    """HTML with all 4 region brackets in a traditional zoomable 2x2 layout."""
+    # Traditional quadrant placement:
+    # East (top-left), South (top-right), West (bottom-left), Midwest (bottom-right)
+    region_layout = [["East", "South"], ["West", "Midwest"]]
+    right_side_regions = {"South", "Midwest"} if mirror_right_side else set()
+    svgs = {
+        r: region_bracket_svg(
+            regions[r], win_prob_fn, color, mirror=(r in right_side_regions)
+        )
+        for r in REGIONS
+    }
 
     blocks = ""
-    for r in REGIONS:
-        blocks += (
-            f'<div style="background:{NORD["bg"]};display:inline-block">'
-            f'<div style="font-size:13px;font-weight:700;letter-spacing:.1em;'
-            f'margin-bottom:6px;font-family:ui-sans-serif,system-ui,Arial,sans-serif;'
-            f'color:{color}">{r.upper()}</div>'
-            + svgs[r]
-            + "</div>"
-        )
+    for row in region_layout:
+        for r in row:
+            blocks += (
+                f'<div style="background:{NORD["bg"]};display:inline-block">'
+                f'<div style="font-size:13px;font-weight:700;letter-spacing:.1em;'
+                f'margin-bottom:6px;font-family:ui-sans-serif,system-ui,Arial,sans-serif;'
+                f'color:{color}">{r.upper()}</div>'
+                + svgs[r]
+                + "</div>"
+            )
 
     return f"""
 <style>
@@ -638,7 +655,17 @@ with tab_bracket:
     st.markdown("---")
 
     # Combined bracket — all 4 regions in one zoomable view
-    bracket_html = combined_bracket_html(regions, engine.win_prob, color)
+    mirror_right = st.toggle(
+        "Mirror right-side regions (traditional)",
+        value=True,
+        help=(
+            "On: South/Midwest rounds progress toward center. "
+            "Off: all regions render left-to-right."
+        ),
+    )
+    bracket_html = combined_bracket_html(
+        regions, engine.win_prob, color, mirror_right_side=mirror_right
+    )
     components.html(bracket_html, height=900, scrolling=True)
     st.caption(
         "Highlighted box = projected winner.  "
