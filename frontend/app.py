@@ -989,6 +989,10 @@ with tab_bracket:
 # ════════════════════════════════════════════════════════════════════════════ #
 
 with tab_live:
+    # Persist which game card is selected across reruns
+    if "live_selected_gid" not in st.session_state:
+        st.session_state.live_selected_gid = None
+
     st.subheader(f"Live Games | {cfg['label']} Division")
 
     # ── Refresh controls ──────────────────────────────────────────────────────
@@ -1027,6 +1031,24 @@ with tab_live:
         # Sort: upsets first, then by swing magnitude
         live_games.sort(key=lambda g: (not g["upset"], -abs(g["swing"])))
 
+        games_by_id = {g["game_id"]: g for g in live_games}
+
+        # Clear stale selection if that game is no longer live
+        if st.session_state.live_selected_gid not in games_by_id:
+            st.session_state.live_selected_gid = None
+
+        def _fmt_clock(g):
+            if g["status"] == "halftime":
+                return "HALFTIME"
+            h = int(g["clock_mins"])
+            s = int((g["clock_mins"] - h) * 60)
+            half_lbl = (
+                "1st Half" if g["period"] == 1 else
+                "2nd Half" if g["period"] == 2 else
+                f"OT{g['period'] - 2}"
+            )
+            return f"{h}:{s:02d}  {half_lbl}"
+
         # ── Game cards ────────────────────────────────────────────────────────
         cols = st.columns(2)
         for i, g in enumerate(live_games):
@@ -1036,161 +1058,283 @@ with tab_live:
                 p_a  = 1.0 - p_h
                 pp_h = g["pregame_prob_home"]
                 sw   = g["swing"]
+                is_sel = st.session_state.live_selected_gid == g["game_id"]
 
-                # Card border color: upset = orange, normal = bg3
-                border = NORD["orange"] if g["upset"] else NORD["bg3"]
-                badge  = (
+                border = (
+                    NORD["orange"] if g["upset"] else
+                    NORD["frost1"] if is_sel else
+                    NORD["bg3"]
+                )
+                badge = (
                     f'<span style="background:{NORD["orange"]};color:{NORD["bg"]};'
                     f'font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;'
                     f'letter-spacing:.05em">UPSET ALERT</span>'
                     if g["upset"] else ""
                 )
 
-                swing_color = NORD["green"] if sw > 0 else NORD["red"]
-                swing_str   = f"{sw:+.0%}"
-
-                # Clock display
-                if g["status"] == "halftime":
-                    clock_str = "HALFTIME"
-                else:
-                    h = int(g["clock_mins"])
-                    s = int((g["clock_mins"] - h) * 60)
-                    half_lbl = (
-                        "1st Half" if g["period"] == 1 else
-                        "2nd Half" if g["period"] == 2 else
-                        f"OT{g['period']-2}"
-                    )
-                    clock_str = f"{h}:{s:02d} — {half_lbl}"
+                h_swing_color = NORD["green"] if sw > 0 else NORD["red"]
+                a_swing_color = NORD["red"]   if sw > 0 else NORD["green"]
+                clock_str = _fmt_clock(g)
 
                 card_html = f"""
-<div style="border:1px solid {border};border-radius:8px;padding:14px 16px;
-            margin-bottom:12px;background:{NORD["bg1"]}">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-    <span style="font-size:11px;color:{NORD["bg3"]};font-family:ui-sans-serif,sans-serif">
-      {_html.escape(g["status_detail"] or clock_str)}
+<div style="border:2px solid {border};border-radius:8px;padding:14px 16px;
+            margin-bottom:8px;background:{NORD["bg1"]}">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <span style="font-size:11px;color:{NORD["snow0"]};font-family:ui-sans-serif,sans-serif;
+                 font-weight:600;letter-spacing:.04em">
+      {_html.escape(clock_str)}
     </span>
     {badge}
   </div>
 
-  <table style="width:100%;border-collapse:collapse;font-family:ui-sans-serif,sans-serif">
+  <table style="width:100%;border-collapse:collapse;font-family:ui-sans-serif,sans-serif;
+                margin-bottom:12px">
     <tr>
-      <td style="font-size:13px;font-weight:700;color:{NORD["snow2"]};padding:2px 0">
+      <td style="font-size:14px;font-weight:700;color:{NORD["snow2"]};padding:3px 0">
         {_html.escape(g["home_name"][:26])}
       </td>
-      <td style="font-size:20px;font-weight:800;color:{NORD["snow2"]};text-align:right;padding:2px 0">
+      <td style="font-size:22px;font-weight:800;color:{NORD["snow2"]};text-align:right;
+                 padding:3px 0;min-width:44px">
         {g["home_score"]}
       </td>
     </tr>
     <tr>
-      <td style="font-size:13px;font-weight:700;color:{NORD["snow2"]};padding:2px 0">
+      <td style="font-size:14px;font-weight:700;color:{NORD["snow2"]};padding:3px 0">
         {_html.escape(g["away_name"][:26])}
       </td>
-      <td style="font-size:20px;font-weight:800;color:{NORD["snow2"]};text-align:right;padding:2px 0">
+      <td style="font-size:22px;font-weight:800;color:{NORD["snow2"]};text-align:right;
+                 padding:3px 0">
         {g["away_score"]}
       </td>
     </tr>
   </table>
 
-  <div style="margin:10px 0 4px 0">
-    <div style="display:flex;justify-content:space-between;
-                font-size:10px;color:{NORD["bg3"]};margin-bottom:3px;
-                font-family:ui-sans-serif,sans-serif">
-      <span>{_html.escape(g["home_name"][:20])}</span>
-      <span>{_html.escape(g["away_name"][:20])}</span>
-    </div>
-    <div style="background:{NORD["bg3"]};border-radius:4px;height:8px;overflow:hidden">
-      <div style="background:{color};height:100%;width:{p_h*100:.1f}%;
-                  border-radius:4px;transition:width .3s"></div>
-    </div>
-    <div style="display:flex;justify-content:space-between;
-                font-size:11px;font-weight:700;margin-top:3px;
-                font-family:ui-sans-serif,sans-serif">
-      <span style="color:{color}">{p_h:.0%}</span>
-      <span style="color:{NORD["bg3"]};font-size:10px">
-        Pregame: {pp_h:.0%} / {1-pp_h:.0%}
-      </span>
-      <span style="color:{color}">{p_a:.0%}</span>
-    </div>
+  <div style="font-size:10px;color:{NORD["bg3"]};font-family:ui-sans-serif,sans-serif;
+              margin-bottom:4px;letter-spacing:.06em;text-transform:uppercase">
+    Chance of winning right now
   </div>
-
-  <div style="font-size:10px;color:{swing_color};font-family:ui-sans-serif,sans-serif">
-    Home swing since tip-off: <strong>{swing_str}</strong>
+  <div style="background:{NORD["bg3"]};border-radius:4px;height:10px;overflow:hidden;
+              margin-bottom:5px">
+    <div style="background:{color};height:100%;width:{p_h * 100:.1f}%;
+                border-radius:4px"></div>
+  </div>
+  <div style="display:flex;justify-content:space-between;
+              font-family:ui-sans-serif,sans-serif;margin-bottom:8px">
+    <div>
+      <div style="font-size:18px;font-weight:800;color:{color}">{p_h:.0%}</div>
+      <div style="font-size:10px;color:{NORD["bg3"]}">{_html.escape(g["home_name"][:16])}</div>
+      <div style="font-size:10px;color:{h_swing_color}">{sw:+.0%} vs before game</div>
+    </div>
+    <div style="text-align:center;font-size:10px;color:{NORD["bg3"]};align-self:center;
+                line-height:1.5">
+      Before game:<br>
+      {pp_h:.0%} vs {1 - pp_h:.0%}
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:18px;font-weight:800;color:{color}">{p_a:.0%}</div>
+      <div style="font-size:10px;color:{NORD["bg3"]}">{_html.escape(g["away_name"][:16])}</div>
+      <div style="font-size:10px;color:{a_swing_color}">{-sw:+.0%} vs before game</div>
+    </div>
   </div>
 </div>
 """
                 st.markdown(card_html, unsafe_allow_html=True)
-
-        # ── Bracket odds impact (Milestone 4) ─────────────────────────────────
-        st.markdown("---")
-        st.markdown("### Bracket Odds Impact")
-        st.caption(
-            "How would today's results shift each team's projected championship odds? "
-            "Simulated by applying the hypothetical game result to current Elo ratings "
-            "and rerunning 5,000 bracket simulations."
-        )
-
-        # Only show impact for games where at least one team is in our top-64
-        impact_games = [g for g in live_games if g["home_ranked"] or g["away_ranked"]]
-
-        if not impact_games:
-            st.info("No live games involve top-64 ranked teams right now.")
-        else:
-            for g in impact_games:
-                hname = g["home_name"]
-                aname = g["away_name"]
-
-                with st.expander(f"{hname} vs {aname} — impact if result holds", expanded=True):
-                    # Base title odds for these two teams
-                    base_h = champ_odds.get(g["home_id"], 0.0)
-                    base_a = champ_odds.get(g["away_id"], 0.0)
-
-                    # Simulate both outcomes
-                    with st.spinner("Simulating bracket impact…"):
-                        odds_h_wins = live_bracket_impact(division, g["home_id"], g["away_id"], True)
-                        odds_a_wins = live_bracket_impact(division, g["home_id"], g["away_id"], False)
-
-                    new_h_if_h = odds_h_wins.get(g["home_id"], 0.0)
-                    new_h_if_a = odds_a_wins.get(g["home_id"], 0.0)
-                    new_a_if_h = odds_h_wins.get(g["away_id"], 0.0)
-                    new_a_if_a = odds_a_wins.get(g["away_id"], 0.0)
-
-                    ic1, ic2 = st.columns(2)
-                    with ic1:
-                        st.markdown(f"**If {hname[:22]} wins**")
-                        dh = new_h_if_h - base_h
-                        da = new_a_if_h - base_a
-                        st.metric(
-                            f"{hname[:20]} title odds",
-                            f"{new_h_if_h:.2%}",
-                            delta=f"{dh:+.2%}",
-                            delta_color="normal",
-                        )
-                        st.metric(
-                            f"{aname[:20]} title odds",
-                            f"{new_a_if_h:.2%}",
-                            delta=f"{da:+.2%}",
-                            delta_color="normal",
-                        )
-                    with ic2:
-                        st.markdown(f"**If {aname[:22]} wins (upset)**")
-                        dh2 = new_h_if_a - base_h
-                        da2 = new_a_if_a - base_a
-                        st.metric(
-                            f"{hname[:20]} title odds",
-                            f"{new_h_if_a:.2%}",
-                            delta=f"{dh2:+.2%}",
-                            delta_color="normal",
-                        )
-                        st.metric(
-                            f"{aname[:20]} title odds",
-                            f"{new_a_if_a:.2%}",
-                            delta=f"{da2:+.2%}",
-                            delta_color="normal",
-                        )
-                    st.caption(
-                        f"Baseline title odds: {hname[:18]} {base_h:.2%} | "
-                        f"{aname[:18]} {base_a:.2%}"
+                btn_label = "Hide details" if is_sel else "Analyze this game"
+                if st.button(btn_label, key=f"analyze_{g['game_id']}",
+                             use_container_width=True):
+                    st.session_state.live_selected_gid = (
+                        None if is_sel else g["game_id"]
                     )
+                    st.rerun()
+
+        # ── Detail panel for selected game ────────────────────────────────────
+        if st.session_state.live_selected_gid and \
+                st.session_state.live_selected_gid in games_by_id:
+            g    = games_by_id[st.session_state.live_selected_gid]
+            p_h  = g["live_prob_home"]
+            p_a  = 1.0 - p_h
+            pp_h = g["pregame_prob_home"]
+            sw   = g["swing"]
+
+            st.markdown("---")
+            st.markdown(
+                f"### {_html.escape(g['home_name'])} vs {_html.escape(g['away_name'])}"
+            )
+            st.caption(_fmt_clock(g))
+
+            # ── Probability breakdown ──────────────────────────────────────────
+            pb_col, pe_col = st.columns(2)
+            with pb_col:
+                st.markdown("**Win probability breakdown**")
+                hname_s = g["home_name"][:18]
+                aname_s = g["away_name"][:18]
+                prob_df = pd.DataFrame([
+                    {
+                        "Metric":          "Before game started",
+                        hname_s:           f"{pp_h:.1%}",
+                        aname_s:           f"{1 - pp_h:.1%}",
+                    },
+                    {
+                        "Metric":          "Right now (live)",
+                        hname_s:           f"{p_h:.1%}",
+                        aname_s:           f"{p_a:.1%}",
+                    },
+                    {
+                        "Metric":          "Change since tip-off",
+                        hname_s:           f"{sw:+.1%}",
+                        aname_s:           f"{-sw:+.1%}",
+                    },
+                ])
+                st.dataframe(prob_df, use_container_width=True, hide_index=True)
+
+            with pe_col:
+                st.markdown("**What these numbers mean**")
+                leader      = g["home_name"] if p_h >= 0.5 else g["away_name"]
+                leader_prob = max(p_h, p_a)
+                if g["status"] == "halftime":
+                    time_ctx = "at halftime"
+                else:
+                    time_ctx = f"with {_fmt_clock(g)} remaining"
+                momentum_team = g["home_name"] if sw > 0 else g["away_name"]
+                momentum_dir  = abs(sw)
+                st.markdown(
+                    f"**{leader}** has a **{leader_prob:.0%} chance of winning** "
+                    f"{time_ctx}, based on the current score and time left.\n\n"
+                    f"The percentages update continuously using a random-walk model "
+                    f"anchored to each team's Elo rating. As the lead grows or time "
+                    f"runs out, one team's odds climb toward 100%.\n\n"
+                    f"**{momentum_team}** has gained {momentum_dir:.0%} since tip-off."
+                )
+                if g["upset"]:
+                    st.warning(
+                        "**Upset in progress.** The pregame underdog now has the "
+                        "higher win probability."
+                    )
+
+            # ── Bracket odds impact ────────────────────────────────────────────
+            # Initialise defaults so they are always defined for "Who to pick"
+            base_h      = champ_odds.get(g["home_id"], 0.0)
+            base_a      = champ_odds.get(g["away_id"], 0.0)
+            new_h_if_h  = new_h_if_a = new_a_if_h = new_a_if_a = 0.0
+            has_bracket = g["home_ranked"] or g["away_ranked"]
+
+            if has_bracket:
+                st.markdown("**Bracket odds impact**")
+                st.caption(
+                    "How each outcome shifts each team's projected championship odds, "
+                    "based on 5,000 bracket simulations."
+                )
+                with st.spinner("Running bracket simulations..."):
+                    odds_h_wins = live_bracket_impact(
+                        division, g["home_id"], g["away_id"], True
+                    )
+                    odds_a_wins = live_bracket_impact(
+                        division, g["home_id"], g["away_id"], False
+                    )
+
+                new_h_if_h = odds_h_wins.get(g["home_id"], 0.0)
+                new_h_if_a = odds_a_wins.get(g["home_id"], 0.0)
+                new_a_if_h = odds_h_wins.get(g["away_id"], 0.0)
+                new_a_if_a = odds_a_wins.get(g["away_id"], 0.0)
+
+                bi1, bi2 = st.columns(2)
+                with bi1:
+                    st.markdown(f"If **{g['home_name'][:24]}** wins:")
+                    st.metric(
+                        f"{g['home_name'][:22]} title odds",
+                        f"{new_h_if_h:.2%}",
+                        delta=f"{new_h_if_h - base_h:+.2%}",
+                    )
+                    st.metric(
+                        f"{g['away_name'][:22]} title odds",
+                        f"{new_a_if_h:.2%}",
+                        delta=f"{new_a_if_h - base_a:+.2%}",
+                    )
+                with bi2:
+                    st.markdown(f"If **{g['away_name'][:24]}** wins:")
+                    st.metric(
+                        f"{g['home_name'][:22]} title odds",
+                        f"{new_h_if_a:.2%}",
+                        delta=f"{new_h_if_a - base_h:+.2%}",
+                    )
+                    st.metric(
+                        f"{g['away_name'][:22]} title odds",
+                        f"{new_a_if_a:.2%}",
+                        delta=f"{new_a_if_a - base_a:+.2%}",
+                    )
+                st.caption(
+                    f"Current baseline title odds: "
+                    f"{g['home_name'][:18]} {base_h:.2%} | "
+                    f"{g['away_name'][:18]} {base_a:.2%}"
+                )
+
+            # ── Who to pick ───────────────────────────────────────────────────
+            st.markdown("**Who to pick**")
+
+            if p_h >= 0.5:
+                pick_team      = g["home_name"]
+                pick_prob      = p_h
+                other_team     = g["away_name"]
+                bracket_gain   = (new_h_if_h - base_h) if has_bracket else None
+            else:
+                pick_team      = g["away_name"]
+                pick_prob      = p_a
+                other_team     = g["home_name"]
+                bracket_gain   = (new_a_if_a - base_a) if has_bracket else None
+
+            if pick_prob >= 0.80:
+                conf_label = "STRONG PICK"
+                conf_color = NORD["green"]
+            elif pick_prob >= 0.65:
+                conf_label = "SOLID PICK"
+                conf_color = NORD["green"]
+            elif pick_prob >= 0.55:
+                conf_label = "LEAN"
+                conf_color = NORD["yellow"]
+            else:
+                conf_label = "TOO CLOSE TO CALL"
+                conf_color = NORD["bg3"]
+
+            reasons = []
+            if pick_prob >= 0.55:
+                reasons.append(
+                    f"{pick_team} currently has a {pick_prob:.0%} chance of winning"
+                )
+                momentum_toward_pick = (
+                    (sw > 0.05 and pick_team == g["home_name"]) or
+                    (sw < -0.05 and pick_team == g["away_name"])
+                )
+                if momentum_toward_pick:
+                    swing_mag = abs(sw)
+                    reasons.append(
+                        f"they have gained {swing_mag:.0%} since tip-off"
+                    )
+                if bracket_gain and bracket_gain > 0.005:
+                    reasons.append(
+                        f"a win boosts their title odds by {bracket_gain:+.1%}"
+                    )
+            else:
+                reasons.append("both teams have nearly equal chances right now")
+                reasons.append("the model has no strong lean either way")
+
+            reasoning = ". ".join(r.capitalize() for r in reasons) + "."
+
+            pick_html = f"""
+<div style="border:2px solid {conf_color};border-radius:8px;padding:18px;
+            background:{NORD["bg1"]};margin-top:4px">
+  <div style="font-size:11px;color:{conf_color};font-weight:700;
+              letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px">
+    {conf_label}
+  </div>
+  <div style="font-size:26px;font-weight:800;color:{NORD["snow2"]};margin-bottom:6px">
+    {_html.escape(pick_team)}
+  </div>
+  <div style="font-size:13px;color:{NORD["snow0"]};line-height:1.6">
+    {_html.escape(reasoning)}
+  </div>
+</div>
+"""
+            st.markdown(pick_html, unsafe_allow_html=True)
 
 
 # ════════════════════════════════════════════════════════════════════════════ #
