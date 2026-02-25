@@ -1337,9 +1337,10 @@ with tab_matchup:
 with tab_math:
     st.subheader("The Math Behind This Dashboard")
     st.markdown(
-        "Everything shown (rankings, win probabilities, bracket odds) comes from a small set "
-        "of clean mathematical ideas. This page walks through each one with the formula and a "
-        "plain-English explanation of what it means and why it works."
+        "Everything shown (rankings, win probabilities, live game estimates, bracket odds) "
+        "comes from a small set of clean mathematical ideas. "
+        "This page walks through each one with the formula and a plain-English explanation "
+        "of what it means and why it works."
     )
     st.markdown("---")
 
@@ -1654,18 +1655,181 @@ Y_{ij} = \begin{cases} 1 & \text{team } i \text{ wins} \\ 0 & \text{team } i \te
                 "factors, conference tournaments, and the committee's own metrics."
             )
 
-    # ── 12. Parameters used ──────────────────────────────────────────────────
-    with st.expander("12 · Model parameters used in this dashboard"):
+    # ── 12. Live win probability model ────────────────────────────────────────
+    with st.expander("12 · Live win probability: the random-walk model", expanded=True):
+        col_f, col_e = st.columns([1, 1])
+        with col_f:
+            st.markdown("**The model:**")
+            st.latex(
+                r"P(\text{win} \mid d,\, t,\, p_0)"
+                r"= \sigma\!\left(\frac{d}{\sigma_s \sqrt{t}} + z_{\text{prior}}\right)"
+            )
+            st.markdown(
+                "where:\n"
+                r"- $d$ = current score differential (positive = team leading)" "\n"
+                r"- $t$ = minutes remaining in the game" "\n"
+                r"- $\sigma_s = 2.0$ pts$/$√min (scoring diffusion constant)" "\n"
+                r"- $z_{\text{prior}}$ = Elo prior in $z$-score space (see section 13)" "\n"
+                r"- $\sigma(z) = \tfrac{1}{1+e^{-z}}$ is the logistic function"
+            )
+            st.markdown("**Worked examples:**")
+            st.markdown(
+                "| Scenario | Live prob |\n"
+                "|---|---|\n"
+                "| Tied at tip-off, 60% Elo fav | 60.0% |\n"
+                "| Up 7, 8.5 min left, 60% fav | 93.0% |\n"
+                "| Up 10 at halftime, equal teams | 88.4% |\n"
+                "| Down 5, 3 min left, 65% fav | 11.9% |\n"
+                "| Up 1, 1 min left, equal teams | 71.2% |"
+            )
+        with col_e:
+            st.markdown("**Simple explanation**")
+            st.markdown(
+                "Think of the score difference as a **drunk walk on a number line**. "
+                "At every possession, the score ticks up for one team or the other "
+                "somewhat randomly. Over time, this walk wanders up and down.\n\n"
+                "The key insight is **time remaining**. With 35 minutes left, a "
+                "5-point lead is nearly meaningless — the walk has dozens of steps "
+                "left to erase it. With 1 minute left, a 5-point lead is almost "
+                "insurmountable — there simply aren't enough possessions to overcome it.\n\n"
+                "Mathematically, the uncertainty in the final score grows like "
+                r"$\sigma_s \sqrt{t}$: the longer the game, the more the score can wander. "
+                "Dividing the current lead by $\\sigma_s \\sqrt{t}$ tells us how many "
+                "'standard deviations' ahead this team is, accounting for how much time "
+                "is left to flip the result.\n\n"
+                "At tip-off ($d=0$, $t=40$), the model gives exactly the Elo pregame "
+                "probability — no game information yet, so only the prior matters."
+            )
+
+    # ── 13. Logit-probit bridge ───────────────────────────────────────────────
+    with st.expander("13 · Connecting the Elo prior to the live model"):
+        col_f, col_e = st.columns([1, 1])
+        with col_f:
+            st.markdown("**The approximation:**")
+            st.latex(
+                r"\text{logit}(p) = \ln\!\frac{p}{1-p} \approx \frac{\pi}{\sqrt{3}}\,\Phi^{-1}(p)"
+            )
+            st.markdown("**Converting the Elo prior to a z-score:**")
+            st.latex(
+                r"z_{\text{prior}} = \text{logit}(p_0) \cdot \frac{\sqrt{3}}{\pi}"
+            )
+            st.markdown("**Combined live z-score:**")
+            st.latex(
+                r"z_{\text{total}} = \underbrace{\frac{d}{\sigma_s\sqrt{t}}}_{\text{game evidence}}"
+                r"+ \underbrace{\text{logit}(p_0)\cdot\frac{\sqrt{3}}{\pi}}_{\text{Elo prior}}"
+            )
+            st.markdown("**Example:** $p_0 = 0.60$")
+            st.latex(
+                r"z_{\text{prior}} = \ln\!\tfrac{0.6}{0.4} \cdot \tfrac{\sqrt{3}}{\pi}"
+                r"= 0.405 \times 0.551 = 0.223"
+            )
+        with col_e:
+            st.markdown("**Simple explanation**")
+            st.markdown(
+                "The random-walk model uses **normal distribution** units (z-scores). "
+                "The Elo model outputs a **logistic probability**. These live in slightly "
+                "different mathematical spaces, so we need a bridge between them.\n\n"
+                "The key fact: the logit function ($\\ln(p/(1-p))$) and the probit "
+                "function ($\\Phi^{-1}(p)$, the inverse normal CDF) are very close to "
+                "proportional — differing by the constant $\\pi/\\sqrt{3} \\approx 1.81$. "
+                "This is the standard **logit-probit approximation**.\n\n"
+                "In plain English: we're asking *'if the Elo model says 60%, where does "
+                "that sit on the normal bell curve?'* The answer is about 0.22 standard "
+                "deviations above center. We then add the score-differential z-score on "
+                "top of that prior.\n\n"
+                "This means:\n"
+                "- If the game is tied ($d=0$), the live probability equals the Elo prior exactly.\n"
+                "- A lead *adds* to the prior; a deficit *subtracts* from it.\n"
+                "- As time runs out, the score evidence overwhelms the prior completely."
+            )
+
+    # ── 14. Upset detection ───────────────────────────────────────────────────
+    with st.expander("14 · Upset detection: when the underdog flips"):
+        col_f, col_e = st.columns([1, 1])
+        with col_f:
+            st.markdown("**Formal definition:**")
+            st.latex(r"\text{UPSET ALERT if:} \quad p_0 < 0.5 \;\text{ and }\; p_{\text{live}} \geq 0.5")
+            st.markdown(
+                "where $p_0$ is the pregame Elo probability for team $A$ "
+                "and $p_{\\text{live}}$ is the current in-game probability."
+            )
+            st.markdown("**Probability swing:**")
+            st.latex(r"\Delta p = p_{\text{live}} - p_0")
+            st.markdown(
+                "Positive $\\Delta p$ means team $A$ has gained probability since tip-off. "
+                "The upset alert fires at the exact moment $\\Delta p$ crosses the 50% threshold."
+            )
+        with col_e:
+            st.markdown("**Simple explanation**")
+            st.markdown(
+                "An upset alert is exactly what it sounds like: the team that was supposed "
+                "to lose is now more likely to win.\n\n"
+                "The pregame model said the underdog had, say, a **38% chance**. "
+                "But they went on a 12-0 run and now lead by 7 with 10 minutes left. "
+                "The live model recalculates and says **61%** — the underdog has flipped "
+                "to become the live favourite. That's the moment the alert fires.\n\n"
+                "Why does this matter for the bracket? Because in a tournament, every "
+                "team's path to the title depends on who comes out of each game. "
+                "If the #12 seed is live-favourite over the #5 seed, the entire "
+                "right side of that region's bracket just changed its expected shape.\n\n"
+                "The probability swing $\\Delta p$ also tells you **how dramatic** the "
+                "reversal is. A +35% swing (from 25% to 60%) is a much bigger moment "
+                "than a +10% swing (from 45% to 55%)."
+            )
+
+    # ── 15. Live bracket impact ────────────────────────────────────────────────
+    with st.expander("15 · Live bracket impact: upset propagation"):
+        col_f, col_e = st.columns([1, 1])
+        with col_f:
+            st.markdown("**Process:**")
+            st.markdown(
+                "1. **Clone** the current Elo engine (copy all ratings).\n"
+                "2. **Apply** the hypothetical game result (team A wins or team B wins).\n"
+                "3. **Update** both teams' ratings via the Elo rule: $R' = R + K(S - E)$.\n"
+                "4. **Re-seed** the 64-team bracket from the updated ratings.\n"
+                "5. **Simulate** 5,000 Monte Carlo tournaments.\n"
+                "6. **Compare** new title odds $\\hat{p}'$ to baseline $\\hat{p}$.\n"
+                "7. **Report** $\\Delta = \\hat{p}' - \\hat{p}$ for each team."
+            )
+            st.latex(r"\Delta_i = \hat{p}'_i(\text{if upset}) - \hat{p}_i(\text{baseline})")
+        with col_e:
+            st.markdown("**Simple explanation**")
+            st.markdown(
+                "The live bracket impact answers: *'if this upset actually holds, "
+                "what happens to everybody's championship odds?'*\n\n"
+                "It's a **counterfactual simulation**. We freeze the current state of "
+                "all other teams, hypothetically record the current live game's outcome, "
+                "and re-run the entire tournament 5,000 times with that one change.\n\n"
+                "The upsets that matter most are ones where:\n"
+                "- The losing team was a **deep title contender** (their odds drop sharply).\n"
+                "- The winning team now has an **easier projected path** to the Final Four.\n"
+                "- The winner's **next opponent** shifts because the bracket re-seeds.\n\n"
+                "This is the same logic as financial scenario analysis: *'if this event "
+                "occurs, how does the entire portfolio of outcomes shift?'* "
+                "The answer is never just about the two teams in the game."
+            )
+
+    # ── 16. Parameters used ──────────────────────────────────────────────────
+    with st.expander("16 · Model parameters used in this dashboard"):
         st.markdown(
+            "**Elo / bracket model**\n\n"
             "| Parameter | Value | What it controls |\n"
             "|---|---|---|\n"
             "| $K$ (update factor) | 24 | How fast ratings respond to results |\n"
             "| Initial rating | 1500 | Starting Elo for all new teams |\n"
             "| Home advantage | 100 pts | Temporary boost for home team |\n"
             "| Elo scale | 400 | Sensitivity of win probability to rating gap |\n"
-            "| Simulations | 100,000 | Monte Carlo runs for bracket odds |\n"
+            "| Simulations (bracket) | 100,000 | Monte Carlo runs for bracket odds |\n"
+            "| Simulations (impact) | 5,000 | Quick re-sim for live bracket impact |\n"
             "| Season | Nov 4, 2025 – Feb 23, 2026 | Data range for ratings |\n"
-            "| Top $N$ seeded | 64 | Teams included in bracket simulation |"
+            "| Top $N$ seeded | 64 | Teams included in bracket simulation |\n\n"
+            "**Live win probability model**\n\n"
+            "| Parameter | Value | What it controls |\n"
+            "|---|---|---|\n"
+            r"| $\sigma_s$ (diffusion constant) | 2.0 pts/√min | Scoring uncertainty per unit time |"
+            "\n"
+            "| Prior bridge | $\\sqrt{3}/\\pi$ | Logit-to-probit conversion factor |\n"
+            "| Live data TTL | 120 s | How often live games are re-fetched |"
         )
         st.markdown(
             "**Why K = 24?** Chess originally used K = 10 for experienced players. "
