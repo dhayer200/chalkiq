@@ -421,9 +421,11 @@ def _draw_region_svg(
     hgap: int,
 ) -> tuple[list[str], dict, tuple[float, float]]:
     """Render one region on a shared canvas and return champion anchor."""
-    line_clr = "#7C8694"
-    text_clr = "#1F2937"
-    muted    = "#6B7280"
+    line_clr = NORD["bg3"]
+    text_clr = NORD["snow1"]
+    muted = NORD["snow0"]
+    panel = NORD["bg1"]
+    font = "ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif"
 
     slot_y = [y_offset + y for y in _bracket_slot_ys(bh=bh, pad=0)]
     all_ys = _all_round_ys(slot_y, bh=bh)
@@ -433,30 +435,31 @@ def _draw_region_svg(
     p: list[str] = []
     p.append(
         f'<text x="{x_rounds[2] + bw/2:.1f}" y="{y_offset - 18:.1f}" text-anchor="middle" '
-        f'font-size="18" font-weight="800" fill="{text_clr}" letter-spacing="0.07em">'
+        f'font-size="18" font-weight="800" fill="{NORD["snow2"]}" letter-spacing="0.07em" font-family="{font}">'
         f'{_html.escape(region_name.upper())}</text>'
     )
 
-    def draw_line(x1: float, y1: float, x2: float, y2: float) -> str:
+    def draw_line(x1: float, y1: float, x2: float, y2: float, stroke: str = line_clr, width: float = 1.2) -> str:
         mx = x1 + hgap / 2 if going_right else x1 - hgap / 2
         return (
             f'<polyline points="{x1:.1f},{y1:.1f} {mx:.1f},{y1:.1f} '
             f'{mx:.1f},{y2:.1f} {x2:.1f},{y2:.1f}" '
-            f'fill="none" stroke="{line_clr}" stroke-width="1.2"/>'
+            f'fill="none" stroke="{stroke}" stroke-width="{width:.1f}"/>'
         )
 
     def draw_box(rx: float, y: float, team: dict, p_win: float, is_winner: bool) -> str:
         name = _html.escape(str(team["name"])[:22])
-        fill = color if is_winner else "#FFFFFF"
-        tclr = "#0F172A" if is_winner else text_clr
+        fill = color if is_winner else panel
+        tclr = NORD["bg"] if is_winner else text_clr
+        stroke = color if is_winner else line_clr
         return "\n".join([
             f'<rect x="{rx:.1f}" y="{y:.1f}" width="{bw}" height="{bh}" rx="2.5" '
-            f'fill="{fill}" stroke="{line_clr}" stroke-width="1"/>',
-            f'<text x="{rx+7:.1f}" y="{y+13:.1f}" font-size="9.3" font-weight="700" fill="{tclr}">'
+            f'fill="{fill}" stroke="{stroke}" stroke-width="1"/>',
+            f'<text x="{rx+7:.1f}" y="{y+13:.1f}" font-size="9.3" font-weight="700" fill="{tclr}" font-family="{font}">'
             f'{team["s"]}</text>',
-            f'<text x="{rx+21:.1f}" y="{y+13:.1f}" font-size="9.3" font-weight="500" fill="{tclr}">'
+            f'<text x="{rx+21:.1f}" y="{y+13:.1f}" font-size="9.3" font-weight="500" fill="{tclr}" font-family="{font}">'
             f'{name}</text>',
-            f'<text x="{rx+bw-6:.1f}" y="{y+13:.1f}" text-anchor="end" font-size="8.2" fill="{muted}">'
+            f'<text x="{rx+bw-6:.1f}" y="{y+13:.1f}" text-anchor="end" font-size="8.2" fill="{muted}" font-family="{font}">'
             f'{p_win:.0%}</text>',
         ])
 
@@ -466,18 +469,31 @@ def _draw_region_svg(
             a, b = game["a"], game["b"]
             ya, yb = ys[2 * gi], ys[2 * gi + 1]
             is_a = game["winner"]["tid"] == a["tid"]
+            a_cy, b_cy = ya + bh / 2, yb + bh / 2
 
             p.append(draw_box(rx, ya, a, game["p_a"], is_a))
             p.append(draw_box(rx, yb, b, 1 - game["p_a"], not is_a))
+
+            # Draw an explicit matchup junction so head-to-head pairings are clear.
+            join_x = (rx + bw + 10) if going_right else (rx - 10)
+            edge_x = (rx + bw) if going_right else rx
+            p.append(
+                f'<polyline points="{edge_x:.1f},{a_cy:.1f} {join_x:.1f},{a_cy:.1f} '
+                f'{join_x:.1f},{b_cy:.1f} {edge_x:.1f},{b_cy:.1f}" '
+                f'fill="none" stroke="{line_clr}" stroke-width="1.1" opacity="0.95"/>'
+            )
+            p.append(
+                f'<circle cx="{join_x:.1f}" cy="{(a_cy+b_cy)/2:.1f}" r="2.1" fill="{NORD["snow0"]}" opacity="0.8"/>'
+            )
 
             if r < 3:
                 wy = ya if is_a else yb
                 w_cy = wy + bh / 2
                 next_cy = all_ys[r + 1][gi] + bh / 2
                 next_rx = x_rounds[r + 1]
-                x1 = rx + bw if going_right else rx
+                x1 = join_x
                 x2 = next_rx if going_right else next_rx + bw
-                p.append(draw_line(x1, w_cy, x2, next_cy))
+                p.append(draw_line(x1, w_cy, x2, next_cy, stroke=color, width=1.4))
 
     champion = rounds[-1][0]["winner"]
     champ_y = all_ys[3][0] + bh / 2
@@ -486,149 +502,223 @@ def _draw_region_svg(
 
 
 def combined_bracket_html(
-    regions: dict, win_prob_fn, color: str, division_label: str
+    regions: dict, win_prob_fn, color: str, division_label: str, adv_odds: dict
 ) -> str:
-    """Single-canvas bracket styled like a classic print bracket."""
-    region_order = ["South", "East", "Midwest", "West"]
+    """Single-canvas bracket: South TL, Midwest BL, East TR, West BR.
+    Center shows Final Four matchups with title odds, then Championship.
+    """
+    region_order = ["South", "Midwest", "East", "West"]
     available = set(regions.keys())
     if not set(region_order).issubset(available):
         region_order = list(REGIONS)
 
     left_top, left_bottom, right_top, right_bottom = region_order
+    # left_top=South (TL), left_bottom=Midwest (BL)
+    # right_top=East (TR), right_bottom=West (BR)
 
-    W, H = 2230, 1180
+    W, H   = 2500, 1180
     BH, BW, HGAP = 22, 190, 34
-    LX = [28, 252, 476, 700]
-    RX = [2012, 1788, 1564, 1340]
+    LX     = [28, 252, 476, 700]           # South/Midwest flow left → right
+    RX     = [2282, 2058, 1834, 1610]      # East/West flow right → left
     top_y, bottom_y = 105, 640
 
+    font     = "ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif"
+    line_clr = NORD["bg3"]
+    text_clr = NORD["snow2"]
+
     svg_parts: list[str] = [
-        f'<rect width="{W}" height="{H}" fill="#F3F4F6"/>',
-        '<rect x="8" y="8" width="2214" height="56" rx="8" fill="#1F2A44"/>',
-        '<rect x="8" y="29" width="2214" height="2" fill="#D9534F"/>',
-        '<text x="1115" y="44" text-anchor="middle" font-size="38" font-style="italic" '
-        f'font-weight="700" fill="#EAF0F7">{SEASON_END.year} NCAA DIVISION I {division_label.upper()} '
-        "BASKETBALL CHAMPIONSHIP</text>",
+        f'<rect width="{W}" height="{H}" fill="{NORD["bg"]}"/>',
     ]
 
     lt_parts, lt_champ, lt_anchor = _draw_region_svg(
-        regions[left_top], left_top, win_prob_fn, color, "left", LX, top_y, BH, BW, HGAP
+        regions[left_top],    left_top,    win_prob_fn, color, "left",  LX, top_y,    BH, BW, HGAP
     )
     lb_parts, lb_champ, lb_anchor = _draw_region_svg(
-        regions[left_bottom], left_bottom, win_prob_fn, color, "left", LX, bottom_y, BH, BW, HGAP
+        regions[left_bottom], left_bottom, win_prob_fn, color, "left",  LX, bottom_y, BH, BW, HGAP
     )
     rt_parts, rt_champ, rt_anchor = _draw_region_svg(
-        regions[right_top], right_top, win_prob_fn, color, "right", RX, top_y, BH, BW, HGAP
+        regions[right_top],   right_top,   win_prob_fn, color, "right", RX, top_y,    BH, BW, HGAP
     )
     rb_parts, rb_champ, rb_anchor = _draw_region_svg(
-        regions[right_bottom], right_bottom, win_prob_fn, color, "right", RX, bottom_y, BH, BW, HGAP
+        regions[right_bottom],right_bottom,win_prob_fn, color, "right", RX, bottom_y, BH, BW, HGAP
     )
     svg_parts.extend(lt_parts + lb_parts + rt_parts + rb_parts)
 
-    line_clr = "#7C8694"
-    text_clr = "#111827"
-    sf_w, sf_h = 180, 26
-    sf_left_x, sf_right_x = 930, 1120
-    sf_y = 548
-    champ_w, champ_h = 210, 30
-    champ_x, champ_y = 1010, 490
+    # ── Final Four center section ──────────────────────────────────────────────
+    # Layout (left to right):
+    #   E8(890) → lff boxes (915–1100) → join(1122) → champ(1145–1355) ← join(1377) ← rff boxes(1400–1585) ← E8(1610)
+    FF_W, FF_H, FF_GAP = 185, 32, 14
+    CY = H / 2      # 590 — vertical center of canvas
 
-    left_p = win_prob_fn(lt_champ["tid"], lb_champ["tid"])
-    left_winner = lt_champ if left_p >= 0.5 else lb_champ
-    right_p = win_prob_fn(rt_champ["tid"], rb_champ["tid"])
+    lff_x     = 915           # left FF team boxes x start
+    rff_x     = 1400          # right FF team boxes x start
+    lff_right = lff_x + FF_W  # 1100
+    rff_right = rff_x + FF_W  # 1585
+
+    lff_top_y = CY - FF_H - FF_GAP / 2   # 551
+    lff_bot_y = CY + FF_GAP / 2          # 597
+    rff_top_y, rff_bot_y = lff_top_y, lff_bot_y
+
+    lff_top_cy = lff_top_y + FF_H / 2    # 567
+    lff_bot_cy = lff_bot_y + FF_H / 2    # 613
+    rff_top_cy, rff_bot_cy = lff_top_cy, lff_bot_cy
+    ff_mid_cy  = (lff_top_cy + lff_bot_cy) / 2   # 590
+
+    # Championship box
+    CHAMP_W, CHAMP_H = 210, 52
+    champ_x      = (lff_right + rff_x) / 2 - CHAMP_W / 2   # 1145
+    champ_y      = CY - CHAMP_H / 2                         # 564
+    champ_right  = champ_x + CHAMP_W                        # 1355
+    champ_mid_cy = champ_y + CHAMP_H / 2                    # 590
+
+    # Bracket join x positions (midpoints between FF boxes and championship)
+    join_lx = (lff_right + champ_x) / 2   # ~1122
+    join_rx = (champ_right + rff_x) / 2   # ~1377
+
+    # ── Matchup probabilities ──────────────────────────────────────────────────
+    left_p   = win_prob_fn(lt_champ["tid"], lb_champ["tid"])
+    left_winner  = lt_champ if left_p >= 0.5 else lb_champ
+    right_p  = win_prob_fn(rt_champ["tid"], rb_champ["tid"])
     right_winner = rt_champ if right_p >= 0.5 else rb_champ
-    title_p = win_prob_fn(left_winner["tid"], right_winner["tid"])
+    title_p  = win_prob_fn(left_winner["tid"], right_winner["tid"])
     champion = left_winner if title_p >= 0.5 else right_winner
 
-    def line(a: tuple[float, float], b: tuple[float, float], toward_right: bool) -> str:
-        mx = (a[0] + b[0]) / 2 if toward_right else (a[0] + b[0]) / 2
+    def title_odds(tid: str) -> float:
+        return adv_odds.get(tid, {}).get(6, 0.0)
+
+    def ff_team_box(rx: float, y: float, team: dict, p_ff: float, is_winner: bool) -> str:
+        fill   = color        if is_winner else NORD["bg1"]
+        tclr   = NORD["bg"]  if is_winner else NORD["snow1"]
+        stroke = color        if is_winner else line_clr
+        name   = _html.escape(str(team["name"])[:20])
+        seed   = team.get("s", "?")
+        return "\n".join([
+            f'<rect x="{rx:.1f}" y="{y:.1f}" width="{FF_W}" height="{FF_H}" rx="3" '
+            f'fill="{fill}" stroke="{stroke}" stroke-width="1.1"/>',
+            f'<text x="{rx+8:.1f}" y="{y+14:.1f}" font-size="9.5" font-weight="700" '
+            f'fill="{tclr}" font-family="{font}">'
+            f'<tspan font-size="8" opacity="0.7">#{seed} </tspan>{name}</text>',
+            f'<text x="{rx+8:.1f}" y="{y+27:.1f}" font-size="8.2" fill="{tclr}" '
+            f'opacity="0.88" font-family="{font}">'
+            f'FF: {p_ff:.0%}  |  Title: {title_odds(team["tid"]):.1%}</text>',
+        ])
+
+    # Draw the 4 Final Four team boxes
+    svg_parts.append(ff_team_box(lff_x, lff_top_y, lt_champ, left_p,      lt_champ["tid"] == left_winner["tid"]))
+    svg_parts.append(ff_team_box(lff_x, lff_bot_y, lb_champ, 1 - left_p,  lb_champ["tid"] == left_winner["tid"]))
+    svg_parts.append(ff_team_box(rff_x, rff_top_y, rt_champ, right_p,     rt_champ["tid"] == right_winner["tid"]))
+    svg_parts.append(ff_team_box(rff_x, rff_bot_y, rb_champ, 1 - right_p, rb_champ["tid"] == right_winner["tid"]))
+
+    # "FINAL FOUR" labels above each pair
+    for lbl_x in (lff_x + FF_W / 2, rff_x + FF_W / 2):
+        svg_parts.append(
+            f'<text x="{lbl_x:.1f}" y="{lff_top_y - 10:.1f}" text-anchor="middle" '
+            f'font-size="9" font-weight="700" fill="{NORD["snow0"]}" letter-spacing=".07em" '
+            f'font-family="{font}">FINAL FOUR</text>'
+        )
+
+    # ── Elbow connectors: E8 anchors → FF team boxes ───────────────────────────
+    def elbow(ax: float, ay: float, bx: float, by: float) -> str:
+        mx = (ax + bx) / 2
         return (
-            f'<polyline points="{a[0]:.1f},{a[1]:.1f} {mx:.1f},{a[1]:.1f} '
-            f'{mx:.1f},{b[1]:.1f} {b[0]:.1f},{b[1]:.1f}" '
+            f'<polyline points="{ax:.1f},{ay:.1f} {mx:.1f},{ay:.1f} '
+            f'{mx:.1f},{by:.1f} {bx:.1f},{by:.1f}" '
             f'fill="none" stroke="{line_clr}" stroke-width="1.4"/>'
         )
 
-    svg_parts.append(line(lt_anchor, (sf_left_x, sf_y + sf_h / 2), True))
-    svg_parts.append(line(lb_anchor, (sf_left_x, sf_y + sf_h / 2), True))
-    svg_parts.append(line(rt_anchor, (sf_right_x + sf_w, sf_y + sf_h / 2), False))
-    svg_parts.append(line(rb_anchor, (sf_right_x + sf_w, sf_y + sf_h / 2), False))
+    # Left E8 exits right (anchor x = 890), connects to left FF boxes left edge
+    svg_parts.append(elbow(lt_anchor[0], lt_anchor[1], lff_x,     lff_top_cy))
+    svg_parts.append(elbow(lb_anchor[0], lb_anchor[1], lff_x,     lff_bot_cy))
+    # Right E8 exits left (anchor x = 1610), connects to right FF boxes right edge
+    svg_parts.append(elbow(rt_anchor[0], rt_anchor[1], rff_right, rff_top_cy))
+    svg_parts.append(elbow(rb_anchor[0], rb_anchor[1], rff_right, rff_bot_cy))
 
-    svg_parts.append(
-        f'<rect x="{sf_left_x}" y="{sf_y}" width="{sf_w}" height="{sf_h}" rx="4" '
-        f'fill="{color}" stroke="{line_clr}" stroke-width="1"/>'
-    )
-    svg_parts.append(
-        f'<text x="{sf_left_x + sf_w/2:.1f}" y="{sf_y - 8}" text-anchor="middle" '
-        'font-size="10" font-weight="700" fill="#374151">SEMIFINAL</text>'
-    )
-    svg_parts.append(
-        f'<text x="{sf_left_x + sf_w/2:.1f}" y="{sf_y + 17:.1f}" text-anchor="middle" '
-        f'font-size="11" font-weight="700" fill="#0B1220">{_html.escape(left_winner["name"][:24])}</text>'
-    )
+    # ── Bracket connectors: FF pairs → Championship ────────────────────────────
+    for (jx, box_left, box_right, toward_champ) in (
+        (join_lx, lff_right, lff_right, champ_x),      # left pair  → champ left
+        (join_rx, rff_x,     rff_x,     champ_right),  # right pair → champ right
+    ):
+        top_cy = lff_top_cy
+        bot_cy = lff_bot_cy
+        edge_x = box_left if jx > box_left else box_right
+        # Bracket brace: top → join → bottom
+        svg_parts.append(
+            f'<polyline points="{edge_x:.1f},{top_cy:.1f} {jx:.1f},{top_cy:.1f} '
+            f'{jx:.1f},{bot_cy:.1f} {edge_x:.1f},{bot_cy:.1f}" '
+            f'fill="none" stroke="{line_clr}" stroke-width="1.2"/>'
+        )
+        # Dot at midpoint
+        svg_parts.append(
+            f'<circle cx="{jx:.1f}" cy="{ff_mid_cy:.1f}" r="2.5" '
+            f'fill="{NORD["snow0"]}" opacity="0.6"/>'
+        )
+        # Horizontal line from join to championship edge
+        svg_parts.append(
+            f'<line x1="{jx:.1f}" y1="{ff_mid_cy:.1f}" '
+            f'x2="{toward_champ:.1f}" y2="{champ_mid_cy:.1f}" '
+            f'stroke="{line_clr}" stroke-width="1.4"/>'
+        )
 
+    # ── Championship box ────────────────────────────────────────────────────────
     svg_parts.append(
-        f'<rect x="{sf_right_x}" y="{sf_y}" width="{sf_w}" height="{sf_h}" rx="4" '
-        f'fill="{color}" stroke="{line_clr}" stroke-width="1"/>'
+        f'<rect x="{champ_x:.1f}" y="{champ_y:.1f}" width="{CHAMP_W}" height="{CHAMP_H}" rx="4" '
+        f'fill="{NORD["bg2"]}" stroke="{color}" stroke-width="1.7"/>'
     )
     svg_parts.append(
-        f'<text x="{sf_right_x + sf_w/2:.1f}" y="{sf_y - 8}" text-anchor="middle" '
-        'font-size="10" font-weight="700" fill="#374151">SEMIFINAL</text>'
+        f'<text x="{champ_x + CHAMP_W/2:.1f}" y="{champ_y - 11:.1f}" text-anchor="middle" '
+        f'font-size="10" font-weight="800" fill="{NORD["snow0"]}" letter-spacing=".06em" '
+        f'font-family="{font}">NATIONAL CHAMPIONSHIP</text>'
     )
     svg_parts.append(
-        f'<text x="{sf_right_x + sf_w/2:.1f}" y="{sf_y + 17:.1f}" text-anchor="middle" '
-        f'font-size="11" font-weight="700" fill="#0B1220">{_html.escape(right_winner["name"][:24])}</text>'
-    )
-
-    svg_parts.append(line((sf_left_x + sf_w, sf_y + sf_h / 2), (champ_x, champ_y + champ_h / 2), True))
-    svg_parts.append(line((sf_right_x, sf_y + sf_h / 2), (champ_x + champ_w, champ_y + champ_h / 2), False))
-
-    svg_parts.append(
-        f'<rect x="{champ_x}" y="{champ_y}" width="{champ_w}" height="{champ_h}" rx="4" '
-        'fill="#FFFFFF" stroke="#0F172A" stroke-width="1.2"/>'
+        f'<text x="{champ_x + CHAMP_W/2:.1f}" y="{champ_y + 17:.1f}" text-anchor="middle" '
+        f'font-size="8.5" fill="{NORD["bg3"]}" font-family="{font}">'
+        f'{_html.escape(left_winner["name"][:17])} vs {_html.escape(right_winner["name"][:17])}</text>'
     )
     svg_parts.append(
-        f'<text x="{champ_x + champ_w/2:.1f}" y="{champ_y - 11}" text-anchor="middle" '
-        'font-size="12" font-weight="800" fill="#111827" letter-spacing=".06em">NATIONAL CHAMPIONSHIP</text>'
+        f'<text x="{champ_x + CHAMP_W/2:.1f}" y="{champ_y + 33:.1f}" text-anchor="middle" '
+        f'font-size="11" font-weight="800" fill="{text_clr}" font-family="{font}">'
+        f'\U0001f3c6 {_html.escape(champion["name"][:22])}</text>'
     )
     svg_parts.append(
-        f'<text x="{champ_x + champ_w/2:.1f}" y="{champ_y + 19:.1f}" text-anchor="middle" '
-        f'font-size="12" font-weight="800" fill="{text_clr}">{_html.escape(champion["name"][:27])}</text>'
+        f'<text x="{champ_x + CHAMP_W/2:.1f}" y="{champ_y + 47:.1f}" text-anchor="middle" '
+        f'font-size="8.5" fill="{NORD["snow0"]}" opacity="0.72" font-family="{font}">'
+        f'Title odds: {title_odds(champion["tid"]):.1%}</text>'
     )
 
     svg = (
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" '
-        'style="display:block;background:#F3F4F6">'
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" '
+        f'style="display:block;background:{NORD["bg"]}">'
         + "".join(svg_parts)
-        + "</svg>"
+        + "\n</svg>"
     )
 
     return f"""
 <style>
-#full-wrap{{overflow:auto;background:#E5E7EB;border-radius:10px;padding:10px;width:100%}}
-#full-stage{{width:fit-content;zoom:.64;transform-origin:top left}}
-.full-btn{{background:#1F2937;border:1px solid #374151;color:#E5E7EB;padding:4px 14px;
-  border-radius:5px;cursor:pointer;font-size:14px;font-family:ui-sans-serif,system-ui,Arial,sans-serif}}
-.full-btn:hover{{background:#111827}}
+#full-wrap{{overflow:auto;background:{NORD["bg"]};border:1px solid {NORD["bg3"]};border-radius:10px;padding:10px;width:100%;min-height:780px}}
+#full-stage{{width:{W}px;height:{H}px;transform:scale(.56);transform-origin:top left;display:block}}
+.full-btn{{background:{NORD["bg1"]};border:1px solid {NORD["bg3"]};color:{NORD["snow1"]};padding:4px 14px;
+  border-radius:5px;cursor:pointer;font-size:14px;font-family:{font}}}
+.full-btn:hover{{background:{NORD["bg2"]}}}
 </style>
 <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
   <button class="full-btn" onclick="adjZ(-.08)">&#8722;</button>
   <button class="full-btn" onclick="adjZ(.08)">+</button>
-  <button class="full-btn" onclick="setZ(.64)">Reset</button>
-  <span id="full-lbl" style="color:#111827;font-size:12px;font-family:ui-sans-serif,sans-serif">64%</span>
-  <span style="color:#4B5563;font-size:11px;font-family:ui-sans-serif,sans-serif;margin-left:8px">
-    Scroll to pan
-  </span>
+  <button class="full-btn" onclick="setZ(.56)">Reset</button>
+  <span id="full-lbl" style="color:{NORD["snow0"]};font-size:12px;font-family:{font}">56%</span>
+  <span style="color:{NORD["bg3"]};font-size:11px;font-family:{font};margin-left:8px">Scroll to pan</span>
 </div>
 <div id="full-wrap"><div id="full-stage">{svg}</div></div>
 <script>
-var _z=.64;
+var _z=.56;
 function setZ(s){{
-  _z=Math.max(.38,Math.min(1.2,s));
-  document.getElementById('full-stage').style.zoom=_z;
+  _z=Math.max(.35,Math.min(1.3,s));
+  var st=document.getElementById('full-stage');
+  st.style.transform='scale('+_z+')';
+  document.getElementById('full-wrap').style.height=Math.ceil({H}*_z+24)+'px';
   document.getElementById('full-lbl').textContent=Math.round(_z*100)+'%';
 }}
 function adjZ(d){{setZ(_z+d);}}
-setZ(.64);
+setZ(.56);
 </script>
 """
 
@@ -790,13 +880,13 @@ with tab_rank:
 
     col_tbl, col_chart = st.columns([3, 2])
     with col_tbl:
-        st.dataframe(styled_all, height=1800, use_container_width=True)
+        st.dataframe(styled_all, height=1800, width="stretch")
 
     with col_chart:
         top20_names = [name for _, name, _ in rankings[:20]]
         top20_odds  = [champ_odds.get(tid, 0) for tid, _, _ in rankings[:20]]
         fig_bar = plotly_odds_bar(top20_names[::-1], top20_odds[::-1], color)
-        st.plotly_chart(fig_bar, use_container_width=True)
+        st.plotly_chart(fig_bar, width="stretch")
         st.caption("Top 20 championship odds from 10,000 Monte Carlo bracket simulations.")
 
 
@@ -808,19 +898,20 @@ with tab_bracket:
     st.subheader(f"Tournament Bracket | {cfg['label']} Division")
     st.caption(
         "Bracket seeded by current Elo (S-curve). "
-        "Probabilities from 10,000 simulations per region. "
+        "South TL | Midwest BL | East TR | West BR. "
+        "Win% and title odds shown on each Final Four team. "
         "Actual Selection Sunday seeding may differ."
     )
 
     # Final Four visual at the top
     fig_ff = draw_final_four(regions, adv_odds, engine.names, color)
-    st.pyplot(fig_ff, use_container_width=True)
+    st.pyplot(fig_ff, width="stretch")
     plt.close()
 
     st.markdown("---")
 
-    # Combined bracket — all 4 regions in one classic single-canvas view
-    bracket_html = combined_bracket_html(regions, engine.win_prob, color, cfg["label"])
+    # Combined bracket — all 4 regions + Final Four + Championship on one canvas
+    bracket_html = combined_bracket_html(regions, engine.win_prob, color, cfg["label"], adv_odds)
     components.html(bracket_html, height=980, scrolling=True)
     st.caption(
         "Highlighted box = projected winner.  "
@@ -835,7 +926,7 @@ with tab_bracket:
             with rsub:
                 df_reg = region_table(regions[region_name], adv_odds, champ_odds)
                 styled = style_region_table(df_reg, color)
-                st.dataframe(styled, use_container_width=True, height=420)
+                st.dataframe(styled, width="stretch", height=420)
         st.caption(
             "**R64** = survives first round  ·  **R32** = Round of 32  ·  "
             "**S16** = Sweet 16  ·  **E8** = Elite 8  ·  "
@@ -883,7 +974,7 @@ with tab_eval:
     with cal_col:
         st.markdown("**Calibration: predicted vs observed win rate**")
         fig_cal = plotly_calibration(metrics.get("calibration", []), color)
-        st.plotly_chart(fig_cal, use_container_width=True)
+        st.plotly_chart(fig_cal, width="stretch")
 
     with txt_col:
         st.markdown("**What is calibration?**")
@@ -977,7 +1068,7 @@ with tab_matchup:
             paper_bgcolor="rgba(0,0,0,0)",
             showlegend=False,
         )
-        st.plotly_chart(fig_mu, use_container_width=True)
+        st.plotly_chart(fig_mu, width="stretch")
         st.caption("Neutral court assumption. Elo home-court adjustment not applied here.")
 
 
