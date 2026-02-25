@@ -28,7 +28,7 @@ from src.bracket.structure import (
     final_four_order,
     region_bracket_order,
 )
-from src.live.feed import fetch_live_games
+from src.live.feed import fetch_live_games, fetch_other_games
 from src.live.model import live_win_prob, upset_alert, prob_swing
 from src.predictions.pregame import matchup_prob
 from src.ratings.elo import EloEngine
@@ -126,6 +126,26 @@ def load_bracket_data(division: str):
 def load_live_games(division: str) -> list[dict]:
     """Fetch live games, cached for 2 minutes."""
     return fetch_live_games(division=division)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_past_games(division: str, for_date: date) -> list[dict]:
+    """Fetch completed games for a date, cached 1 hr (results don't change)."""
+    return fetch_other_games(
+        division=division,
+        for_date=for_date,
+        status_filter={"STATUS_FINAL", "STATUS_FINAL_OT", "STATUS_FINAL_OVERTIME"},
+    )
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_future_games(division: str, for_date: date) -> list[dict]:
+    """Fetch scheduled games for a date, cached 5 min."""
+    return fetch_other_games(
+        division=division,
+        for_date=for_date,
+        status_filter={"STATUS_SCHEDULED", "STATUS_PREGAME"},
+    )
 
 
 @st.cache_data(ttl=120, show_spinner=False)
@@ -1005,6 +1025,48 @@ with tab_live:
         import datetime as _dt
         st.caption(f"Last checked: {_dt.datetime.now().strftime('%I:%M:%S %p')}")
 
+    # ── Pre-compute ranked IDs and date helpers ───────────────────────────────
+    ranked_ids = {tid for tid, _, _ in rankings}
+
+    def _fmt_date(iso: str) -> str:
+        try:
+            return _dt.date.fromisoformat(iso).strftime("%a %b %-d")
+        except ValueError:
+            return iso
+
+    _today       = _dt.date.today()
+    _past_days   = [_today - _dt.timedelta(days=d) for d in range(1, 8)]
+    _future_days = [_today + _dt.timedelta(days=d) for d in range(1, 8)]
+
+    past_all = []
+    for _d in _past_days:
+        past_all.extend(load_past_games(division, _d))
+    past_all.sort(key=lambda g: g["game_date"], reverse=True)
+
+    future_all = []
+    for _d in _future_days:
+        future_all.extend(load_future_games(division, _d))
+    future_all.sort(key=lambda g: g["game_date"])
+
+    # ── Upcoming Games ─────────────────────────────────────────────────────────
+    _fu_label = f"Upcoming Games | next 7 days | {len(future_all)} game{'s' if len(future_all) != 1 else ''}"
+    with st.expander(_fu_label, expanded=True):
+        if not future_all:
+            st.caption("No games scheduled in the next 7 days.")
+        else:
+            _frows = []
+            for _g in future_all:
+                _p_h = engine.win_prob(_g["home_id"], _g["away_id"], neutral=_g["neutral"])
+                _frows.append({
+                    "Date":      _fmt_date(_g["game_date"]),
+                    "Away":      _g["away_name"],
+                    "Home":      _g["home_name"],
+                    "Home win%": f"{_p_h:.0%}",
+                    "Away win%": f"{1 - _p_h:.0%}",
+                    "Time":      _g["status_detail"] or "",
+                })
+            st.dataframe(pd.DataFrame(_frows), use_container_width=True, hide_index=True)
+
     live_games = load_live_games(division)
 
     if not live_games:
@@ -1016,7 +1078,6 @@ with tab_live:
         )
     else:
         # Annotate each game with live win probability and pregame baseline
-        ranked_ids = {tid for tid, _, _ in rankings}
         for g in live_games:
             p_pre = engine.win_prob(g["home_id"], g["away_id"], neutral=g["neutral"])
             score_diff = g["home_score"] - g["away_score"]
@@ -1074,6 +1135,7 @@ with tab_live:
 
                 h_swing_color = NORD["green"] if sw > 0 else NORD["red"]
                 a_swing_color = NORD["red"]   if sw > 0 else NORD["green"]
+                swing_color   = NORD["green"] if sw > 0 else NORD["red"]
                 clock_str = _fmt_clock(g)
 
                 card_html = f"""
@@ -1135,6 +1197,9 @@ with tab_live:
       <div style="font-size:10px;color:{NORD["bg3"]}">{_html.escape(g["away_name"][:16])}</div>
       <div style="font-size:10px;color:{a_swing_color}">{-sw:+.0%} vs before game</div>
     </div>
+  </div>
+  <div style="font-size:10px;color:{swing_color};font-family:ui-sans-serif,sans-serif">
+    Home swing since tip-off: <strong>{sw:+.0%}</strong>
   </div>
 </div>
 """
@@ -1335,6 +1400,24 @@ with tab_live:
 </div>
 """
             st.markdown(pick_html, unsafe_allow_html=True)
+
+    # ── Recent Results ─────────────────────────────────────────────────────────
+    _pa_label = f"Recent Results | last 7 days | {len(past_all)} game{'s' if len(past_all) != 1 else ''}"
+    with st.expander(_pa_label, expanded=False):
+        if not past_all:
+            st.caption("No completed games in the last 7 days.")
+        else:
+            _prows = []
+            for _g in past_all:
+                _home_won = _g["home_score"] > _g["away_score"]
+                _prows.append({
+                    "Date":   _fmt_date(_g["game_date"]),
+                    "Away":   _g["away_name"],
+                    "Score":  f"{_g['away_score']} - {_g['home_score']}",
+                    "Home":   _g["home_name"],
+                    "Winner": _g["home_name"] if _home_won else _g["away_name"],
+                })
+            st.dataframe(pd.DataFrame(_prows), use_container_width=True, hide_index=True)
 
 
 # ════════════════════════════════════════════════════════════════════════════ #
