@@ -5,9 +5,11 @@ Run from the project root:
     streamlit run frontend/app.py
 """
 
+import math as _math
 import sys
-from datetime import date
+from datetime import date, datetime as _datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -80,6 +82,43 @@ DIVISION_CONFIG = {
 }
 
 N_SIMS = 100_000
+
+# ── Timezone options ───────────────────────────────────────────────────────────
+_TZ_OPTIONS = {
+    "Eastern (ET)":  "America/New_York",
+    "Central (CT)":  "America/Chicago",
+    "Mountain (MT)": "America/Denver",
+    "Pacific (PT)":  "America/Los_Angeles",
+    "UTC":           "UTC",
+}
+
+# ── Gambling / prediction helpers ──────────────────────────────────────────────
+
+def _predicted_score(p_home: float, avg_total: float = 140.0) -> tuple[int, int]:
+    """Predicted home and away points from home win probability."""
+    p = max(1e-7, min(1 - 1e-7, p_home))
+    logit_p  = _math.log(p / (1 - p))
+    probit_p = logit_p * _math.sqrt(3) / _math.pi
+    margin   = probit_p * _math.sqrt(40.0) * 2.0   # SIGMA_game ≈ 12.65 pts
+    return round((avg_total + margin) / 2), round((avg_total - margin) / 2)
+
+
+def _prob_to_american(p: float, vig: float = 0.05) -> int:
+    """Convert probability to American moneyline with standard vig."""
+    p = max(0.01, min(0.99, p))
+    p_vig = p + (1 - p) * vig / 2          # inflate by half the juice
+    if p_vig >= 0.5:
+        return -round(p_vig / (1 - p_vig) * 100)
+    return round((1 - p_vig) / p_vig * 100)
+
+
+def _american_to_decimal(ml: int) -> float:
+    """American moneyline → decimal odds."""
+    return (ml / 100 + 1.0) if ml > 0 else (100 / abs(ml) + 1.0)
+
+
+def _fmt_ml(ml: int) -> str:
+    return f"+{ml}" if ml > 0 else str(ml)
 
 
 # ── Data loading (cached per division) ────────────────────────────────────────
@@ -899,12 +938,13 @@ metrics                    = evaluate(engine.history)
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 
-tab_rank, tab_bracket, tab_live, tab_eval, tab_matchup, tab_math, tab_sources = st.tabs([
+tab_rank, tab_bracket, tab_live, tab_eval, tab_matchup, tab_gamble, tab_math, tab_sources = st.tabs([
     "📊  Power Rankings",
     "🏆  Bracket",
     "🔴  Live",
     "📈  Model Evaluation",
     "⚔️  Matchup",
+    "🎰  Parlay",
     "📐  Math",
     "📚  Sources",
 ])
@@ -1028,42 +1068,52 @@ with tab_live:
     # ── Pre-compute ranked IDs and date helpers ───────────────────────────────
     ranked_ids = {tid for tid, _, _ in rankings}
 
-    def _fmt_date(iso: str) -> str:
-        try:
-            return _dt.date.fromisoformat(iso).strftime("%a %b %-d")
-        except ValueError:
-            return iso
-
-    _today       = _dt.date.today()
-    _past_days   = [_today - _dt.timedelta(days=d) for d in range(1, 8)]
-    _future_days = [_today + _dt.timedelta(days=d) for d in range(1, 8)]
+    _today     = _dt.date.today()
+    _tomorrow  = _today + _dt.timedelta(days=1)
+    _past_days = [_today - _dt.timedelta(days=d) for d in range(1, 8)]
 
     past_all = []
     for _d in _past_days:
         past_all.extend(load_past_games(division, _d))
     past_all.sort(key=lambda g: g["game_date"], reverse=True)
 
-    future_all = []
-    for _d in _future_days:
-        future_all.extend(load_future_games(division, _d))
-    future_all.sort(key=lambda g: g["game_date"])
+    future_tomorrow = load_future_games(division, _tomorrow)
+    future_tomorrow.sort(key=lambda g: g["game_datetime"])
 
-    # ── Upcoming Games ─────────────────────────────────────────────────────────
-    _fu_label = f"Upcoming Games | next 7 days | {len(future_all)} game{'s' if len(future_all) != 1 else ''}"
+    # ── Timezone selector ──────────────────────────────────────────────────────
+    _tz_col, _ = st.columns([2, 3])
+    with _tz_col:
+        _tz_label = st.selectbox(
+            "Timezone", list(_TZ_OPTIONS.keys()), index=0, key="live_tz",
+            label_visibility="collapsed",
+        )
+    _tz = ZoneInfo(_TZ_OPTIONS[_tz_label])
+
+    def _game_time(iso: str) -> str:
+        """Convert ESPN ISO UTC datetime to local time string."""
+        try:
+            dt_utc   = _datetime.fromisoformat(iso.replace("Z", "+00:00"))
+            dt_local = dt_utc.astimezone(_tz)
+            return dt_local.strftime("%-I:%M %p")
+        except (ValueError, AttributeError):
+            return "TBD"
+
+    # ── Upcoming Games (tomorrow only) ─────────────────────────────────────────
+    _tmr_str   = _tomorrow.strftime("%a %b %-d")
+    _fu_label  = f"Tomorrow's Games | {_tmr_str} | {len(future_tomorrow)} game{'s' if len(future_tomorrow) != 1 else ''} | times in {_tz_label}"
     with st.expander(_fu_label, expanded=True):
-        if not future_all:
-            st.caption("No games scheduled in the next 7 days.")
+        if not future_tomorrow:
+            st.caption(f"No games scheduled for {_tmr_str}.")
         else:
             _frows = []
-            for _g in future_all:
+            for _g in future_tomorrow:
                 _p_h = engine.win_prob(_g["home_id"], _g["away_id"], neutral=_g["neutral"])
                 _frows.append({
-                    "Date":      _fmt_date(_g["game_date"]),
+                    "Time":      _game_time(_g["game_datetime"]),
                     "Away":      _g["away_name"],
                     "Home":      _g["home_name"],
                     "Home win%": f"{_p_h:.0%}",
                     "Away win%": f"{1 - _p_h:.0%}",
-                    "Time":      _g["status_detail"] or "",
                 })
             st.dataframe(pd.DataFrame(_frows), use_container_width=True, hide_index=True)
 
@@ -1410,14 +1460,19 @@ with tab_live:
             _prows = []
             for _g in past_all:
                 _home_won = _g["home_score"] > _g["away_score"]
+                _p_h      = engine.win_prob(_g["home_id"], _g["away_id"], neutral=_g["neutral"])
                 _prows.append({
-                    "Date":   _fmt_date(_g["game_date"]),
-                    "Away":   _g["away_name"],
-                    "Score":  f"{_g['away_score']} - {_g['home_score']}",
-                    "Home":   _g["home_name"],
-                    "Winner": _g["home_name"] if _home_won else _g["away_name"],
+                    "Date":         _dt.date.fromisoformat(_g["game_date"]),
+                    "Away":         _g["away_name"],
+                    "Score":        f"{_g['away_score']}-{_g['home_score']}",
+                    "Home":         _g["home_name"],
+                    "Proj home%":   f"{_p_h:.0%}",
+                    "Proj away%":   f"{1 - _p_h:.0%}",
+                    "Winner":       _g["home_name"] if _home_won else _g["away_name"],
                 })
-            st.dataframe(pd.DataFrame(_prows), use_container_width=True, hide_index=True)
+            _past_df = pd.DataFrame(_prows)
+            _past_df = _past_df.sort_values("Date", ascending=False)
+            st.dataframe(_past_df, use_container_width=True, hide_index=True)
 
 
 # ════════════════════════════════════════════════════════════════════════════ #
@@ -1480,6 +1535,176 @@ with tab_eval:
             "very hard (logarithmic penalty). "
             "**Brier score** is the squared error, softer and easier to interpret. "
             "Using both gives a rounder picture of forecast quality."
+        )
+
+    st.markdown("---")
+
+    # ── Build analytics data from engine history ─────────────────────────────
+    _hist = engine.history   # list of game dicts
+    _hist_sorted = sorted(_hist, key=lambda g: g.get("date") or "")
+
+    # Predicted margin: logit(p) * sqrt(3)/pi * sqrt(40) * SIGMA
+    _SIGMA_GAME = _math.sqrt(40.0) * 2.0   # ≈ 12.65 pts
+
+    def _pred_margin(p: float) -> float:
+        p = max(1e-7, min(1 - 1e-7, p))
+        return _math.log(p / (1 - p)) * _math.sqrt(3) / _math.pi * _SIGMA_GAME
+
+    # ── Graph 1: Predicted vs Actual Margin Distribution ─────────────────────
+    g1_col, g2_col = st.columns(2)
+    with g1_col:
+        st.markdown("**Predicted margin distribution vs actual**")
+        _actual_m   = [g["home_score"] - g["away_score"] for g in _hist]
+        _predicted_m = [_pred_margin(g["pregame_prob_home"]) for g in _hist]
+        fig_margin = go.Figure()
+        fig_margin.add_trace(go.Histogram(
+            x=_actual_m, name="Actual margin",
+            opacity=0.65, nbinsx=40,
+            marker_color=NORD["frost1"],
+        ))
+        fig_margin.add_trace(go.Histogram(
+            x=_predicted_m, name="Predicted margin",
+            opacity=0.65, nbinsx=40,
+            marker_color=NORD["orange"],
+        ))
+        fig_margin.add_vline(x=0, line_dash="dash", line_color=NORD["bg3"], line_width=1)
+        fig_margin.update_layout(
+            barmode="overlay",
+            xaxis_title="Home margin (pts)",
+            yaxis_title="Games",
+            legend=dict(orientation="h", y=1.08),
+            height=280,
+            margin=dict(l=40, r=10, t=30, b=40),
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(color=NORD["snow0"]),
+        )
+        st.plotly_chart(fig_margin, width="stretch")
+        st.caption(
+            "Predicted margin = probit(p) × SIGMA_game. Actual margin = home − away score. "
+            "Overlap shows model vs reality."
+        )
+
+    # ── Graph 2: PnL by Edge Bucket ──────────────────────────────────────────
+    with g2_col:
+        st.markdown("**PnL by edge bucket (flat $1 bets at even money)**")
+        _edge_map: dict[float, list[float]] = {}
+        for g in _hist:
+            p       = g["pregame_prob_home"]
+            outcome = g["outcome"]
+            edge    = abs(p - 0.5)
+            bucket  = round(int(edge * 10) / 10, 1)
+            correct = (p > 0.5 and outcome == 1) or (p < 0.5 and outcome == 0)
+            _edge_map.setdefault(bucket, []).append(1.0 if correct else -1.0)
+
+        _eb_x  = sorted(_edge_map.keys())
+        _eb_y  = [sum(_edge_map[b]) / len(_edge_map[b]) for b in _eb_x]
+        _eb_n  = [len(_edge_map[b]) for b in _eb_x]
+        _eb_colors = [NORD["green"] if y >= 0 else NORD["red"] for y in _eb_y]
+        fig_pnl = go.Figure(go.Bar(
+            x=[f"{int(b*100)}-{int(b*100)+10}%" for b in _eb_x],
+            y=_eb_y,
+            marker_color=_eb_colors,
+            text=[f"n={n}" for n in _eb_n],
+            textposition="outside",
+            textfont=dict(size=10, color=NORD["snow0"]),
+        ))
+        fig_pnl.add_hline(y=0, line_color=NORD["bg3"], line_width=1)
+        fig_pnl.update_layout(
+            xaxis_title="Model edge over 50%",
+            yaxis_title="Avg PnL per $1 bet",
+            height=280,
+            margin=dict(l=40, r=10, t=30, b=60),
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(color=NORD["snow0"]),
+        )
+        st.plotly_chart(fig_pnl, width="stretch")
+        st.caption(
+            "Bet $1 on every game where our model deviates from 50/50 by the shown amount. "
+            "Positive bars = profitable edge bucket at even-money payout."
+        )
+
+    g3_col, g4_col = st.columns(2)
+
+    # ── Graph 3: Edge vs Market Line ─────────────────────────────────────────
+    with g3_col:
+        st.markdown("**Edge vs baseline: model win rate by predicted probability**")
+        _cal_data = metrics.get("calibration", [])
+        if _cal_data:
+            _cx  = [b["predicted_avg"] for b in _cal_data]
+            _cy  = [b["observed"]      for b in _cal_data]
+            _csz = [b["n"]             for b in _cal_data]
+            _edge_vs = [o - p for o, p in zip(_cy, _cx)]
+            fig_edge = go.Figure()
+            fig_edge.add_trace(go.Scatter(
+                x=_cx, y=_edge_vs,
+                mode="markers+lines",
+                marker=dict(
+                    size=[max(8, n / 40) for n in _csz],
+                    color=_edge_vs,
+                    colorscale=[[0, NORD["red"]], [0.5, NORD["bg3"]], [1, NORD["green"]]],
+                    showscale=False,
+                ),
+                line=dict(color=NORD["frost1"], width=1),
+                name="Actual − Predicted",
+            ))
+            fig_edge.add_hline(y=0, line_dash="dash", line_color=NORD["bg3"],
+                               line_width=1, annotation_text="Market line (perfect cal.)")
+            fig_edge.update_layout(
+                xaxis=dict(tickformat=".0%", title="Predicted win prob"),
+                yaxis=dict(tickformat="+.0%", title="Actual − Predicted"),
+                height=280,
+                margin=dict(l=55, r=10, t=30, b=40),
+                plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)",
+                font=dict(color=NORD["snow0"]),
+            )
+            st.plotly_chart(fig_edge, width="stretch")
+        else:
+            st.info("Not enough data for this chart.")
+        st.caption(
+            "Points above 0 = model underestimates actual win rate (underconfident). "
+            "Points below 0 = overconfident. Dot size = number of games in bin."
+        )
+
+    # ── Graph 4: Cumulative PnL (Closing Line Value proxy) ───────────────────
+    with g4_col:
+        st.markdown("**Cumulative PnL over the season (flat $1 bets)**")
+        _cum_pnl = []
+        _running = 0.0
+        _game_nums = []
+        for _i, g in enumerate(_hist_sorted):
+            p       = g["pregame_prob_home"]
+            outcome = g["outcome"]
+            correct = (p > 0.5 and outcome == 1) or (p < 0.5 and outcome == 0)
+            _running += 1.0 if correct else -1.0
+            _cum_pnl.append(_running)
+            _game_nums.append(_i + 1)
+        fig_clv = go.Figure()
+        fig_clv.add_trace(go.Scatter(
+            x=_game_nums, y=_cum_pnl,
+            mode="lines",
+            fill="tozeroy",
+            line=dict(color=NORD["green"] if (_cum_pnl[-1] if _cum_pnl else 0) >= 0 else NORD["red"], width=2),
+            fillcolor=f"rgba(163,190,140,0.15)",
+            name="Cumulative PnL",
+        ))
+        fig_clv.add_hline(y=0, line_color=NORD["bg3"], line_width=1)
+        fig_clv.update_layout(
+            xaxis_title="Game number",
+            yaxis_title="Cumulative PnL ($)",
+            height=280,
+            margin=dict(l=55, r=10, t=30, b=40),
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(color=NORD["snow0"]),
+            showlegend=False,
+        )
+        st.plotly_chart(fig_clv, width="stretch")
+        st.caption(
+            "Bet $1 on every game our model favors at even money. "
+            "Rising line = model is beating 50/50 over time (positive closing line value proxy)."
         )
 
 
@@ -1557,9 +1782,238 @@ with tab_matchup:
         st.plotly_chart(fig_mu, width="stretch")
         st.caption("Neutral court assumption. Elo home-court adjustment not applied here.")
 
+    st.markdown("---")
+    st.markdown("**Predicted score**")
+    _h_pts, _a_pts = _predicted_score(m["prob_a"])
+    sc1, sc2, sc3 = st.columns(3)
+    sc1.metric(name_a[:22], str(_h_pts))
+    sc2.metric(name_b[:22], str(_a_pts))
+    sc3.metric("Predicted margin", f"{_h_pts - _a_pts:+d} ({name_a[:14]})" if _h_pts != _a_pts else "Pick 'em")
+    st.caption(
+        "Predicted score uses the Elo win probability and a random-walk scoring model "
+        f"(SIGMA = 2.0 pts/sqrt(min), average total = 140 pts). "
+        "Treat as a rough estimate, not a precise forecast."
+    )
+
 
 # ════════════════════════════════════════════════════════════════════════════ #
-# TAB 6 — Math
+# TAB 6 — Parlay Builder
+# ════════════════════════════════════════════════════════════════════════════ #
+
+with tab_gamble:
+    st.subheader("Parlay Builder | Simulated Only")
+    st.error(
+        "**For entertainment and analysis only. No real money involved. "
+        "This tool does not facilitate gambling.**",
+    )
+
+    import datetime as _gdt
+    _g_today    = _gdt.date.today()
+    _g_tomorrow = _g_today + _gdt.timedelta(days=1)
+    _g_games    = load_future_games(division, _g_tomorrow)
+
+    # Annotate each game with our model odds
+    for _gg in _g_games:
+        _pp = engine.win_prob(_gg["home_id"], _gg["away_id"], neutral=_gg["neutral"])
+        _gg["prob_home"]    = _pp
+        _gg["prob_away"]    = 1 - _pp
+        _gg["ml_home"]      = _prob_to_american(_pp)
+        _gg["ml_away"]      = _prob_to_american(1 - _pp)
+        _h_sc, _a_sc        = _predicted_score(_pp)
+        _gg["pred_home_pts"] = _h_sc
+        _gg["pred_away_pts"] = _a_sc
+
+    if not _g_games:
+        st.info(f"No games scheduled for {_g_tomorrow.strftime('%A %b %-d')}. Check back closer to game day.")
+    else:
+        st.caption(
+            f"Games for {_g_tomorrow.strftime('%A, %B %-d')}  |  "
+            "Moneylines derived from our Elo model (5% vig)  |  "
+            "Predicted scores use random-walk margin model"
+        )
+
+        # ── Game cards showing model odds ─────────────────────────────────────
+        _gl_cols = st.columns(2)
+        for _gi, _gg in enumerate(_g_games):
+            with _gl_cols[_gi % 2]:
+                _gc_html = f"""
+<div style="border:1px solid {NORD['bg3']};border-radius:8px;padding:12px 14px;
+            margin-bottom:8px;background:{NORD['bg1']}">
+  <div style="font-size:11px;color:{NORD['bg3']};font-family:ui-sans-serif,sans-serif;
+              margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">
+    {_html.escape(_gg.get('status_detail','') or 'Tomorrow')}
+  </div>
+  <table style="width:100%;border-collapse:collapse;font-family:ui-sans-serif,sans-serif">
+    <tr>
+      <td style="font-size:13px;font-weight:700;color:{NORD['snow2']};padding:2px 0">
+        {_html.escape(_gg['home_name'][:26])}
+      </td>
+      <td style="text-align:right;font-size:12px;color:{color};font-weight:700;padding:2px 0">
+        {_fmt_ml(_gg['ml_home'])} &nbsp; {_gg['pred_home_pts']} pts
+      </td>
+    </tr>
+    <tr>
+      <td style="font-size:13px;font-weight:700;color:{NORD['snow2']};padding:2px 0">
+        {_html.escape(_gg['away_name'][:26])}
+      </td>
+      <td style="text-align:right;font-size:12px;color:{color};font-weight:700;padding:2px 0">
+        {_fmt_ml(_gg['ml_away'])} &nbsp; {_gg['pred_away_pts']} pts
+      </td>
+    </tr>
+  </table>
+  <div style="font-size:10px;color:{NORD['bg3']};margin-top:6px;font-family:ui-sans-serif,sans-serif">
+    Model: {_gg['home_name'][:16]} {_gg['prob_home']:.0%} &nbsp;|&nbsp; {_gg['away_name'][:16]} {_gg['prob_away']:.0%}
+  </div>
+</div>
+"""
+                st.markdown(_gc_html, unsafe_allow_html=True)
+
+        st.markdown("---")
+        st.markdown("### Build Your Parlay")
+        st.caption(
+            "Select games and a team for each leg. "
+            "The hedge strategy automatically creates a safe parlay (all your picks) "
+            "plus one upset parlay per leg, so you profit if any single pick loses unexpectedly."
+        )
+
+        # ── Game selection + pick per leg ─────────────────────────────────────
+        _game_map = {f"{_g['away_name'][:22]} @ {_g['home_name'][:22]}": _g for _g in _g_games}
+        _sel_labels = st.multiselect(
+            "Select games for your parlay (2-6 legs)",
+            list(_game_map.keys()),
+            max_selections=6,
+        )
+
+        if len(_sel_labels) < 2:
+            st.info("Pick at least 2 games to build a hedge strategy.")
+        else:
+            _sel_games = [_game_map[l] for l in _sel_labels]
+
+            _picks = []
+            st.markdown("**Your picks per leg:**")
+            for _gi, _sg in enumerate(_sel_games):
+                _opts = [
+                    f"{_sg['home_name'][:24]}  ({_fmt_ml(_sg['ml_home'])})",
+                    f"{_sg['away_name'][:24]}  ({_fmt_ml(_sg['ml_away'])})",
+                ]
+                _choice = st.radio(
+                    f"**{_sg['away_name'][:20]} @ {_sg['home_name'][:20]}**",
+                    _opts,
+                    horizontal=True,
+                    key=f"parlay_pick_{_sg['game_id']}",
+                )
+                _is_home = _choice.startswith(_sg["home_name"][:5])
+                _picks.append({
+                    "game":      _sg,
+                    "pick_name": _sg["home_name"] if _is_home else _sg["away_name"],
+                    "pick_prob": _sg["prob_home"] if _is_home else _sg["prob_away"],
+                    "pick_ml":   _sg["ml_home"]   if _is_home else _sg["ml_away"],
+                    "opp_name":  _sg["away_name"] if _is_home else _sg["home_name"],
+                    "opp_prob":  _sg["prob_away"] if _is_home else _sg["prob_home"],
+                    "opp_ml":    _sg["ml_away"]   if _is_home else _sg["ml_home"],
+                })
+
+            _stake = st.number_input("Stake per parlay ($)", min_value=1, value=10, step=5)
+            _n     = len(_picks)
+            _total = _stake * (_n + 1)
+
+            # ── Build N+1 parlays ─────────────────────────────────────────────
+            def _parlay_mult(legs):
+                m = 1.0
+                for (_, ml, _) in legs:
+                    m *= _american_to_decimal(ml)
+                return m
+
+            # Parlay 0: all picks
+            _p0_legs = [(p["pick_name"], p["pick_ml"], p["pick_prob"]) for p in _picks]
+            _p0_prob = _math.prod(p["pick_prob"] for p in _picks)
+            _p0_mult = _parlay_mult(_p0_legs)
+
+            _parlays = [{
+                "name":    "All picks win",
+                "tag":     "SAFE",
+                "legs":    _p0_legs,
+                "prob":    _p0_prob,
+                "mult":    _p0_mult,
+                "payout":  _stake * _p0_mult,
+                "net":     _stake * _p0_mult - _total,
+            }]
+
+            # Parlay i: flip pick i → opponent
+            for _pi, _pivot in enumerate(_picks):
+                _legs = []
+                _prob = 1.0
+                for _pj, _p in enumerate(_picks):
+                    if _pj == _pi:
+                        _legs.append((_p["opp_name"], _p["opp_ml"], _p["opp_prob"]))
+                        _prob *= _p["opp_prob"]
+                    else:
+                        _legs.append((_p["pick_name"], _p["pick_ml"], _p["pick_prob"]))
+                        _prob *= _p["pick_prob"]
+                _mult = _parlay_mult(_legs)
+                _parlays.append({
+                    "name":   f"Upset: {_pivot['opp_name'][:20]} wins",
+                    "tag":    "HEDGE",
+                    "legs":   _legs,
+                    "prob":   _prob,
+                    "mult":   _mult,
+                    "payout": _stake * _mult,
+                    "net":    _stake * _mult - _total,
+                })
+
+            # ── Summary metrics ───────────────────────────────────────────────
+            st.markdown("---")
+            st.markdown(f"**Strategy summary**  |  Total stake: **${_total:.0f}**")
+
+            _ev = sum(par["prob"] * par["payout"] for par in _parlays) - _total
+            _p_loss = 1 - sum(par["prob"] for par in _parlays)
+
+            sc1, sc2, sc3, sc4 = st.columns(4)
+            sc1.metric("Total stake",    f"${_total:.0f}")
+            sc2.metric("Parlays built",  str(len(_parlays)))
+            sc3.metric("Expected value", f"${_ev:+.2f}")
+            sc4.metric("P(total loss)",  f"{max(0, _p_loss):.1%}",
+                       help="Probability that 2+ of your picks lose (all parlays fail).")
+
+            # ── Scenario table ────────────────────────────────────────────────
+            st.markdown("**Outcome scenarios**")
+            _scen_rows = []
+            for par in _parlays:
+                _scen_rows.append({
+                    "Scenario":    par["name"],
+                    "Type":        par["tag"],
+                    "Probability": f"{par['prob']:.1%}",
+                    "Multiplier":  f"{par['mult']:.2f}x",
+                    "Payout":      f"${par['payout']:.2f}",
+                    "Net P&L":     f"${par['net']:+.2f}",
+                })
+
+            # Add total-loss row
+            _scen_rows.append({
+                "Scenario":    "2+ picks lose",
+                "Type":        "BUST",
+                "Probability": f"{max(0, _p_loss):.1%}",
+                "Multiplier":  "0x",
+                "Payout":      "$0.00",
+                "Net P&L":     f"-${_total:.2f}",
+            })
+            st.dataframe(pd.DataFrame(_scen_rows), use_container_width=True, hide_index=True)
+
+            # ── Individual parlay detail ──────────────────────────────────────
+            st.markdown("**Parlay legs detail**")
+            for par in _parlays:
+                _leg_txt = "  +  ".join(
+                    f"{name} ({_fmt_ml(ml)})" for name, ml, _ in par["legs"]
+                )
+                st.caption(
+                    f"**{par['tag']}** {par['name']}: "
+                    f"{_leg_txt}  →  {par['mult']:.2f}x  →  "
+                    f"${par['payout']:.2f} payout  (prob {par['prob']:.1%})"
+                )
+
+
+# ════════════════════════════════════════════════════════════════════════════ #
+# TAB 7 — Math (was TAB 6)
 # ════════════════════════════════════════════════════════════════════════════ #
 
 with tab_math:

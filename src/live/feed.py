@@ -240,6 +240,7 @@ def fetch_other_games(
             "status_detail": status_type.get("detail", ""),
             "neutral":       comp.get("neutralSite", False),
             "game_date":     event.get("date", "")[:10],
+            "game_datetime": event.get("date", ""),  # full ISO UTC datetime
         })
 
     return games
