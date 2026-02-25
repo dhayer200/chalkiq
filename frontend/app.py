@@ -1070,7 +1070,7 @@ with tab_live:
 
     _today       = _dt.date.today()
     _past_days   = [_today - _dt.timedelta(days=d) for d in range(1, 8)]
-    _future_days = [_today + _dt.timedelta(days=d) for d in range(1, 8)]
+    _future_days = [_today + _dt.timedelta(days=d) for d in range(0, 8)]
 
     past_all = []
     for _d in _past_days:
@@ -1109,7 +1109,7 @@ with tab_live:
     # ── Upcoming Games (next 7 days, all games) ────────────────────────────────
     _n_fu = len(future_all)
     _fu_label = (
-        f"Upcoming Games | next 7 days | {_n_fu} game{'s' if _n_fu != 1 else ''} "
+        f"Upcoming Games | today + next 7 days | {_n_fu} game{'s' if _n_fu != 1 else ''} "
         f"| all {cfg['label']} teams | times in {_tz_label}"
     )
     with st.expander(_fu_label, expanded=True):
