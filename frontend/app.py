@@ -1078,7 +1078,7 @@ with tab_live:
     past_all.sort(key=lambda g: g["game_date"], reverse=True)
 
     future_tomorrow = load_future_games(division, _tomorrow)
-    future_tomorrow.sort(key=lambda g: g["game_datetime"])
+    future_tomorrow.sort(key=lambda g: g.get("game_datetime") or g.get("game_date", ""))
 
     # ── Timezone selector ──────────────────────────────────────────────────────
     _tz_col, _ = st.columns([2, 3])
@@ -1109,7 +1109,7 @@ with tab_live:
             for _g in future_tomorrow:
                 _p_h = engine.win_prob(_g["home_id"], _g["away_id"], neutral=_g["neutral"])
                 _frows.append({
-                    "Time":      _game_time(_g["game_datetime"]),
+                    "Time":      _game_time(_g.get("game_datetime", "")),
                     "Away":      _g["away_name"],
                     "Home":      _g["home_name"],
                     "Home win%": f"{_p_h:.0%}",
@@ -2524,6 +2524,70 @@ Y_{ij} = \begin{cases} 1 & \text{team } i \text{ wins} \\ 0 & \text{team } i \te
             "**Why 100 points for home advantage?** Empirical studies of college basketball "
             "suggest home teams win about 60–64% of games, corresponding to roughly 80–100 Elo points."
         )
+
+    with st.expander("17 · Projected score from win probability"):
+        col_f, col_e = st.columns([1, 1])
+        with col_f:
+            st.markdown("**The chain of formulas**")
+            st.markdown("**Step 1.** Start with the Elo win probability $p$ for the home team.")
+            st.latex(r"p = \frac{1}{1 + 10^{(R_B - R_A)/400}}")
+            st.markdown(
+                "**Step 2.** Convert $p$ to a z-score (standard deviations from zero) "
+                "using the logit-to-probit bridge from section 13."
+            )
+            st.latex(
+                r"z = \frac{\sqrt{3}}{\pi}\,\ln\!\left(\frac{p}{1-p}\right)"
+            )
+            st.markdown(
+                "**Step 3.** Scale by the game-level scoring volatility $\\sigma_{\\text{game}}$."
+            )
+            st.latex(
+                r"\sigma_{\text{game}} = \sigma_s \cdot \sqrt{T}"
+                r"\quad \sigma_s = 2.0\;\text{pts/}\sqrt{\text{min}},\;"
+                r"T = 40\;\text{min}"
+            )
+            st.latex(r"\sigma_{\text{game}} \approx 12.65\;\text{pts}")
+            st.latex(r"\text{Expected margin} = z \cdot \sigma_{\text{game}}")
+            st.markdown(
+                "**Step 4.** Split the expected margin around the average total score."
+            )
+            st.latex(
+                r"\hat{S}_{\text{home}} = \frac{\bar{T} + \text{margin}}{2}"
+                r",\quad"
+                r"\hat{S}_{\text{away}} = \frac{\bar{T} - \text{margin}}{2}"
+            )
+            st.latex(r"\bar{T} = 140\;\text{pts (college basketball average total)}")
+        with col_e:
+            st.markdown("**Simple explanation**")
+            st.markdown(
+                "The win probability tells us *who* is more likely to win, but not *by how much*. "
+                "To get a score, we reverse-engineer the implied margin.\n\n"
+                "The key idea is that score differences in basketball behave like a random walk: "
+                "each possession adds a small, roughly-equal amount of uncertainty. "
+                "The further the game goes, the wider the possible range of final margins. "
+                "This is captured by $\\sigma_{\\text{game}}$, the total scoring volatility "
+                "over 40 minutes.\n\n"
+                "The logit-to-probit conversion (the $\\sqrt{3}/\\pi$ bridge) translates the "
+                "win probability — which is in 'logistic space' — into 'normal space' "
+                "so we can multiply it by $\\sigma_{\\text{game}}$ directly.\n\n"
+                "**Worked example:** Suppose team A has a **72%** win probability.\n\n"
+                "- $z = (\\sqrt{3}/\\pi)\\,\\ln(0.72/0.28) \\approx 0.52$\n"
+                "- margin $= 0.52 \\times 12.65 \\approx 6.6$ pts\n"
+                "- scores $= (140 + 6.6)/2 = 73$ and $(140 - 6.6)/2 = 67$\n\n"
+                "**Caveats:** This is a *probabilistic mean*, not a guarantee. "
+                "The average total of 140 is a long-run constant; any individual game "
+                "can run far higher or lower. Treat the predicted score as a rough "
+                "central estimate, not a precise forecast."
+            )
+            st.markdown("**What each parameter controls**")
+            st.markdown(
+                "| Parameter | Value | Effect |\n"
+                "|---|---|---|\n"
+                "| $\\sigma_s$ | 2.0 pts/√min | Wider → higher-scoring games assumed |\n"
+                "| $T$ | 40 min | Regulation game length |\n"
+                "| $\\bar{T}$ | 140 pts | Average total; shifts both scores equally |\n"
+                "| $z$ | varies | Higher → bigger predicted margin |"
+            )
 
 
 # ════════════════════════════════════════════════════════════════════════════ #
