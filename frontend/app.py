@@ -879,13 +879,14 @@ metrics                    = evaluate(engine.history)
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 
-tab_rank, tab_bracket, tab_live, tab_eval, tab_matchup, tab_math = st.tabs([
+tab_rank, tab_bracket, tab_live, tab_eval, tab_matchup, tab_math, tab_sources = st.tabs([
     "📊  Power Rankings",
     "🏆  Bracket",
     "🔴  Live",
     "📈  Model Evaluation",
     "⚔️  Matchup",
     "📐  Math",
+    "📚  Sources",
 ])
 
 
@@ -1842,3 +1843,162 @@ Y_{ij} = \begin{cases} 1 & \text{team } i \text{ wins} \\ 0 & \text{team } i \te
             "**Why 100 points for home advantage?** Empirical studies of college basketball "
             "suggest home teams win about 60–64% of games, corresponding to roughly 80–100 Elo points."
         )
+
+
+# ════════════════════════════════════════════════════════════════════════════ #
+# TAB 7 — Sources
+# ════════════════════════════════════════════════════════════════════════════ #
+
+with tab_sources:
+    st.subheader("Sources and Acknowledgements")
+    st.markdown(
+        "ChalkIQ is built on a stack of well-established academic results and open data. "
+        "Below are the people and work this dashboard draws from directly."
+    )
+    st.markdown("---")
+
+    # ── Mathematical foundations ───────────────────────────────────────────────
+    st.markdown("### Mathematical Foundations")
+
+    src_col1, src_col2 = st.columns(2)
+
+    with src_col1:
+        st.markdown("#### Elo Rating System")
+        st.markdown(
+            "**Arpad Elo** (1903–1992)\n\n"
+            "Hungarian-American physics professor who invented the Elo rating system "
+            "for chess in the 1960s. Originally published as:\n\n"
+            "*The Rating of Chess Players, Past and Present* (1978), Arco Publishing.\n\n"
+            "The core formula — expected score as a logistic function of rating difference, "
+            "with iterative updates proportional to prediction error — is used verbatim "
+            "in this project's ratings engine."
+        )
+        st.divider()
+
+        st.markdown("#### Brier Score")
+        st.markdown(
+            "**Glenn W. Brier** (1950)\n\n"
+            "\"Verification of Forecasts Expressed in Terms of Probability\"\n"
+            "*Monthly Weather Review*, 78(1), 1–3.\n\n"
+            "Introduced the mean squared error of probabilistic forecasts. "
+            "Originally developed to evaluate weather forecasts; now a standard "
+            "tool in any domain that produces probability estimates."
+        )
+        st.divider()
+
+        st.markdown("#### In-Game Win Probability (Brownian Motion)")
+        st.markdown(
+            "**Hal S. Stern** (1994)\n\n"
+            "\"A Brownian Motion Model for the Progress of Sports Scores\"\n"
+            "*Journal of the American Statistical Association*, 89(427), 1128–1134.\n\n"
+            "Modeled the score differential in a sports game as a Brownian motion "
+            "process, giving a closed-form formula for win probability as a function "
+            "of current lead and time remaining. The theoretical foundation for "
+            "ChalkIQ's live win probability model."
+        )
+
+    with src_col2:
+        st.markdown("#### Diffusion Constant for Basketball")
+        st.markdown(
+            "**Aaron Clauset, Martin Kogan, Sidney Redner** (2015)\n\n"
+            "\"Safe Leads and Lead Changes in Competitive Team Sports\"\n"
+            "*Physical Review E*, 91(6), 062815.\n\n"
+            "Measured the empirical scoring diffusion constant for multiple sports "
+            "using play-by-play data. Their college basketball estimates inform the "
+            "$\\sigma_s = 2.0$ pts/√min parameter used in ChalkIQ's live model."
+        )
+        st.divider()
+
+        st.markdown("#### Log Loss / Cross-Entropy")
+        st.markdown(
+            "**Claude Shannon** (1948)\n\n"
+            "\"A Mathematical Theory of Communication\"\n"
+            "*Bell System Technical Journal*, 27, 379–423.\n\n"
+            "Log loss is the negative log-likelihood of a Bernoulli model, rooted "
+            "in Shannon's information theory. As a **proper scoring rule**, it "
+            "incentivizes honest probability estimates — a forecaster minimises "
+            "expected log loss only by reporting their true beliefs."
+        )
+        st.divider()
+
+        st.markdown("#### Logit-Probit Approximation")
+        st.markdown(
+            "**Standard result in statistics**\n\n"
+            "The approximation $\\text{logit}(p) \\approx (\\pi/\\sqrt{3})\\,\\Phi^{-1}(p)$ "
+            "is a classical result connecting the logistic and normal distributions. "
+            "It is widely used in biostatistics and econometrics to convert between "
+            "logistic regression outputs and probit/normal-distribution-based models. "
+            "ChalkIQ uses it to translate the Elo logit prior into z-score space "
+            "for the random-walk live model."
+        )
+
+    st.markdown("---")
+
+    # ── Data sources ───────────────────────────────────────────────────────────
+    st.markdown("### Data Sources")
+
+    d1, d2 = st.columns(2)
+    with d1:
+        st.markdown("#### ESPN Scoreboard API")
+        st.markdown(
+            "**ESPN / Disney** (unofficial public API)\n\n"
+            "`site.api.espn.com/apis/site/v2/sports/basketball/`\n\n"
+            "ChalkIQ fetches all regular-season game results and live game states "
+            "from ESPN's publicly accessible scoreboard endpoint. "
+            "This API is not officially documented or supported by ESPN; "
+            "it is used here for educational and research purposes only."
+        )
+    with d2:
+        st.markdown("#### NCAA Basketball")
+        st.markdown(
+            "**National Collegiate Athletic Association (NCAA)**\n\n"
+            "All team names, game results, and tournament structure reflect the "
+            "NCAA Division I Men's and Women's basketball seasons. "
+            "Bracket seeding in this dashboard is projected from Elo ratings "
+            "and does not reflect official Selection Committee decisions."
+        )
+
+    st.markdown("---")
+
+    # ── Inspirations ───────────────────────────────────────────────────────────
+    st.markdown("### Inspirations")
+
+    i1, i2 = st.columns(2)
+    with i1:
+        st.markdown("#### KenPom")
+        st.markdown(
+            "**Ken Pomeroy** — kenpom.com\n\n"
+            "The gold standard for college basketball analytics. Pomeroy's adjusted "
+            "efficiency metrics and tempo-free statistics popularised the idea that "
+            "rigorous quantitative models can outperform conventional basketball wisdom. "
+            "A direct inspiration for applying Elo and probabilistic forecasting "
+            "to the college game."
+        )
+    with i2:
+        st.markdown("#### FiveThirtyEight")
+        st.markdown(
+            "**Nate Silver et al.** — FiveThirtyEight (2008–2023)\n\n"
+            "FiveThirtyEight's Elo-based sports ratings — first for MLB, then NFL, "
+            "NBA, and March Madness — demonstrated that Elo could be adapted beyond "
+            "chess to produce well-calibrated, publicly explainable forecasts. "
+            "Their open methodology articles directly shaped the design choices "
+            "in ChalkIQ's ratings and simulation engines."
+        )
+
+    st.markdown("---")
+
+    # ── Stack ──────────────────────────────────────────────────────────────────
+    st.markdown("### Built With")
+    st.markdown(
+        "| Library | Authors | Used for |\n"
+        "|---|---|---|\n"
+        "| [Streamlit](https://streamlit.io) | Streamlit Inc. | Web app framework |\n"
+        "| [Plotly](https://plotly.com) | Plotly Technologies | Interactive charts |\n"
+        "| [Matplotlib](https://matplotlib.org) | Hunter et al. (2007) | Final Four figure |\n"
+        "| [pandas](https://pandas.pydata.org) | Wes McKinney et al. | Data tables |\n"
+        "| [requests](https://requests.readthedocs.io) | Kenneth Reitz | ESPN API calls |"
+    )
+    st.caption(
+        "Hunter, J.D. (2007). Matplotlib: A 2D graphics environment. "
+        "*Computing in Science and Engineering*, 9(3), 90–95."
+    )
