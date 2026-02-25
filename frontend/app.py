@@ -28,6 +28,8 @@ from src.bracket.structure import (
     final_four_order,
     region_bracket_order,
 )
+from src.live.feed import fetch_live_games
+from src.live.model import live_win_prob, upset_alert, prob_swing
 from src.predictions.pregame import matchup_prob
 from src.ratings.elo import EloEngine
 from src.utils.data import fetch_season
@@ -118,6 +120,52 @@ def load_bracket_data(division: str):
     champ_odds = {tid: adv_odds[tid].get(6, 0.0) for tid in bracket_order}
 
     return regions, adv_odds, champ_odds
+
+
+@st.cache_data(ttl=120, show_spinner=False)
+def load_live_games(division: str) -> list[dict]:
+    """Fetch live games, cached for 2 minutes."""
+    return fetch_live_games(division=division)
+
+
+@st.cache_data(ttl=120, show_spinner=False)
+def live_bracket_impact(
+    division: str,
+    home_id: str,
+    away_id: str,
+    home_wins: bool,
+) -> dict[str, float]:
+    """
+    Simulate bracket odds if home_wins (or away wins) in a live regular-season game.
+    Clones the Elo engine, applies the hypothetical result, reruns 5k sims.
+    Returns {team_id: championship_probability}.
+    """
+    base = load_engine(division)
+
+    # Shallow-clone: copy ratings + names, keep same hyper-params
+    sim = EloEngine(k=base.k, home_advantage=base.home_advantage)
+    sim.ratings = dict(base.ratings)
+    sim.names   = dict(base.names)
+
+    # Apply hypothetical result (scores don't affect Elo, only outcome does)
+    if home_wins:
+        sim.update(home_id, away_id, 70, 60, neutral=True)
+    else:
+        sim.update(home_id, away_id, 60, 70, neutral=True)
+
+    rankings_sim = sim.rankings()
+    regions_sim  = assign_seeds(rankings_sim)
+    bracket_order: list[str] = []
+    for rn in REGIONS:
+        bracket_order.extend(region_bracket_order(regions_sim[rn]))
+
+    adv = round_advancement_odds(
+        seeded_teams=bracket_order,
+        win_prob_fn=sim.win_prob,
+        n_sims=5_000,
+        seed=42,
+    )
+    return {tid: adv[tid].get(6, 0.0) for tid in bracket_order}
 
 
 # ── Chart helpers ──────────────────────────────────────────────────────────────
@@ -831,9 +879,10 @@ metrics                    = evaluate(engine.history)
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 
-tab_rank, tab_bracket, tab_eval, tab_matchup, tab_math = st.tabs([
+tab_rank, tab_bracket, tab_live, tab_eval, tab_matchup, tab_math = st.tabs([
     "📊  Power Rankings",
     "🏆  Bracket",
+    "🔴  Live",
     "📈  Model Evaluation",
     "⚔️  Matchup",
     "📐  Math",
@@ -935,7 +984,216 @@ with tab_bracket:
 
 
 # ════════════════════════════════════════════════════════════════════════════ #
-# TAB 3 — Model Evaluation
+# TAB 3 — Live Games
+# ════════════════════════════════════════════════════════════════════════════ #
+
+with tab_live:
+    st.subheader(f"Live Games | {cfg['label']} Division")
+
+    # ── Refresh controls ──────────────────────────────────────────────────────
+    ctrl_col, ts_col = st.columns([1, 3])
+    with ctrl_col:
+        if st.button("🔄 Refresh", key="live_refresh"):
+            st.cache_data.clear()
+            st.rerun()
+    with ts_col:
+        import datetime as _dt
+        st.caption(f"Last checked: {_dt.datetime.now().strftime('%I:%M:%S %p')}")
+
+    live_games = load_live_games(division)
+
+    if not live_games:
+        st.info(
+            "No games are live right now.\n\n"
+            "During the tournament (March), this tab shows real-time "
+            "win probabilities, upset alerts, and bracket impact for every "
+            "game in progress."
+        )
+    else:
+        # Annotate each game with live win probability and pregame baseline
+        ranked_ids = {tid for tid, _, _ in rankings}
+        for g in live_games:
+            p_pre = engine.win_prob(g["home_id"], g["away_id"], neutral=g["neutral"])
+            score_diff = g["home_score"] - g["away_score"]
+            p_live = live_win_prob(score_diff, g["minutes_remaining"], p_pre)
+            g["pregame_prob_home"] = p_pre
+            g["live_prob_home"]    = p_live
+            g["swing"]             = prob_swing(p_live, p_pre)
+            g["upset"]             = upset_alert(p_live, p_pre)
+            g["home_ranked"]       = g["home_id"] in ranked_ids
+            g["away_ranked"]       = g["away_id"] in ranked_ids
+
+        # Sort: upsets first, then by swing magnitude
+        live_games.sort(key=lambda g: (not g["upset"], -abs(g["swing"])))
+
+        # ── Game cards ────────────────────────────────────────────────────────
+        cols = st.columns(2)
+        for i, g in enumerate(live_games):
+            col = cols[i % 2]
+            with col:
+                p_h  = g["live_prob_home"]
+                p_a  = 1.0 - p_h
+                pp_h = g["pregame_prob_home"]
+                sw   = g["swing"]
+
+                # Card border color: upset = orange, normal = bg3
+                border = NORD["orange"] if g["upset"] else NORD["bg3"]
+                badge  = (
+                    f'<span style="background:{NORD["orange"]};color:{NORD["bg"]};'
+                    f'font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;'
+                    f'letter-spacing:.05em">UPSET ALERT</span>'
+                    if g["upset"] else ""
+                )
+
+                swing_color = NORD["green"] if sw > 0 else NORD["red"]
+                swing_str   = f"{sw:+.0%}"
+
+                # Clock display
+                if g["status"] == "halftime":
+                    clock_str = "HALFTIME"
+                else:
+                    h = int(g["clock_mins"])
+                    s = int((g["clock_mins"] - h) * 60)
+                    half_lbl = (
+                        "1st Half" if g["period"] == 1 else
+                        "2nd Half" if g["period"] == 2 else
+                        f"OT{g['period']-2}"
+                    )
+                    clock_str = f"{h}:{s:02d} — {half_lbl}"
+
+                card_html = f"""
+<div style="border:1px solid {border};border-radius:8px;padding:14px 16px;
+            margin-bottom:12px;background:{NORD["bg1"]}">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+    <span style="font-size:11px;color:{NORD["bg3"]};font-family:ui-sans-serif,sans-serif">
+      {_html.escape(g["status_detail"] or clock_str)}
+    </span>
+    {badge}
+  </div>
+
+  <table style="width:100%;border-collapse:collapse;font-family:ui-sans-serif,sans-serif">
+    <tr>
+      <td style="font-size:13px;font-weight:700;color:{NORD["snow2"]};padding:2px 0">
+        {_html.escape(g["home_name"][:26])}
+      </td>
+      <td style="font-size:20px;font-weight:800;color:{NORD["snow2"]};text-align:right;padding:2px 0">
+        {g["home_score"]}
+      </td>
+    </tr>
+    <tr>
+      <td style="font-size:13px;font-weight:700;color:{NORD["snow2"]};padding:2px 0">
+        {_html.escape(g["away_name"][:26])}
+      </td>
+      <td style="font-size:20px;font-weight:800;color:{NORD["snow2"]};text-align:right;padding:2px 0">
+        {g["away_score"]}
+      </td>
+    </tr>
+  </table>
+
+  <div style="margin:10px 0 4px 0">
+    <div style="display:flex;justify-content:space-between;
+                font-size:10px;color:{NORD["bg3"]};margin-bottom:3px;
+                font-family:ui-sans-serif,sans-serif">
+      <span>{_html.escape(g["home_name"][:20])}</span>
+      <span>{_html.escape(g["away_name"][:20])}</span>
+    </div>
+    <div style="background:{NORD["bg3"]};border-radius:4px;height:8px;overflow:hidden">
+      <div style="background:{color};height:100%;width:{p_h*100:.1f}%;
+                  border-radius:4px;transition:width .3s"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;
+                font-size:11px;font-weight:700;margin-top:3px;
+                font-family:ui-sans-serif,sans-serif">
+      <span style="color:{color}">{p_h:.0%}</span>
+      <span style="color:{NORD["bg3"]};font-size:10px">
+        Pregame: {pp_h:.0%} / {1-pp_h:.0%}
+      </span>
+      <span style="color:{color}">{p_a:.0%}</span>
+    </div>
+  </div>
+
+  <div style="font-size:10px;color:{swing_color};font-family:ui-sans-serif,sans-serif">
+    Home swing since tip-off: <strong>{swing_str}</strong>
+  </div>
+</div>
+"""
+                st.markdown(card_html, unsafe_allow_html=True)
+
+        # ── Bracket odds impact (Milestone 4) ─────────────────────────────────
+        st.markdown("---")
+        st.markdown("### Bracket Odds Impact")
+        st.caption(
+            "How would today's results shift each team's projected championship odds? "
+            "Simulated by applying the hypothetical game result to current Elo ratings "
+            "and rerunning 5,000 bracket simulations."
+        )
+
+        # Only show impact for games where at least one team is in our top-64
+        impact_games = [g for g in live_games if g["home_ranked"] or g["away_ranked"]]
+
+        if not impact_games:
+            st.info("No live games involve top-64 ranked teams right now.")
+        else:
+            for g in impact_games:
+                hname = g["home_name"]
+                aname = g["away_name"]
+
+                with st.expander(f"{hname} vs {aname} — impact if result holds", expanded=True):
+                    # Base title odds for these two teams
+                    base_h = champ_odds.get(g["home_id"], 0.0)
+                    base_a = champ_odds.get(g["away_id"], 0.0)
+
+                    # Simulate both outcomes
+                    with st.spinner("Simulating bracket impact…"):
+                        odds_h_wins = live_bracket_impact(division, g["home_id"], g["away_id"], True)
+                        odds_a_wins = live_bracket_impact(division, g["home_id"], g["away_id"], False)
+
+                    new_h_if_h = odds_h_wins.get(g["home_id"], 0.0)
+                    new_h_if_a = odds_a_wins.get(g["home_id"], 0.0)
+                    new_a_if_h = odds_h_wins.get(g["away_id"], 0.0)
+                    new_a_if_a = odds_a_wins.get(g["away_id"], 0.0)
+
+                    ic1, ic2 = st.columns(2)
+                    with ic1:
+                        st.markdown(f"**If {hname[:22]} wins**")
+                        dh = new_h_if_h - base_h
+                        da = new_a_if_h - base_a
+                        st.metric(
+                            f"{hname[:20]} title odds",
+                            f"{new_h_if_h:.2%}",
+                            delta=f"{dh:+.2%}",
+                            delta_color="normal",
+                        )
+                        st.metric(
+                            f"{aname[:20]} title odds",
+                            f"{new_a_if_h:.2%}",
+                            delta=f"{da:+.2%}",
+                            delta_color="normal",
+                        )
+                    with ic2:
+                        st.markdown(f"**If {aname[:22]} wins (upset)**")
+                        dh2 = new_h_if_a - base_h
+                        da2 = new_a_if_a - base_a
+                        st.metric(
+                            f"{hname[:20]} title odds",
+                            f"{new_h_if_a:.2%}",
+                            delta=f"{dh2:+.2%}",
+                            delta_color="normal",
+                        )
+                        st.metric(
+                            f"{aname[:20]} title odds",
+                            f"{new_a_if_a:.2%}",
+                            delta=f"{da2:+.2%}",
+                            delta_color="normal",
+                        )
+                    st.caption(
+                        f"Baseline title odds: {hname[:18]} {base_h:.2%} | "
+                        f"{aname[:18]} {base_a:.2%}"
+                    )
+
+
+# ════════════════════════════════════════════════════════════════════════════ #
+# TAB 4 — Model Evaluation
 # ════════════════════════════════════════════════════════════════════════════ #
 
 with tab_eval:
@@ -998,7 +1256,7 @@ with tab_eval:
 
 
 # ════════════════════════════════════════════════════════════════════════════ #
-# TAB 4 — Matchup Calculator
+# TAB 5 — Matchup Calculator
 # ════════════════════════════════════════════════════════════════════════════ #
 
 with tab_matchup:
@@ -1073,7 +1331,7 @@ with tab_matchup:
 
 
 # ════════════════════════════════════════════════════════════════════════════ #
-# TAB 5 — Math
+# TAB 6 — Math
 # ════════════════════════════════════════════════════════════════════════════ #
 
 with tab_math:
