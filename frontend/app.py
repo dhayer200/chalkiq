@@ -1068,17 +1068,19 @@ with tab_live:
     # ── Pre-compute ranked IDs and date helpers ───────────────────────────────
     ranked_ids = {tid for tid, _, _ in rankings}
 
-    _today     = _dt.date.today()
-    _tomorrow  = _today + _dt.timedelta(days=1)
-    _past_days = [_today - _dt.timedelta(days=d) for d in range(1, 8)]
+    _today       = _dt.date.today()
+    _past_days   = [_today - _dt.timedelta(days=d) for d in range(1, 8)]
+    _future_days = [_today + _dt.timedelta(days=d) for d in range(1, 8)]
 
     past_all = []
     for _d in _past_days:
         past_all.extend(load_past_games(division, _d))
     past_all.sort(key=lambda g: g["game_date"], reverse=True)
 
-    future_tomorrow = load_future_games(division, _tomorrow)
-    future_tomorrow.sort(key=lambda g: g.get("game_datetime") or g.get("game_date", ""))
+    future_all = []
+    for _d in _future_days:
+        future_all.extend(load_future_games(division, _d))
+    future_all.sort(key=lambda g: g.get("game_datetime") or g.get("game_date", ""))
 
     # ── Timezone selector ──────────────────────────────────────────────────────
     _tz_col, _ = st.columns([2, 3])
@@ -1098,17 +1100,32 @@ with tab_live:
         except (ValueError, AttributeError):
             return "TBD"
 
-    # ── Upcoming Games (tomorrow only) ─────────────────────────────────────────
-    _tmr_str   = _tomorrow.strftime("%a %b %-d")
-    _fu_label  = f"Tomorrow's Games | {_tmr_str} | {len(future_tomorrow)} game{'s' if len(future_tomorrow) != 1 else ''} | times in {_tz_label}"
+    def _fmt_date_short(iso: str) -> str:
+        try:
+            return _dt.date.fromisoformat(iso).strftime("%a %-d")
+        except ValueError:
+            return iso
+
+    # ── Upcoming Games (next 7 days, all games) ────────────────────────────────
+    _n_fu = len(future_all)
+    _fu_label = (
+        f"Upcoming Games | next 7 days | {_n_fu} game{'s' if _n_fu != 1 else ''} "
+        f"| all {cfg['label']} teams | times in {_tz_label}"
+    )
     with st.expander(_fu_label, expanded=True):
-        if not future_tomorrow:
-            st.caption(f"No games scheduled for {_tmr_str}.")
+        if not future_all:
+            st.caption("No games scheduled in the next 7 days.")
         else:
+            st.caption(
+                f"Showing all {_n_fu} scheduled {cfg['label']} games. "
+                "Win probabilities come from our Elo model — teams not in our "
+                "season dataset default to 50/50."
+            )
             _frows = []
-            for _g in future_tomorrow:
+            for _g in future_all:
                 _p_h = engine.win_prob(_g["home_id"], _g["away_id"], neutral=_g["neutral"])
                 _frows.append({
+                    "Date":      _fmt_date_short(_g["game_date"]),
                     "Time":      _game_time(_g.get("game_datetime", "")),
                     "Away":      _g["away_name"],
                     "Home":      _g["home_name"],
@@ -1540,32 +1557,28 @@ with tab_eval:
     st.markdown("---")
 
     # ── Build analytics data from engine history ─────────────────────────────
-    _hist = engine.history   # list of game dicts
+    _hist        = engine.history
     _hist_sorted = sorted(_hist, key=lambda g: g.get("date") or "")
-
-    # Predicted margin: logit(p) * sqrt(3)/pi * sqrt(40) * SIGMA
-    _SIGMA_GAME = _math.sqrt(40.0) * 2.0   # ≈ 12.65 pts
+    _SIGMA_GAME  = _math.sqrt(40.0) * 2.0   # ≈ 12.65 pts
 
     def _pred_margin(p: float) -> float:
         p = max(1e-7, min(1 - 1e-7, p))
         return _math.log(p / (1 - p)) * _math.sqrt(3) / _math.pi * _SIGMA_GAME
 
     # ── Graph 1: Predicted vs Actual Margin Distribution ─────────────────────
-    g1_col, g2_col = st.columns(2)
-    with g1_col:
+    g1_chart, g1_text = st.columns([2, 1])
+    with g1_chart:
         st.markdown("**Predicted margin distribution vs actual**")
-        _actual_m   = [g["home_score"] - g["away_score"] for g in _hist]
+        _actual_m    = [g["home_score"] - g["away_score"] for g in _hist]
         _predicted_m = [_pred_margin(g["pregame_prob_home"]) for g in _hist]
         fig_margin = go.Figure()
         fig_margin.add_trace(go.Histogram(
             x=_actual_m, name="Actual margin",
-            opacity=0.65, nbinsx=40,
-            marker_color=NORD["frost1"],
+            opacity=0.65, nbinsx=40, marker_color=NORD["frost1"],
         ))
         fig_margin.add_trace(go.Histogram(
             x=_predicted_m, name="Predicted margin",
-            opacity=0.65, nbinsx=40,
-            marker_color=NORD["orange"],
+            opacity=0.65, nbinsx=40, marker_color=NORD["orange"],
         ))
         fig_margin.add_vline(x=0, line_dash="dash", line_color=NORD["bg3"], line_width=1)
         fig_margin.update_layout(
@@ -1573,21 +1586,35 @@ with tab_eval:
             xaxis_title="Home margin (pts)",
             yaxis_title="Games",
             legend=dict(orientation="h", y=1.08),
-            height=280,
+            height=300,
             margin=dict(l=40, r=10, t=30, b=40),
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
             font=dict(color=NORD["snow0"]),
         )
         st.plotly_chart(fig_margin, width="stretch")
-        st.caption(
-            "Predicted margin = probit(p) × SIGMA_game. Actual margin = home − away score. "
-            "Overlap shows model vs reality."
+    with g1_text:
+        st.markdown("**What this shows**")
+        st.markdown(
+            "Every game in our dataset is plotted twice: once as the **actual** "
+            "final score margin (blue), and once as the **predicted** margin "
+            "our model implied before tip-off (orange).\n\n"
+            "The dashed line at 0 separates home wins (right) from away wins (left). "
+            "Both distributions should be roughly bell-shaped and centred near 0 "
+            "for a balanced schedule.\n\n"
+            "**What good looks like:** the two histograms overlap well — same centre, "
+            "similar spread. That means our margin estimates are in the right ballpark "
+            "on average.\n\n"
+            "**What to watch for:** if the orange (predicted) is much narrower than "
+            "blue (actual), the model is underestimating how much games can vary — "
+            "it thinks every game is close when some blow out. If the peaks are "
+            "offset, the model is systematically favouring home or away teams."
         )
 
     # ── Graph 2: PnL by Edge Bucket ──────────────────────────────────────────
-    with g2_col:
-        st.markdown("**PnL by edge bucket (flat $1 bets at even money)**")
+    g2_chart, g2_text = st.columns([2, 1])
+    with g2_chart:
+        st.markdown("**Returns by model confidence (flat $1 bets at even money)**")
         _edge_map: dict[float, list[float]] = {}
         for g in _hist:
             p       = g["pregame_prob_home"]
@@ -1596,10 +1623,9 @@ with tab_eval:
             bucket  = round(int(edge * 10) / 10, 1)
             correct = (p > 0.5 and outcome == 1) or (p < 0.5 and outcome == 0)
             _edge_map.setdefault(bucket, []).append(1.0 if correct else -1.0)
-
-        _eb_x  = sorted(_edge_map.keys())
-        _eb_y  = [sum(_edge_map[b]) / len(_edge_map[b]) for b in _eb_x]
-        _eb_n  = [len(_edge_map[b]) for b in _eb_x]
+        _eb_x      = sorted(_edge_map.keys())
+        _eb_y      = [sum(_edge_map[b]) / len(_edge_map[b]) for b in _eb_x]
+        _eb_n      = [len(_edge_map[b]) for b in _eb_x]
         _eb_colors = [NORD["green"] if y >= 0 else NORD["red"] for y in _eb_y]
         fig_pnl = go.Figure(go.Bar(
             x=[f"{int(b*100)}-{int(b*100)+10}%" for b in _eb_x],
@@ -1611,30 +1637,42 @@ with tab_eval:
         ))
         fig_pnl.add_hline(y=0, line_color=NORD["bg3"], line_width=1)
         fig_pnl.update_layout(
-            xaxis_title="Model edge over 50%",
-            yaxis_title="Avg PnL per $1 bet",
-            height=280,
+            xaxis_title="Model edge over 50/50",
+            yaxis_title="Avg profit per $1 bet",
+            height=300,
             margin=dict(l=40, r=10, t=30, b=60),
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
             font=dict(color=NORD["snow0"]),
         )
         st.plotly_chart(fig_pnl, width="stretch")
-        st.caption(
-            "Bet $1 on every game where our model deviates from 50/50 by the shown amount. "
-            "Positive bars = profitable edge bucket at even-money payout."
+    with g2_text:
+        st.markdown("**What this shows**")
+        st.markdown(
+            "Each bar groups games where our model deviated from 50/50 by a certain "
+            "amount — that deviation is the **edge**. For every game in that group "
+            "we simulate betting $1 on whoever our model favoured, at even-money "
+            "payout (+$1 win, -$1 loss), then average the results.\n\n"
+            "**0-10% edge:** the model barely has a lean — these are essentially "
+            "coin flips, so returns cluster near zero.\n\n"
+            "**20%+ edge:** the model is confident. If those predictions are correct "
+            "more than 50% of the time, the bar goes green and shows a real "
+            "profit margin per dollar wagered.\n\n"
+            "**What good looks like:** bars trending upward from left to right — "
+            "higher confidence predicts winners more reliably, earning more per bet.\n\n"
+            "**n= labels** show sample size. Small n means wide uncertainty; "
+            "don't read too much into a single bar with 20 games."
         )
 
-    g3_col, g4_col = st.columns(2)
-
     # ── Graph 3: Edge vs Market Line ─────────────────────────────────────────
-    with g3_col:
-        st.markdown("**Edge vs baseline: model win rate by predicted probability**")
+    g3_chart, g3_text = st.columns([2, 1])
+    with g3_chart:
+        st.markdown("**Edge vs market line: actual win rate minus predicted**")
         _cal_data = metrics.get("calibration", [])
         if _cal_data:
-            _cx  = [b["predicted_avg"] for b in _cal_data]
-            _cy  = [b["observed"]      for b in _cal_data]
-            _csz = [b["n"]             for b in _cal_data]
+            _cx      = [b["predicted_avg"] for b in _cal_data]
+            _cy      = [b["observed"]      for b in _cal_data]
+            _csz     = [b["n"]             for b in _cal_data]
             _edge_vs = [o - p for o, p in zip(_cy, _cx)]
             fig_edge = go.Figure()
             fig_edge.add_trace(go.Scatter(
@@ -1650,11 +1688,11 @@ with tab_eval:
                 name="Actual − Predicted",
             ))
             fig_edge.add_hline(y=0, line_dash="dash", line_color=NORD["bg3"],
-                               line_width=1, annotation_text="Market line (perfect cal.)")
+                               line_width=1, annotation_text="Perfect calibration")
             fig_edge.update_layout(
-                xaxis=dict(tickformat=".0%", title="Predicted win prob"),
-                yaxis=dict(tickformat="+.0%", title="Actual − Predicted"),
-                height=280,
+                xaxis=dict(tickformat=".0%", title="Our predicted win probability"),
+                yaxis=dict(tickformat="+.0%", title="Actual win rate minus predicted"),
+                height=300,
                 margin=dict(l=55, r=10, t=30, b=40),
                 plot_bgcolor="rgba(0,0,0,0)",
                 paper_bgcolor="rgba(0,0,0,0)",
@@ -1663,16 +1701,32 @@ with tab_eval:
             st.plotly_chart(fig_edge, width="stretch")
         else:
             st.info("Not enough data for this chart.")
-        st.caption(
-            "Points above 0 = model underestimates actual win rate (underconfident). "
-            "Points below 0 = overconfident. Dot size = number of games in bin."
+    with g3_text:
+        st.markdown("**What this shows**")
+        st.markdown(
+            "This is a **residual plot** for our probability forecasts. "
+            "We take every probability bin (e.g. games where we said 60-70%) "
+            "and ask: how often did the team we favoured actually win? "
+            "The difference — actual rate minus predicted rate — is plotted on "
+            "the y-axis.\n\n"
+            "The dashed line at **y = 0** is the market line: where a perfectly "
+            "calibrated model would sit. Every point on that line means we said X% "
+            "and teams won exactly X% of the time.\n\n"
+            "**Points above 0** (green): we underestimated. Teams we called 65% "
+            "favourites actually won 72% of the time — we were too conservative.\n\n"
+            "**Points below 0** (red): we overestimated. We were overconfident "
+            "in those matchups.\n\n"
+            "**Dot size** = number of games in that bin. Larger dots are more "
+            "trustworthy; small dots can swing wildly with just a handful of "
+            "unexpected results."
         )
 
     # ── Graph 4: Cumulative PnL (Closing Line Value proxy) ───────────────────
-    with g4_col:
-        st.markdown("**Cumulative PnL over the season (flat $1 bets)**")
-        _cum_pnl = []
-        _running = 0.0
+    g4_chart, g4_text = st.columns([2, 1])
+    with g4_chart:
+        st.markdown("**Cumulative returns over the season — closing line value proxy**")
+        _cum_pnl   = []
+        _running   = 0.0
         _game_nums = []
         for _i, g in enumerate(_hist_sorted):
             p       = g["pregame_prob_home"]
@@ -1681,20 +1735,21 @@ with tab_eval:
             _running += 1.0 if correct else -1.0
             _cum_pnl.append(_running)
             _game_nums.append(_i + 1)
+        _final_pnl = _cum_pnl[-1] if _cum_pnl else 0
         fig_clv = go.Figure()
         fig_clv.add_trace(go.Scatter(
             x=_game_nums, y=_cum_pnl,
             mode="lines",
             fill="tozeroy",
-            line=dict(color=NORD["green"] if (_cum_pnl[-1] if _cum_pnl else 0) >= 0 else NORD["red"], width=2),
-            fillcolor=f"rgba(163,190,140,0.15)",
+            line=dict(color=NORD["green"] if _final_pnl >= 0 else NORD["red"], width=2),
+            fillcolor="rgba(163,190,140,0.15)",
             name="Cumulative PnL",
         ))
         fig_clv.add_hline(y=0, line_color=NORD["bg3"], line_width=1)
         fig_clv.update_layout(
-            xaxis_title="Game number",
-            yaxis_title="Cumulative PnL ($)",
-            height=280,
+            xaxis_title="Game number (chronological)",
+            yaxis_title="Cumulative profit ($)",
+            height=300,
             margin=dict(l=55, r=10, t=30, b=40),
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
@@ -1702,9 +1757,24 @@ with tab_eval:
             showlegend=False,
         )
         st.plotly_chart(fig_clv, width="stretch")
-        st.caption(
-            "Bet $1 on every game our model favors at even money. "
-            "Rising line = model is beating 50/50 over time (positive closing line value proxy)."
+    with g4_text:
+        st.markdown("**What this shows**")
+        st.markdown(
+            "Imagine betting $1 on every single game in our dataset — always "
+            "on whoever our model liked — at fair 50/50 payout (+$1 win, -$1 loss). "
+            "This chart shows how your bankroll would have moved game-by-game "
+            "through the entire season.\n\n"
+            "**A rising line** means the model is picking winners more than 50% "
+            "of the time, generating real edge over random guessing.\n\n"
+            "**A falling line** means the model lost money on that stretch — "
+            "its picks were no better than a coin flip during that period.\n\n"
+            "**Early volatility is normal.** At the start of the season all "
+            "teams have the same Elo rating, so predictions are near 50/50 and "
+            "swings are large. As ratings converge, the model gains confidence "
+            "and the line stabilises.\n\n"
+            "This is a proxy for **closing line value (CLV)** — the idea in "
+            "sports betting that a sharp model consistently predicts which side "
+            "the market will eventually agree with."
         )
 
 
