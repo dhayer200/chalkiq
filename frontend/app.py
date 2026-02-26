@@ -196,7 +196,10 @@ def load_future_games(division: str, for_date: date) -> list[dict]:
 @st.cache_data(ttl=3600, show_spinner="Loading player stats…")
 def load_players(division: str) -> list[dict]:
     """Fetch ESPN player leaders, cached 1 hr."""
-    return fetch_player_leaders(division=division, limit=100, max_games=25, min_games=2)
+    try:
+        return fetch_player_leaders(division=division, limit=100, max_games=25, min_games=2)
+    except Exception:
+        return []
 
 
 @st.cache_data(ttl=120, show_spinner=False)
@@ -971,7 +974,9 @@ with tab_rank:
     st.subheader(f"Top 64 | {cfg['label']} Division")
     st.caption("The 64 teams most likely to receive an at-large or automatic bid on Selection Sunday, ranked by Elo.")
 
-    # Build per-team efficiency from game history (for rankings table)
+    _rank_sub_rankings, _rank_sub_games = st.tabs(["📊 Rankings", "📅 Games Played"])
+
+    # Build per-team efficiency from game history (shared between sub-tabs)
     _rank_eff: dict[str, dict] = {}
     for _rg in engine.history:
         for _rtid, _rfor, _ragainst in [
@@ -985,62 +990,114 @@ with tab_rank:
             if _rfor > _ragainst:
                 _rank_eff[_rtid]["wins"] += 1
 
-    all_rows = []
-    for rank, (tid, name, rating) in enumerate(rankings[:64], 1):
-        _ed = _rank_eff.get(tid, {})
-        _pf = _ed.get("pts_for", [])
-        _pa = _ed.get("pts_against", [])
-        _off = round(sum(_pf) / len(_pf), 1) if _pf else 0.0
-        _def = round(sum(_pa) / len(_pa), 1) if _pa else 0.0
-        _net = round(_off - _def, 1)
-        _gp  = len(_pf)
-        _wp  = _ed.get("wins", 0) / _gp if _gp else 0.0
-        all_rows.append({
-            "Rank":  rank,
-            "Team":  name,
-            "Elo":   round(rating, 1),
-            "Off":   _off,
-            "Def":   _def,
-            "Net":   _net,
-            "Win%":  _wp,
-            "R32":   adv_odds.get(tid, {}).get(2, 0),
-            "S16":   adv_odds.get(tid, {}).get(3, 0),
-            "E8":    adv_odds.get(tid, {}).get(4, 0),
-            "FF":    adv_odds.get(tid, {}).get(5, 0),
-            "Title": champ_odds.get(tid, 0),
-        })
+    # ── Rankings sub-tab ──────────────────────────────────────────────────────
+    with _rank_sub_rankings:
+        all_rows = []
+        for rank, (tid, name, rating) in enumerate(rankings[:64], 1):
+            _ed = _rank_eff.get(tid, {})
+            _pf = _ed.get("pts_for", [])
+            _pa = _ed.get("pts_against", [])
+            _off = round(sum(_pf) / len(_pf), 1) if _pf else 0.0
+            _def = round(sum(_pa) / len(_pa), 1) if _pa else 0.0
+            _net = round(_off - _def, 1)
+            _gp  = len(_pf)
+            _wp  = _ed.get("wins", 0) / _gp if _gp else 0.0
+            all_rows.append({
+                "Rank":  rank,
+                "Team":  name,
+                "Elo":   round(rating, 1),
+                "Off":   _off,
+                "Def":   _def,
+                "Net":   _net,
+                "Win%":  _wp,
+                "R32":   adv_odds.get(tid, {}).get(2, 0),
+                "S16":   adv_odds.get(tid, {}).get(3, 0),
+                "E8":    adv_odds.get(tid, {}).get(4, 0),
+                "FF":    adv_odds.get(tid, {}).get(5, 0),
+                "Title": champ_odds.get(tid, 0),
+            })
 
-    df_all   = pd.DataFrame(all_rows).set_index("Rank")
-    pct_cols = ["R32", "S16", "E8", "FF", "Title"]
+        df_all   = pd.DataFrame(all_rows).set_index("Rank")
+        pct_cols = ["R32", "S16", "E8", "FF", "Title"]
 
-    def _fmt_pct(v):
-        if isinstance(v, float) and v > 0:
-            return f"{v:.1%}"
-        return "-"
+        def _fmt_pct(v):
+            if isinstance(v, float) and v > 0:
+                return f"{v:.1%}"
+            return "-"
 
-    styled_all = (
-        df_all.style
-        .format({c: _fmt_pct for c in pct_cols})
-        .format({"Win%": "{:.1%}"})
-        .format({"Elo": "{:.1f}", "Off": "{:.1f}", "Def": "{:.1f}", "Net": "{:+.1f}"})
-        .background_gradient(subset=pct_cols, cmap="Blues", vmin=0, vmax=0.5)
-        .background_gradient(subset=["Off"], cmap="Greens", vmin=60, vmax=90)
-        .background_gradient(subset=["Def"], cmap="Reds_r", vmin=55, vmax=85)
-        .background_gradient(subset=["Net"], cmap="RdYlGn", vmin=-15, vmax=15)
-        .bar(subset=["Elo"], color=[light, color])
-        .set_properties(**{"font-size": "13px"})
-    )
+        styled_all = (
+            df_all.style
+            .format({c: _fmt_pct for c in pct_cols})
+            .format({"Win%": "{:.1%}"})
+            .format({"Elo": "{:.1f}", "Off": "{:.1f}", "Def": "{:.1f}", "Net": "{:+.1f}"})
+            .background_gradient(subset=pct_cols, cmap="Blues", vmin=0, vmax=0.5)
+            .background_gradient(subset=["Off"], cmap="Greens", vmin=60, vmax=90)
+            .background_gradient(subset=["Def"], cmap="Reds_r", vmin=55, vmax=85)
+            .background_gradient(subset=["Net"], cmap="RdYlGn", vmin=-15, vmax=15)
+            .bar(subset=["Elo"], color=[light, color])
+            .set_properties(**{"font-size": "13px"})
+        )
 
-    col_tbl, col_chart = st.columns([3, 2])
-    with col_tbl:
-        st.dataframe(styled_all, height=1800, width="stretch")
+        col_tbl, col_chart = st.columns([3, 2])
+        with col_tbl:
+            st.dataframe(styled_all, height=1800, width="stretch")
 
-    with col_chart:
-        top20_names = [name for _, name, _ in rankings[:20]]
-        top20_odds  = [champ_odds.get(tid, 0) for tid, _, _ in rankings[:20]]
-        fig_bar = plotly_odds_bar(top20_names[::-1], top20_odds[::-1], color)
-        st.plotly_chart(fig_bar, width="stretch")
-        st.caption(f"Top 20 championship odds from {N_SIMS:,} Monte Carlo bracket simulations.")
+        with col_chart:
+            top20_names = [name for _, name, _ in rankings[:20]]
+            top20_odds  = [champ_odds.get(tid, 0) for tid, _, _ in rankings[:20]]
+            fig_bar = plotly_odds_bar(top20_names[::-1], top20_odds[::-1], color)
+            st.plotly_chart(fig_bar, width="stretch")
+            st.caption(f"Top 20 championship odds from {N_SIMS:,} Monte Carlo bracket simulations.")
+
+    # ── Games Played sub-tab ──────────────────────────────────────────────────
+    with _rank_sub_games:
+        st.markdown(f"**All {len(engine.history):,} games processed by the Elo engine this season**")
+        st.caption("Results are sorted most-recent first. Scores shown as Home vs Away.")
+
+        _game_rows = []
+        for _g in reversed(engine.history):
+            _h_win = _g["home_score"] > _g["away_score"]
+            _game_rows.append({
+                "Date":       _g["date"],
+                "Home":       _g["home_name"],
+                "H Pts":      _g["home_score"],
+                "A Pts":      _g["away_score"],
+                "Away":       _g["away_name"],
+                "Result":     "H Win" if _h_win else "A Win",
+                "Margin":     abs(_g["home_score"] - _g["away_score"]),
+                "Neutral":    "N" if _g.get("neutral") else "",
+            })
+
+        _games_df = pd.DataFrame(_game_rows)
+
+        # Team filter
+        _all_teams = sorted(set(
+            [r["Home"] for r in _game_rows] + [r["Away"] for r in _game_rows]
+        ))
+        _team_filter = st.selectbox(
+            "Filter by team (optional)", ["— All teams —"] + _all_teams,
+            key="games_team_filter",
+        )
+        if _team_filter != "— All teams —":
+            _games_df = _games_df[
+                (_games_df["Home"] == _team_filter) | (_games_df["Away"] == _team_filter)
+            ]
+
+        st.caption(f"Showing {len(_games_df):,} games.")
+        st.dataframe(
+            _games_df.style
+            .apply(
+                lambda row: [
+                    f"background-color: {NORD['bg2']}; color: {color}" if row["Result"] == "H Win"
+                    else f"background-color: {NORD['bg2']}; color: {NORD['red']}"
+                    for _ in row
+                ],
+                axis=1,
+            )
+            .set_properties(**{"font-size": "13px"}),
+            height=700,
+            width="stretch",
+        )
 
 
 # ════════════════════════════════════════════════════════════════════════════ #
