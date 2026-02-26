@@ -1165,3 +1165,20 @@ This project is a rare combo:
 
 That makes it an excellent flagship project for a math + finance identity.
 
+## REOPEN: March Madness -> Quant Signaling & User Created Power Rankings, Brackets, etc. 25 Febuary
+- Elo system (x)
+- Monte carlo -> predictions (x)
+- Live updates (x)
+- Fake parlays (x)
+- Graphs for info (x)
+- Efficiency (offensive & defensive) ( )
+- Treating CB teams as stock
+- Replicated for CB Players
+- Treating CB players as stock
+- Repo replicated for NBA ( )
+- Replicated for individual teams & players, and treating both as stock ( )
+- Transfer idea to alpaca-py ( )
+- Mini paper written ( )
+- Presented for peer review from professors, calc & UT math ( )
+- NEED TO BE FINISHED BY SUNDAY.
+- present at math for all UT austin
