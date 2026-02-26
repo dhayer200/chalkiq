@@ -243,10 +243,10 @@ def plotly_odds_bar(names: list[str], odds: list[float], color: str) -> go.Figur
         marker_color=color,
         text=[f"{o*100:.1f}%" for o in odds],
         textposition="outside",
-        hovertemplate="%{y}: %{x:.3%}<extra></extra>",
+        hovertemplate="%{y}: %{x:.1%}<extra></extra>",
     ))
     fig.update_layout(
-        xaxis=dict(tickformat=".3%", title="Championship probability"),
+        xaxis=dict(tickformat=".0%", title="Championship probability"),
         yaxis=dict(autorange="reversed"),
         margin=dict(l=180, r=60, t=10, b=30),
         height=max(300, len(names) * 26),
@@ -276,11 +276,11 @@ def plotly_calibration(cal_bins: list[dict], color: str) -> go.Figure:
         marker=dict(size=[max(6, n / 20) for n in ns], color=color, opacity=0.8),
         line=dict(color=color, width=2),
         name="Elo model",
-        hovertemplate="Predicted: %{x:.3%}<br>Observed: %{y:.3%}<br><extra></extra>",
+        hovertemplate="Predicted: %{x:.0%}<br>Observed: %{y:.0%}<br><extra></extra>",
     ))
     fig.update_layout(
-        xaxis=dict(tickformat=".3%", title="Predicted win probability", range=[0, 1]),
-        yaxis=dict(tickformat=".3%", title="Observed win rate",         range=[0, 1]),
+        xaxis=dict(tickformat=".0%", title="Predicted win probability", range=[0, 1]),
+        yaxis=dict(tickformat=".0%", title="Observed win rate",         range=[0, 1]),
         legend=dict(x=0.02, y=0.98),
         margin=dict(l=60, r=20, t=10, b=50),
         height=340,
@@ -456,7 +456,7 @@ def region_bracket_svg(
         name   = esc(team["name"][:24])
         seed   = team["s"]
         rating = team["rating"]
-        p_str  = f"{p_win:.3%}"
+        p_str  = f"{p_win:.0%}"
         if is_winner:
             bg, tc, sc = color, NORD["bg"], color
             fw, sub_opacity = "600", "0.85"
@@ -573,7 +573,7 @@ def _draw_region_svg(
             f'<text x="{rx+21:.1f}" y="{y+13:.1f}" font-size="9.3" font-weight="500" fill="{tclr}" font-family="{font}">'
             f'{name}</text>',
             f'<text x="{rx+bw-6:.1f}" y="{y+13:.1f}" text-anchor="end" font-size="8.2" fill="{muted}" font-family="{font}">'
-            f'{p_win:.3%}</text>',
+            f'{p_win:.0%}</text>',
         ])
 
     for r, (rx, games) in enumerate(zip(x_rounds, rounds)):
@@ -713,7 +713,7 @@ def combined_bracket_html(
             f'<tspan font-size="8" opacity="0.7">#{seed} </tspan>{name}</text>',
             f'<text x="{rx+8:.1f}" y="{y+27:.1f}" font-size="8.2" fill="{tclr}" '
             f'opacity="0.88" font-family="{font}">'
-            f'FF: {p_ff:.3%}  |  Title: {title_odds(team["tid"]):.3%}</text>',
+            f'FF: {p_ff:.0%}  |  Title: {title_odds(team["tid"]):.1%}</text>',
         ])
 
     # Draw the 4 Final Four team boxes
@@ -795,7 +795,7 @@ def combined_bracket_html(
     svg_parts.append(
         f'<text x="{champ_x + CHAMP_W/2:.1f}" y="{champ_y + 47:.1f}" text-anchor="middle" '
         f'font-size="8.5" fill="{NORD["snow0"]}" opacity="0.72" font-family="{font}">'
-        f'Title odds: {title_odds(champion["tid"]):.3%}</text>'
+        f'Title odds: {title_odds(champion["tid"]):.1%}</text>'
     )
 
     svg = (
@@ -864,7 +864,7 @@ def style_region_table(df: pd.DataFrame, color: str):
 
     def fmt(v):
         if isinstance(v, float):
-            return f"{v:.3%}" if v >= 0.005 else "-"
+            return f"{v:.0%}" if v >= 0.005 else "-"
         return v
 
     styled = (
@@ -1012,13 +1012,13 @@ with tab_rank:
 
         def _fmt_pct(v):
             if isinstance(v, float) and v > 0:
-                return f"{v:.3%}"
+                return f"{v:.1%}"
             return "-"
 
         styled_all = (
             df_all.style
             .format({c: _fmt_pct for c in pct_cols})
-            .format({"Win%": "{:.3%}"})
+            .format({"Win%": "{:.1%}"})
             .format({"Elo": "{:.1f}", "Off": "{:.1f}", "Def": "{:.1f}", "Net": "{:+.1f}"})
             .background_gradient(subset=pct_cols, cmap="Blues", vmin=0, vmax=0.5)
             .background_gradient(subset=["Off"], cmap="Greens", vmin=60, vmax=90)
@@ -1219,8 +1219,8 @@ with tab_live:
                     "Time":      _game_time(_g.get("game_datetime", "")),
                     "Away":      _g["away_name"],
                     "Home":      _g["home_name"],
-                    "Home win%": f"{_p_h:.3%}",
-                    "Away win%": f"{1 - _p_h:.3%}",
+                    "Home win%": f"{_p_h:.0%}",
+                    "Away win%": f"{1 - _p_h:.0%}",
                 })
             st.dataframe(pd.DataFrame(_frows), use_container_width=True, hide_index=True)
 
@@ -1340,19 +1340,19 @@ with tab_live:
   <div style="display:flex;justify-content:space-between;
               font-family:ui-sans-serif,sans-serif;margin-bottom:8px">
     <div>
-      <div style="font-size:18px;font-weight:800;color:{color}">{p_h:.3%}</div>
+      <div style="font-size:18px;font-weight:800;color:{color}">{p_h:.0%}</div>
       <div style="font-size:10px;color:{NORD["bg3"]}">{_html.escape(g["home_name"][:16])}</div>
-      <div style="font-size:10px;color:{h_swing_color}">{sw:+.3%} vs before game</div>
+      <div style="font-size:10px;color:{h_swing_color}">{sw:+.0%} vs before game</div>
     </div>
     <div style="text-align:center;font-size:10px;color:{NORD["bg3"]};align-self:center;
                 line-height:1.5">
       Before game:<br>
-      {pp_h:.3%} vs {1 - pp_h:.3%}
+      {pp_h:.0%} vs {1 - pp_h:.0%}
     </div>
     <div style="text-align:right">
-      <div style="font-size:18px;font-weight:800;color:{color}">{p_a:.3%}</div>
+      <div style="font-size:18px;font-weight:800;color:{color}">{p_a:.0%}</div>
       <div style="font-size:10px;color:{NORD["bg3"]}">{_html.escape(g["away_name"][:16])}</div>
-      <div style="font-size:10px;color:{a_swing_color}">{-sw:+.3%} vs before game</div>
+      <div style="font-size:10px;color:{a_swing_color}">{-sw:+.0%} vs before game</div>
     </div>
   </div>
   <div style="font-size:10px;color:{swing_color};font-family:ui-sans-serif,sans-serif">
@@ -1393,13 +1393,13 @@ with tab_live:
                 prob_df = pd.DataFrame([
                     {
                         "Metric":          "Before game started",
-                        hname_s:           f"{pp_h:.3%}",
-                        aname_s:           f"{1 - pp_h:.3%}",
+                        hname_s:           f"{pp_h:.1%}",
+                        aname_s:           f"{1 - pp_h:.1%}",
                     },
                     {
                         "Metric":          "Right now (live)",
-                        hname_s:           f"{p_h:.3%}",
-                        aname_s:           f"{p_a:.3%}",
+                        hname_s:           f"{p_h:.1%}",
+                        aname_s:           f"{p_a:.1%}",
                     },
                     {
                         "Metric":          "Change since tip-off",
@@ -1420,12 +1420,12 @@ with tab_live:
                 momentum_team = g["home_name"] if sw > 0 else g["away_name"]
                 momentum_dir  = abs(sw)
                 st.markdown(
-                    f"**{leader}** has a **{leader_prob:.3%} chance of winning** "
+                    f"**{leader}** has a **{leader_prob:.0%} chance of winning** "
                     f"{time_ctx}, based on the current score and time left.\n\n"
                     f"The percentages update continuously using a random-walk model "
                     f"anchored to each team's Elo rating. As the lead grows or time "
                     f"runs out, one team's odds climb toward 100%.\n\n"
-                    f"**{momentum_team}** has gained {momentum_dir:.3%} since tip-off."
+                    f"**{momentum_team}** has gained {momentum_dir:.0%} since tip-off."
                 )
                 if g["upset"]:
                     st.warning(
@@ -1464,30 +1464,30 @@ with tab_live:
                     st.markdown(f"If **{g['home_name'][:24]}** wins:")
                     st.metric(
                         f"{g['home_name'][:22]} title odds",
-                        f"{new_h_if_h:.3%}",
-                        delta=f"{new_h_if_h - base_h:+.3%}",
+                        f"{new_h_if_h:.2%}",
+                        delta=f"{new_h_if_h - base_h:+.2%}",
                     )
                     st.metric(
                         f"{g['away_name'][:22]} title odds",
-                        f"{new_a_if_h:.3%}",
-                        delta=f"{new_a_if_h - base_a:+.3%}",
+                        f"{new_a_if_h:.2%}",
+                        delta=f"{new_a_if_h - base_a:+.2%}",
                     )
                 with bi2:
                     st.markdown(f"If **{g['away_name'][:24]}** wins:")
                     st.metric(
                         f"{g['home_name'][:22]} title odds",
-                        f"{new_h_if_a:.3%}",
-                        delta=f"{new_h_if_a - base_h:+.3%}",
+                        f"{new_h_if_a:.2%}",
+                        delta=f"{new_h_if_a - base_h:+.2%}",
                     )
                     st.metric(
                         f"{g['away_name'][:22]} title odds",
-                        f"{new_a_if_a:.3%}",
-                        delta=f"{new_a_if_a - base_a:+.3%}",
+                        f"{new_a_if_a:.2%}",
+                        delta=f"{new_a_if_a - base_a:+.2%}",
                     )
                 st.caption(
                     f"Current baseline title odds: "
-                    f"{g['home_name'][:18]} {base_h:.3%} | "
-                    f"{g['away_name'][:18]} {base_a:.3%}"
+                    f"{g['home_name'][:18]} {base_h:.2%} | "
+                    f"{g['away_name'][:18]} {base_a:.2%}"
                 )
 
             # ── Who to pick ───────────────────────────────────────────────────
@@ -1520,7 +1520,7 @@ with tab_live:
             reasons = []
             if pick_prob >= 0.55:
                 reasons.append(
-                    f"{pick_team} currently has a {pick_prob:.3%} chance of winning"
+                    f"{pick_team} currently has a {pick_prob:.0%} chance of winning"
                 )
                 momentum_toward_pick = (
                     (sw > 0.05 and pick_team == g["home_name"]) or
@@ -1529,11 +1529,11 @@ with tab_live:
                 if momentum_toward_pick:
                     swing_mag = abs(sw)
                     reasons.append(
-                        f"they have gained {swing_mag:.3%} since tip-off"
+                        f"they have gained {swing_mag:.0%} since tip-off"
                     )
                 if bracket_gain and bracket_gain > 0.005:
                     reasons.append(
-                        f"a win boosts their title odds by {bracket_gain:+.3%}"
+                        f"a win boosts their title odds by {bracket_gain:+.1%}"
                     )
             else:
                 reasons.append("both teams have nearly equal chances right now")
@@ -1573,8 +1573,8 @@ with tab_live:
                     "Away":         _g["away_name"],
                     "Score":        f"{_g['away_score']}-{_g['home_score']}",
                     "Home":         _g["home_name"],
-                    "Proj home%":   f"{_p_h:.3%}",
-                    "Proj away%":   f"{1 - _p_h:.3%}",
+                    "Proj home%":   f"{_p_h:.0%}",
+                    "Proj away%":   f"{1 - _p_h:.0%}",
                     "Winner":       _g["home_name"] if _home_won else _g["away_name"],
                 })
             _past_df = pd.DataFrame(_prows)
@@ -1780,7 +1780,7 @@ with tab_eval:
             fig_edge.add_hline(y=0, line_dash="dash", line_color=NORD["bg3"],
                                line_width=1, annotation_text="Perfect calibration")
             fig_edge.update_layout(
-                xaxis=dict(tickformat=".3%", title="Our predicted win probability"),
+                xaxis=dict(tickformat=".0%", title="Our predicted win probability"),
                 yaxis=dict(tickformat="+.0%", title="Actual win rate minus predicted"),
                 height=300,
                 margin=dict(l=55, r=10, t=30, b=40),
@@ -1910,7 +1910,7 @@ with tab_matchup:
             f"| | {name_a[:22]} | {name_b[:22]} |\n"
             f"|---|---|---|\n"
             f"| **Elo** | {m['rating_a']} | {m['rating_b']} |\n"
-            f"| **Win prob** | **{m['prob_a']:.3%}** | **{m['prob_b']:.3%}** |\n"
+            f"| **Win prob** | **{m['prob_a']:.1%}** | **{m['prob_b']:.1%}** |\n"
             f"| **Rating diff** | {m['rating_diff']:+.1f} | - |"
         )
         st.markdown(
@@ -1924,14 +1924,14 @@ with tab_matchup:
             y=[name_a[:30], name_b[:30]],
             orientation="h",
             marker_color=[color, NORD["bg3"]],
-            text=[f"{m['prob_a']:.3%}", f"{m['prob_b']:.3%}"],
+            text=[f"{m['prob_a']:.1%}", f"{m['prob_b']:.1%}"],
             textposition="inside",
             insidetextanchor="middle",
             textfont=dict(color="white", size=15),
         ))
         fig_mu.add_vline(x=0.5, line_dash="dash", line_color=NORD["bg3"], line_width=1)
         fig_mu.update_layout(
-            xaxis=dict(tickformat=".3%", range=[0, 1], title="Win probability"),
+            xaxis=dict(tickformat=".0%", range=[0, 1], title="Win probability"),
             yaxis=dict(autorange="reversed"),
             margin=dict(l=160, r=20, t=10, b=40),
             height=160,
@@ -2107,7 +2107,7 @@ with tab_efficiency:
     # ── Efficiency rankings table ─────────────────────────────────────────────
     with st.expander("Full efficiency rankings (click to expand)", expanded=True):
         _show_df = _eff_df[["Team", "GP", "Off", "Def", "Net", "Win%", "Elo"]].copy()
-        _show_df["Win%"] = _show_df["Win%"].map(lambda v: f"{v:.3%}")
+        _show_df["Win%"] = _show_df["Win%"].map(lambda v: f"{v:.1%}")
         st.dataframe(
             _show_df.style
             .background_gradient(subset=["Off"], cmap="Greens",    vmin=60,  vmax=90)
