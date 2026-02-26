@@ -22,6 +22,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from src.bracket.simulator import round_advancement_odds
+from src.players.espn import fetch_player_leaders, STAT_CONFIG as PLAYER_STAT_CONFIG
 from src.bracket.structure import (
     BRACKET_SLOT_ORDER,
     REGIONS,
@@ -191,6 +192,15 @@ def load_future_games(division: str, for_date: date) -> list[dict]:
         status_filter={"STATUS_SCHEDULED", "STATUS_PREGAME"},
     )
 
+
+
+@st.cache_data(ttl=3600, show_spinner="Loading player stats…")
+def load_players(division: str) -> list[dict]:
+    try:
+        return fetch_player_leaders(division=division, limit=100,
+                                    days_back=7, max_games=35, min_games=1)
+    except Exception:
+        return []
 
 
 @st.cache_data(ttl=120, show_spinner=False)
@@ -944,13 +954,14 @@ metrics                    = evaluate(engine.history)
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 
-tab_rank, tab_bracket, tab_live, tab_eval, tab_matchup, tab_efficiency, tab_math, tab_sources = st.tabs([
+tab_rank, tab_bracket, tab_live, tab_eval, tab_matchup, tab_efficiency, tab_players, tab_math, tab_sources = st.tabs([
     "📊  Power Rankings",
     "🏆  Bracket",
     "🔴  Live",
     "📈  Model Evaluation",
     "⚔️  Matchup",
     "⚡  Efficiency",
+    "👤  Players",
     "📐  Math",
     "📚  Sources",
 ])
@@ -2117,6 +2128,213 @@ with tab_efficiency:
             .format({"Off": "{:.1f}", "Def": "{:.1f}", "Net": "{:+.1f}", "Elo": "{:.1f}"}),
             height=480,
         )
+
+
+# ════════════════════════════════════════════════════════════════════════════ #
+# TAB 7 — Players
+# ════════════════════════════════════════════════════════════════════════════ #
+
+with tab_players:
+    st.subheader(f"Player Dashboard | {cfg['label']} Division")
+    st.caption(
+        "Recent performance leaders aggregated from ESPN game box scores. "
+        "**Player Rating (PR)** = PPG + 0.4×RPG + 0.7×APG + SPG + 0.7×BPG − 0.7×TPG "
+        "(Hollinger Game Score)."
+    )
+    st.markdown("---")
+
+    _players = load_players(division)
+
+    if not _players:
+        st.warning("Could not fetch player data from ESPN. Check network connection or try refreshing.")
+    else:
+        _pl_sub_rank, _pl_sub_eval, _pl_sub_matchup = st.tabs([
+            "📊 Rankings", "📈 Evaluation", "⚔️ Matchup",
+        ])
+
+        # Build DataFrame once
+        _pl_rows = []
+        for _pr_rank, _p in enumerate(_players, 1):
+            _s = _p["stats"]
+            _pl_rows.append({
+                "#":    _pr_rank,
+                "Player": _p["name"],
+                "Team":   _p["team_name"],
+                "PR":     _p["player_rating"],
+                "PPG":    _s.get("pointsPerGame",    0),
+                "RPG":    _s.get("reboundsPerGame",  0),
+                "APG":    _s.get("assistsPerGame",   0),
+                "SPG":    _s.get("stealsPerGame",    0),
+                "BPG":    _s.get("blocksPerGame",    0),
+                "TPG":    _s.get("turnoversPerGame", 0),
+                "FG%":    _s.get("fieldGoalPct",     0),
+                "3P%":    _s.get("threePointFieldGoalPct", 0),
+                "FT%":    _s.get("freeThrowPct",     0),
+                "GP":     _s.get("gamesPlayed",      1),
+            })
+        _pl_df = pd.DataFrame(_pl_rows).set_index("#")
+        _avg_pr = _pl_df["PR"].mean()
+
+        # ── Rankings sub-tab ──────────────────────────────────────────────
+        with _pl_sub_rank:
+            st.markdown(f"**Top {len(_pl_df)} players by Player Rating (last 7 days of box scores)**")
+
+            _pl_styled = (
+                _pl_df.style
+                .format({"PR": "{:.2f}", "PPG": "{:.1f}", "RPG": "{:.1f}",
+                         "APG": "{:.1f}", "SPG": "{:.1f}", "BPG": "{:.1f}",
+                         "TPG": "{:.1f}", "FG%": "{:.1f}", "3P%": "{:.1f}",
+                         "FT%": "{:.1f}", "GP": "{:.0f}"})
+                .background_gradient(subset=["PR"],  cmap="Blues",  vmin=0,  vmax=40)
+                .background_gradient(subset=["PPG"], cmap="Greens", vmin=0,  vmax=35)
+                .background_gradient(subset=["TPG"], cmap="Reds",   vmin=0,  vmax=6)
+                .set_properties(**{"font-size": "13px"})
+            )
+
+            _r1, _r2 = st.columns([3, 2])
+            with _r1:
+                st.dataframe(_pl_styled, height=700, width="stretch")
+            with _r2:
+                _top15 = _pl_df.head(15)
+                _pr_bar = go.Figure(go.Bar(
+                    x=_top15["PR"],
+                    y=_top15["Player"],
+                    orientation="h",
+                    marker_color=color,
+                    text=[f"{v:.2f}" for v in _top15["PR"]],
+                    textposition="outside",
+                    textfont=dict(size=10, color=NORD["snow0"]),
+                ))
+                _pr_bar.update_layout(
+                    title="Top 15 by Player Rating",
+                    xaxis_title="PR",
+                    yaxis=dict(autorange="reversed"),
+                    height=500,
+                    margin=dict(l=10, r=60, t=40, b=30),
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color=NORD["snow0"]),
+                )
+                st.plotly_chart(_pr_bar, width="stretch")
+                st.caption(
+                    f"Avg PR: {_avg_pr:.2f}  ·  "
+                    "Based on Hollinger Game Score formula"
+                )
+
+        # ── Evaluation sub-tab ────────────────────────────────────────────
+        with _pl_sub_eval:
+            st.markdown("**Player Rating distribution and stat correlations**")
+            _e1, _e2 = st.columns(2)
+            with _e1:
+                _hist = go.Figure(go.Histogram(
+                    x=_pl_df["PR"].tolist(), nbinsx=30,
+                    marker_color=color, opacity=0.8,
+                ))
+                _hist.add_vline(x=_avg_pr, line_dash="dash", line_color=NORD["yellow"],
+                                annotation_text=f"Avg {_avg_pr:.2f}",
+                                annotation_font=dict(color=NORD["yellow"], size=10))
+                _hist.update_layout(
+                    title="PR Distribution",
+                    xaxis_title="Player Rating", yaxis_title="Players",
+                    height=300, margin=dict(l=40, r=10, t=40, b=40),
+                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color=NORD["snow0"]),
+                )
+                st.plotly_chart(_hist, width="stretch")
+            with _e2:
+                _scat = go.Figure(go.Scatter(
+                    x=_pl_df["PPG"].tolist(), y=_pl_df["PR"].tolist(),
+                    mode="markers",
+                    marker=dict(color=color, size=6, opacity=0.7),
+                    hovertext=[f"{r['Player']} ({r['Team']})<br>PPG: {r['PPG']} | PR: {r['PR']:.2f}"
+                               for _, r in _pl_df.iterrows()],
+                    hoverinfo="text",
+                ))
+                _scat.update_layout(
+                    title="PPG vs PR",
+                    xaxis_title="Points per game", yaxis_title="Player Rating",
+                    height=300, margin=dict(l=50, r=10, t=40, b=40),
+                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color=NORD["snow0"]),
+                )
+                st.plotly_chart(_scat, width="stretch")
+
+            # Stat contribution bars
+            st.markdown("**Average stat contribution to PR across all players**")
+            _contrib_labels, _contrib_vals = [], []
+            for _, (_slabel, _wt) in PLAYER_STAT_CONFIG.items():
+                if _wt != 0.0:
+                    _contrib_labels.append(_slabel)
+                    _contrib_vals.append(round(_wt * _pl_df[_slabel[:3]].mean()
+                                               if _slabel[:3] in _pl_df.columns else 0, 2))
+            _contrib_fig = go.Figure(go.Bar(
+                x=_contrib_labels, y=_contrib_vals,
+                marker_color=[color if v >= 0 else NORD["red"] for v in _contrib_vals],
+                text=[f"{v:+.2f}" for v in _contrib_vals],
+                textposition="outside",
+            ))
+            _contrib_fig.update_layout(
+                title="Avg stat contribution to PR",
+                yaxis_title="PR points contributed",
+                height=280, margin=dict(l=40, r=10, t=40, b=40),
+                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                font=dict(color=NORD["snow0"]),
+            )
+            st.plotly_chart(_contrib_fig, width="stretch")
+
+        # ── Matchup sub-tab ───────────────────────────────────────────────
+        with _pl_sub_matchup:
+            st.markdown("**Head-to-head player comparison**")
+            _player_names = _pl_df["Player"].tolist()
+            _mc1, _mc2 = st.columns(2)
+            with _mc1:
+                _pa_name = st.selectbox("Player A", _player_names,
+                                        index=0, key="pl_matchup_a")
+            with _mc2:
+                _pb_name = st.selectbox("Player B", _player_names,
+                                        index=min(1, len(_player_names)-1), key="pl_matchup_b")
+
+            _stat_cols = ["PPG", "RPG", "APG", "SPG", "BPG", "TPG", "FG%", "3P%", "FT%"]
+            _pa_row = _pl_df[_pl_df["Player"] == _pa_name].iloc[0]
+            _pb_row = _pl_df[_pl_df["Player"] == _pb_name].iloc[0]
+
+            _mu_fig = go.Figure()
+            _mu_fig.add_trace(go.Bar(
+                name=_pa_name[:20], x=_stat_cols,
+                y=[_pa_row[s] for s in _stat_cols],
+                marker_color=color,
+                text=[f"{_pa_row[s]:.1f}" for s in _stat_cols],
+                textposition="outside",
+            ))
+            _mu_fig.add_trace(go.Bar(
+                name=_pb_name[:20], x=_stat_cols,
+                y=[_pb_row[s] for s in _stat_cols],
+                marker_color=NORD["orange"],
+                text=[f"{_pb_row[s]:.1f}" for s in _stat_cols],
+                textposition="outside",
+            ))
+            _mu_fig.update_layout(
+                barmode="group",
+                height=380, margin=dict(l=40, r=10, t=20, b=40),
+                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                font=dict(color=NORD["snow0"]),
+                legend=dict(orientation="h", y=1.08),
+            )
+            st.plotly_chart(_mu_fig, width="stretch")
+
+            # Summary metrics
+            _sm1, _sm2 = st.columns(2)
+            with _sm1:
+                st.metric(f"{_pa_name[:22]} PR", f"{_pa_row['PR']:.2f}")
+                st.metric("PPG", f"{_pa_row['PPG']:.1f}")
+                st.metric("APG", f"{_pa_row['APG']:.1f}")
+            with _sm2:
+                st.metric(f"{_pb_name[:22]} PR", f"{_pb_row['PR']:.2f}",
+                          delta=f"{_pb_row['PR'] - _pa_row['PR']:+.2f}")
+                st.metric("PPG", f"{_pb_row['PPG']:.1f}",
+                          delta=f"{_pb_row['PPG'] - _pa_row['PPG']:+.1f}")
+                st.metric("APG", f"{_pb_row['APG']:.1f}",
+                          delta=f"{_pb_row['APG'] - _pa_row['APG']:+.1f}")
 
 
 # ════════════════════════════════════════════════════════════════════════════ #
