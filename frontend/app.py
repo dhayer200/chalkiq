@@ -22,7 +22,6 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from src.bracket.simulator import round_advancement_odds
-from src.players.espn import fetch_player_leaders, STAT_CONFIG as PLAYER_STAT_CONFIG
 from src.bracket.structure import (
     BRACKET_SLOT_ORDER,
     REGIONS,
@@ -192,16 +191,6 @@ def load_future_games(division: str, for_date: date) -> list[dict]:
         status_filter={"STATUS_SCHEDULED", "STATUS_PREGAME"},
     )
 
-
-@st.cache_data(ttl=3600, show_spinner="Loading player stats…")
-def load_players(division: str) -> list[dict]:
-    """Fetch ESPN player leaders, cached 1 hr."""
-    try:
-        # days_back=7, max_games=35 (capped at 6/day) => sample spans ~7 days
-        return fetch_player_leaders(division=division, limit=100,
-                                    days_back=7, max_games=35, min_games=1)
-    except Exception:
-        return []
 
 
 @st.cache_data(ttl=120, show_spinner=False)
@@ -955,14 +944,13 @@ metrics                    = evaluate(engine.history)
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 
-tab_rank, tab_bracket, tab_live, tab_eval, tab_matchup, tab_efficiency, tab_players, tab_math, tab_sources = st.tabs([
+tab_rank, tab_bracket, tab_live, tab_eval, tab_matchup, tab_efficiency, tab_math, tab_sources = st.tabs([
     "📊  Power Rankings",
     "🏆  Bracket",
     "🔴  Live",
     "📈  Model Evaluation",
     "⚔️  Matchup",
     "⚡  Efficiency",
-    "👤  Players",
     "📐  Math",
     "📚  Sources",
 ])
@@ -2132,304 +2120,7 @@ with tab_efficiency:
 
 
 # ════════════════════════════════════════════════════════════════════════════ #
-# TAB 9 — Players (CB Players + Players as Stock)
-# ════════════════════════════════════════════════════════════════════════════ #
-
-with tab_players:
-    st.subheader(f"Player Dashboard | {cfg['label']} Division")
-    st.markdown(
-        "College basketball players as financial assets. "
-        "**Player Rating (PR)** = PPG + 0.4×RPG + 0.7×APG + SPG + 0.7×BPG − 0.7×TPG. "
-        "Data via ESPN season stat leaders."
-    )
-    st.markdown("---")
-
-    _players = load_players(division)
-
-    _pl_sub_rank, _pl_sub_eval, _pl_sub_matchup, _pl_sub_eff = st.tabs([
-        "📊 Rankings", "📈 Evaluation", "⚔️ Matchup", "⚡ Efficiency",
-    ])
-
-    if not _players:
-        for _psub in [_pl_sub_rank, _pl_sub_eval, _pl_sub_matchup, _pl_sub_eff]:
-            with _psub:
-                st.warning("Could not fetch player data from ESPN. Check network connection.")
-    else:
-        # Build player DataFrame once
-        _pl_rows = []
-        for _pr_rank, _p in enumerate(_players, 1):
-            _s = _p["stats"]
-            _pl_rows.append({
-                "#":       _pr_rank,
-                "Player":  _p["name"],
-                "Team":    _p["team_name"],
-                "team_id": _p["team_id"],
-                "PR":      _p["player_rating"],
-                "PPG":     round(_s.get("pointsPerGame", 0),  1),
-                "RPG":     round(_s.get("reboundsPerGame", 0), 1),
-                "APG":     round(_s.get("assistsPerGame", 0),  1),
-                "SPG":     round(_s.get("stealsPerGame", 0),   1),
-                "BPG":     round(_s.get("blocksPerGame", 0),   1),
-                "TPG":     round(_s.get("turnoversPerGame", 0),1),
-                "FG%":     round(_s.get("fieldGoalPct", 0),    1),
-                "3P%":     round(_s.get("threePointFieldGoalPct", 0), 1),
-                "FT%":     round(_s.get("freeThrowPct", 0),    1),
-            })
-        _pl_df = pd.DataFrame(_pl_rows)
-        _avg_pr = sum(p["player_rating"] for p in _players) / len(_players)
-
-        # ── Rankings sub-tab ──────────────────────────────────────────────────
-        with _pl_sub_rank:
-            st.markdown(f"**Player Rating leaderboard — top {len(_pl_df)} players**")
-            _top_p = _players[0]
-            _r1, _r2, _r3, _r4 = st.columns(4)
-            _r1.metric("Players ranked", f"{len(_players):,}")
-            _r2.metric("Top player",     _top_p["name"])
-            _r3.metric("Top PR",         f"{_top_p['player_rating']:.2f}")
-            _r4.metric("Avg PR",         f"{_avg_pr:.2f}")
-            st.markdown("---")
-            _show_pl = _pl_df[["#","Player","Team","PR","PPG","RPG","APG","SPG","BPG","TPG","FG%","3P%","FT%"]].set_index("#")
-            st.dataframe(
-                _show_pl.style
-                .background_gradient(subset=["PR"],  cmap="Blues",   vmin=0,  vmax=35)
-                .background_gradient(subset=["PPG"],  cmap="Greens",  vmin=0,  vmax=30)
-                .background_gradient(subset=["RPG"],  cmap="Purples", vmin=0,  vmax=12)
-                .background_gradient(subset=["APG"],  cmap="Oranges", vmin=0,  vmax=10)
-                .format({"PR":"{:.2f}","PPG":"{:.1f}","RPG":"{:.1f}","APG":"{:.1f}",
-                         "SPG":"{:.1f}","BPG":"{:.1f}","TPG":"{:.1f}",
-                         "FG%":"{:.1f}","3P%":"{:.1f}","FT%":"{:.1f}"}),
-                height=600,
-            )
-
-        # ── Evaluation sub-tab ────────────────────────────────────────────────
-        with _pl_sub_eval:
-            st.markdown("**Player Rating distribution and stat correlations**")
-            _e1, _e2 = st.columns(2)
-            with _e1:
-                # PR distribution histogram
-                _pr_vals = _pl_df["PR"].tolist()
-                _hist_fig = go.Figure(go.Histogram(
-                    x=_pr_vals, nbinsx=30,
-                    marker_color=color, opacity=0.8,
-                ))
-                _hist_fig.add_vline(x=_avg_pr, line_dash="dash", line_color=NORD["yellow"],
-                                    annotation_text=f"Avg PR {_avg_pr:.1f}",
-                                    annotation_font=dict(color=NORD["yellow"], size=10))
-                _hist_fig.update_layout(
-                    title="PR Distribution",
-                    xaxis_title="Player Rating", yaxis_title="Players",
-                    height=300, margin=dict(l=40,r=10,t=40,b=40),
-                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color=NORD["snow0"]),
-                )
-                st.plotly_chart(_hist_fig, width="stretch")
-            with _e2:
-                # PPG vs PR scatter
-                _corr_fig = go.Figure(go.Scatter(
-                    x=_pl_df["PPG"], y=_pl_df["PR"],
-                    mode="markers",
-                    marker=dict(color=color, size=6, opacity=0.7),
-                    hovertext=[f"{r['Player']} ({r['Team']})<br>PPG: {r['PPG']} | PR: {r['PR']:.2f}"
-                               for _, r in _pl_df.iterrows()],
-                    hoverinfo="text",
-                ))
-                _corr_fig.update_layout(
-                    title="PPG vs Player Rating",
-                    xaxis_title="Points per game",
-                    yaxis_title="Player Rating",
-                    height=300, margin=dict(l=50,r=10,t=40,b=40),
-                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color=NORD["snow0"]),
-                )
-                st.plotly_chart(_corr_fig, width="stretch")
-
-            _e3, _e4 = st.columns(2)
-            with _e3:
-                # APG vs PR scatter
-                _apg_fig = go.Figure(go.Scatter(
-                    x=_pl_df["APG"], y=_pl_df["PR"],
-                    mode="markers",
-                    marker=dict(color=NORD["green"], size=6, opacity=0.7),
-                    hovertext=[f"{r['Player']}<br>APG: {r['APG']} | PR: {r['PR']:.2f}"
-                               for _, r in _pl_df.iterrows()],
-                    hoverinfo="text",
-                ))
-                _apg_fig.update_layout(
-                    title="APG vs Player Rating",
-                    xaxis_title="Assists per game",
-                    yaxis_title="Player Rating",
-                    height=300, margin=dict(l=50,r=10,t=40,b=40),
-                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color=NORD["snow0"]),
-                )
-                st.plotly_chart(_apg_fig, width="stretch")
-            with _e4:
-                # TOV cost bar
-                _topn_tov = _pl_df.nlargest(15, "TPG")[["Player","TPG","PR"]].reset_index(drop=True)
-                _tov_fig = go.Figure(go.Bar(
-                    x=_topn_tov["TPG"],
-                    y=_topn_tov["Player"],
-                    orientation="h",
-                    marker_color=NORD["red"],
-                    text=[f"{v:.1f}" for v in _topn_tov["TPG"]],
-                    textposition="outside",
-                    textfont=dict(size=9, color=NORD["snow0"]),
-                ))
-                _tov_fig.update_layout(
-                    title="Highest turnover cost (TPG)",
-                    xaxis_title="Turnovers per game",
-                    yaxis=dict(autorange="reversed"),
-                    height=300, margin=dict(l=10,r=60,t=40,b=40),
-                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color=NORD["snow0"]),
-                )
-                st.plotly_chart(_tov_fig, width="stretch")
-
-        # ── Matchup sub-tab ───────────────────────────────────────────────────
-        with _pl_sub_matchup:
-            st.markdown("**Head-to-head player comparison**")
-            _pl_names = _pl_df["Player"].tolist()
-            _mc1, _mc2 = st.columns(2)
-            with _mc1:
-                _sel_p1 = st.selectbox("Player A", _pl_names, index=0, key="pl_matchup_a")
-            with _mc2:
-                _sel_p2 = st.selectbox("Player B", _pl_names,
-                                       index=min(1, len(_pl_names)-1), key="pl_matchup_b")
-
-            _pd1 = next((p for p in _players if p["name"] == _sel_p1), None)
-            _pd2 = next((p for p in _players if p["name"] == _sel_p2), None)
-
-            if _pd1 and _pd2:
-                _stat_labels = ["PPG", "RPG", "APG", "SPG", "BPG", "TPG", "FG%", "3P%", "FT%"]
-                _stat_keys   = ["pointsPerGame","reboundsPerGame","assistsPerGame",
-                                "stealsPerGame","blocksPerGame","turnoversPerGame",
-                                "fieldGoalPct","threePointFieldGoalPct","freeThrowPct"]
-                _v1 = [_pd1["stats"].get(k, 0) for k in _stat_keys]
-                _v2 = [_pd2["stats"].get(k, 0) for k in _stat_keys]
-
-                # Summary metrics
-                _sm1, _sm2, _sm3 = st.columns(3)
-                _sm1.metric(f"PR — {_sel_p1}", f"{_pd1['player_rating']:.2f}")
-                _sm2.metric(f"PR — {_sel_p2}", f"{_pd2['player_rating']:.2f}")
-                _pr_diff = _pd1['player_rating'] - _pd2['player_rating']
-                _sm3.metric("PR edge", f"{_pr_diff:+.2f}",
-                            help="Positive = Player A has higher PR")
-                st.markdown("---")
-
-                _mf = go.Figure()
-                _mf.add_trace(go.Bar(
-                    name=_sel_p1, x=_stat_labels, y=_v1,
-                    marker_color=color, opacity=0.85,
-                ))
-                _mf.add_trace(go.Bar(
-                    name=_sel_p2, x=_stat_labels, y=_v2,
-                    marker_color=NORD["orange"], opacity=0.85,
-                ))
-                _mf.update_layout(
-                    barmode="group",
-                    xaxis_title="Stat", yaxis_title="Per game",
-                    height=340,
-                    margin=dict(l=40,r=10,t=30,b=50),
-                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color=NORD["snow0"]),
-                    legend=dict(orientation="h", y=1.08),
-                )
-                st.plotly_chart(_mf, width="stretch")
-
-                # Stat comparison table
-                _cmp_rows = []
-                for lbl, v1, v2 in zip(_stat_labels, _v1, _v2):
-                    _cmp_rows.append({
-                        "Stat": lbl,
-                        _sel_p1: round(v1, 1),
-                        _sel_p2: round(v2, 1),
-                        "Edge": f"{'+' if v1>=v2 else ''}{v1-v2:.1f} {'(A)' if v1>v2 else ('(B)' if v2>v1 else '(tie)')}",
-                    })
-                st.dataframe(pd.DataFrame(_cmp_rows).set_index("Stat"), width="stretch")
-
-        # ── Efficiency sub-tab ────────────────────────────────────────────────
-        with _pl_sub_eff:
-            st.markdown("**Scoring efficiency and two-way contribution**")
-            st.caption("FG% as offensive efficiency; SPG+BPG as defensive contribution (alpha); PR net = value minus turnover cost.")
-
-            _ef1, _ef2 = st.columns(2)
-            with _ef1:
-                # FG% vs PPG scatter — efficiency frontier
-                _eff_sc = go.Figure(go.Scatter(
-                    x=_pl_df["FG%"], y=_pl_df["PPG"],
-                    mode="markers",
-                    marker=dict(
-                        size=[max(6, r["PR"]/2) for _, r in _pl_df.iterrows()],
-                        color=_pl_df["PR"].tolist(),
-                        colorscale=[[0,NORD["bg3"]],[0.5,color],[1,NORD["frost0"]]],
-                        showscale=True,
-                        colorbar=dict(title="PR", thickness=12),
-                    ),
-                    hovertext=[f"{r['Player']}<br>FG%: {r['FG%']} | PPG: {r['PPG']} | PR: {r['PR']:.2f}"
-                               for _, r in _pl_df.iterrows()],
-                    hoverinfo="text",
-                ))
-                _eff_sc.update_layout(
-                    title="Shooting efficiency vs scoring volume",
-                    xaxis_title="Field goal % (efficiency)",
-                    yaxis_title="Points per game (volume)",
-                    height=340, margin=dict(l=50,r=60,t=40,b=40),
-                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color=NORD["snow0"]),
-                )
-                st.plotly_chart(_eff_sc, width="stretch")
-            with _ef2:
-                # Two-way players: SPG+BPG vs PPG
-                _pl_df["DefAlpha"] = _pl_df["SPG"] + _pl_df["BPG"]
-                _two_way = go.Figure(go.Scatter(
-                    x=_pl_df["PPG"], y=_pl_df["DefAlpha"],
-                    mode="markers",
-                    marker=dict(
-                        size=[max(6, r["PR"]/2) for _, r in _pl_df.iterrows()],
-                        color=color, opacity=0.7,
-                    ),
-                    hovertext=[f"{r['Player']}<br>PPG: {r['PPG']} | Stl+Blk: {r['DefAlpha']:.1f}"
-                               for _, r in _pl_df.iterrows()],
-                    hoverinfo="text",
-                ))
-                _two_way.update_layout(
-                    title="Two-way players: scoring vs defensive alpha",
-                    xaxis_title="Points per game (offense)",
-                    yaxis_title="Steals + Blocks per game (defense)",
-                    height=340, margin=dict(l=50,r=10,t=40,b=40),
-                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color=NORD["snow0"]),
-                )
-                st.plotly_chart(_two_way, width="stretch")
-
-            # Net contribution: PR vs TPG cost
-            st.markdown("**Value vs cost — best net producers**")
-            _top20_pr = _pl_df.nlargest(20, "PR").reset_index(drop=True)
-            _pr_net_colors = [NORD["green"] if r["PR"] > _avg_pr else NORD["red"]
-                              for _, r in _top20_pr.iterrows()]
-            _net_fig = go.Figure(go.Bar(
-                x=_top20_pr["Player"],
-                y=_top20_pr["PR"],
-                marker_color=_pr_net_colors,
-                text=[f"{v:.2f}" for v in _top20_pr["PR"]],
-                textposition="outside",
-                textfont=dict(size=9, color=NORD["snow0"]),
-            ))
-            _net_fig.add_hline(y=_avg_pr, line_dash="dash", line_color=NORD["yellow"],
-                               annotation_text=f"Avg PR {_avg_pr:.1f}",
-                               annotation_font=dict(color=NORD["yellow"], size=10))
-            _net_fig.update_layout(
-                xaxis_title="Player", yaxis_title="Player Rating",
-                height=320, margin=dict(l=40,r=10,t=20,b=120),
-                xaxis=dict(tickangle=-35),
-                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                font=dict(color=NORD["snow0"]),
-            )
-            st.plotly_chart(_net_fig, width="stretch")
-
-
-# ════════════════════════════════════════════════════════════════════════════ #
-# TAB 10 — Math (renumbered)
+# TAB 9 — Math
 # ════════════════════════════════════════════════════════════════════════════ #
 
 with tab_math:
