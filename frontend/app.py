@@ -198,7 +198,7 @@ def load_future_games(division: str, for_date: date) -> list[dict]:
 def load_players(division: str) -> list[dict]:
     try:
         return fetch_player_leaders(division=division, limit=10_000,
-                                    days_back=21, max_games=150, min_games=1)
+                                    days_back=60, max_games=500, min_games=1)
     except Exception:
         return []
 
