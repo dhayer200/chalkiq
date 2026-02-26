@@ -1012,13 +1012,13 @@ with tab_rank:
 
         def _fmt_pct(v):
             if isinstance(v, float) and v > 0:
-                return f"{v:.1%}"
+                return f"{v:.3%}"
             return "-"
 
         styled_all = (
             df_all.style
             .format({c: _fmt_pct for c in pct_cols})
-            .format({"Win%": "{:.1%}"})
+            .format({"Win%": "{:.3%}"})
             .format({"Elo": "{:.1f}", "Off": "{:.1f}", "Def": "{:.1f}", "Net": "{:+.1f}"})
             .background_gradient(subset=pct_cols, cmap="Blues", vmin=0, vmax=0.5)
             .background_gradient(subset=["Off"], cmap="Greens", vmin=60, vmax=90)
