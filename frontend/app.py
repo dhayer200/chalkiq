@@ -22,6 +22,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from src.bracket.simulator import round_advancement_odds
+from src.players.espn import fetch_player_leaders, STAT_CONFIG as PLAYER_STAT_CONFIG
 from src.bracket.structure import (
     BRACKET_SLOT_ORDER,
     REGIONS,
@@ -185,6 +186,12 @@ def load_future_games(division: str, for_date: date) -> list[dict]:
         for_date=for_date,
         status_filter={"STATUS_SCHEDULED", "STATUS_PREGAME"},
     )
+
+
+@st.cache_data(ttl=3600, show_spinner="Loading player stats…")
+def load_players(division: str) -> list[dict]:
+    """Fetch ESPN player leaders, cached 1 hr."""
+    return fetch_player_leaders(division=division, limit=100)
 
 
 @st.cache_data(ttl=120, show_spinner=False)
@@ -938,13 +945,16 @@ metrics                    = evaluate(engine.history)
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 
-tab_rank, tab_bracket, tab_live, tab_eval, tab_matchup, tab_gamble, tab_math, tab_sources = st.tabs([
+tab_rank, tab_bracket, tab_live, tab_eval, tab_matchup, tab_gamble, tab_efficiency, tab_markets, tab_players, tab_math, tab_sources = st.tabs([
     "📊  Power Rankings",
     "🏆  Bracket",
     "🔴  Live",
     "📈  Model Evaluation",
     "⚔️  Matchup",
     "🎰  Parlay",
+    "⚡  Efficiency",
+    "📉  Markets",
+    "👤  Players",
     "📐  Math",
     "📚  Sources",
 ])
@@ -2083,7 +2093,511 @@ with tab_gamble:
 
 
 # ════════════════════════════════════════════════════════════════════════════ #
-# TAB 7 — Math (was TAB 6)
+# TAB 7 — Efficiency
+# ════════════════════════════════════════════════════════════════════════════ #
+
+with tab_efficiency:
+    st.subheader(f"Offensive and Defensive Efficiency | {cfg['label']} Division")
+    st.markdown(
+        "Points scored and allowed per game, derived from all regular-season "
+        "games in the Elo engine history. Think of **offensive efficiency** as "
+        "revenue and **defensive efficiency** as costs — net efficiency is "
+        "the profit margin that predicts tournament success."
+    )
+    st.markdown("---")
+
+    # ── Compute per-team efficiency from game history ─────────────────────────
+    _eff_map: dict[str, dict] = {}
+    for _g in engine.history:
+        for _tid, _name, _for, _against in [
+            (_g["home_id"], _g["home_name"], _g["home_score"], _g["away_score"]),
+            (_g["away_id"], _g["away_name"], _g["away_score"], _g["home_score"]),
+        ]:
+            if _tid not in _eff_map:
+                _eff_map[_tid] = {"name": _name, "pts_for": [], "pts_against": [], "wins": 0}
+            _eff_map[_tid]["pts_for"].append(_for)
+            _eff_map[_tid]["pts_against"].append(_against)
+            if _for > _against:
+                _eff_map[_tid]["wins"] += 1
+
+    _eff_rows = []
+    for _tid, _d in _eff_map.items():
+        if not _d["pts_for"]:
+            continue
+        _gp   = len(_d["pts_for"])
+        _off  = sum(_d["pts_for"])  / _gp
+        _def  = sum(_d["pts_against"]) / _gp
+        _net  = _off - _def
+        _wpct = _d["wins"] / _gp
+        _elo  = engine.rating(_tid)
+        _eff_rows.append({
+            "team_id": _tid,
+            "Team":    _d["name"],
+            "GP":      _gp,
+            "Off":     round(_off, 1),
+            "Def":     round(_def, 1),
+            "Net":     round(_net, 1),
+            "Win%":    _wpct,
+            "Elo":     round(_elo, 1),
+        })
+
+    _eff_df = (
+        pd.DataFrame(_eff_rows)
+        .sort_values("Net", ascending=False)
+        .reset_index(drop=True)
+    )
+    _eff_df.index += 1
+
+    # ── Efficiency summary metrics ────────────────────────────────────────────
+    _avg_off = _eff_df["Off"].mean()
+    _avg_def = _eff_df["Def"].mean()
+    _avg_net = _eff_df["Net"].mean()
+    _ea, _eb, _ec, _ed = st.columns(4)
+    _ea.metric("Teams tracked", f"{len(_eff_df):,}")
+    _eb.metric("Avg offensive eff", f"{_avg_off:.1f} PPG")
+    _ec.metric("Avg defensive eff", f"{_avg_def:.1f} PPG allowed")
+    _ed.metric("Avg net rating", f"{_avg_net:+.1f}")
+
+    st.markdown("---")
+
+    # ── Scatter plot: Off Eff vs Def Eff ──────────────────────────────────────
+    _scat_col, _scat_txt = st.columns([2, 1])
+    with _scat_col:
+        st.markdown("**Offensive vs Defensive Efficiency — all teams**")
+        _top_n = 40  # label top teams to avoid clutter
+        _top_ids = set(_eff_df.head(_top_n)["team_id"])
+        _scat_fig = go.Figure()
+        _scat_fig.add_trace(go.Scatter(
+            x=_eff_df["Def"],
+            y=_eff_df["Off"],
+            mode="markers+text",
+            marker=dict(
+                color=[NORD["frost1"] if t in _top_ids else NORD["bg3"]
+                       for t in _eff_df["team_id"]],
+                size=7,
+                opacity=0.85,
+            ),
+            text=[
+                row["Team"].split()[-1] if row["team_id"] in _top_ids else ""
+                for _, row in _eff_df.iterrows()
+            ],
+            textposition="top center",
+            textfont=dict(size=8, color=NORD["snow0"]),
+            hovertext=[
+                f"{row['Team']}<br>Off: {row['Off']} | Def: {row['Def']} | Net: {row['Net']:+.1f}"
+                for _, row in _eff_df.iterrows()
+            ],
+            hoverinfo="text",
+            name="Teams",
+        ))
+        # Net=0 diagonal: where Off=Def  → y = x line
+        _x_range = [_eff_df["Def"].min() - 1, _eff_df["Def"].max() + 1]
+        _scat_fig.add_trace(go.Scatter(
+            x=_x_range, y=_x_range,
+            mode="lines",
+            line=dict(color=NORD["bg3"], dash="dash", width=1),
+            name="Net = 0",
+            showlegend=False,
+        ))
+        # Vertical and horizontal lines at averages
+        _scat_fig.add_vline(x=_avg_def, line_dash="dot", line_color=NORD["orange"],
+                            line_width=1, annotation_text="Avg Def",
+                            annotation_font=dict(color=NORD["orange"], size=10))
+        _scat_fig.add_hline(y=_avg_off, line_dash="dot", line_color=NORD["green"],
+                            line_width=1, annotation_text="Avg Off",
+                            annotation_font=dict(color=NORD["green"], size=10))
+        _scat_fig.update_layout(
+            xaxis_title="Defensive efficiency (lower = better defense)",
+            yaxis_title="Offensive efficiency (higher = better offense)",
+            xaxis=dict(autorange="reversed"),   # lower def eff = better → right side
+            height=420,
+            margin=dict(l=55, r=10, t=30, b=50),
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(color=NORD["snow0"]),
+            legend=dict(orientation="h", y=1.05),
+        )
+        st.plotly_chart(_scat_fig, width="stretch")
+    with _scat_txt:
+        st.markdown("**How to read this chart**")
+        st.markdown(
+            "Every dot is a team. The two axes measure how many points they "
+            "score (y-axis, offensive efficiency) and how many they allow "
+            "(x-axis, defensive efficiency).\n\n"
+            "**Top-right quadrant** (high off, poor defense): prolific scorers "
+            "that give up a lot — high-variance, high-seed-risk teams.\n\n"
+            "**Top-left quadrant** (high off, good defense): elite teams. "
+            "They score a lot and hold opponents down — tournament favorites.\n\n"
+            "**Bottom-left quadrant** (low off, good defense): grinders. "
+            "These teams win with defense but struggle to score.\n\n"
+            "**Dashed diagonal**: where Off Eff = Def Eff (net rating = 0). "
+            "Teams above the line have positive net ratings.\n\n"
+            "**Colored cross-hairs** show the average for each axis. "
+            "Being above the green line means above-average offense; "
+            "being left of the orange line means above-average defense."
+        )
+
+    st.markdown("---")
+
+    # ── Efficiency rankings table ─────────────────────────────────────────────
+    with st.expander("Full efficiency rankings (click to expand)", expanded=True):
+        _show_df = _eff_df[["Team", "GP", "Off", "Def", "Net", "Win%", "Elo"]].copy()
+        _show_df["Win%"] = _show_df["Win%"].map(lambda v: f"{v:.1%}")
+        st.dataframe(
+            _show_df.style
+            .background_gradient(subset=["Off"], cmap="Greens",    vmin=60,  vmax=90)
+            .background_gradient(subset=["Def"], cmap="Reds_r",   vmin=55,  vmax=85)
+            .background_gradient(subset=["Net"], cmap="RdYlGn",   vmin=-15, vmax=15)
+            .background_gradient(subset=["Elo"], cmap="Blues",    vmin=1400, vmax=1650)
+            .format({"Off": "{:.1f}", "Def": "{:.1f}", "Net": "{:+.1f}", "Elo": "{:.1f}"}),
+            height=480,
+        )
+
+
+# ════════════════════════════════════════════════════════════════════════════ #
+# TAB 8 — Markets (Teams as Stock)
+# ════════════════════════════════════════════════════════════════════════════ #
+
+with tab_markets:
+    import statistics as _statistics
+
+    st.subheader(f"Team Markets | {cfg['label']} Division")
+    st.markdown(
+        "College basketball teams modelled as financial assets. "
+        "**Elo rating = stock price**, game-by-game rating changes = daily returns, "
+        "and standard deviation of those changes = volatility. "
+        "A positive Sharpe analog means consistent outperformance."
+    )
+    st.markdown("---")
+
+    # ── Build Elo timeline per team ───────────────────────────────────────────
+    _elo_hist: dict[str, dict] = {}
+    for _g in sorted(engine.history, key=lambda x: x.get("date") or ""):
+        for _tid, _name, _elo_after in [
+            (_g["home_id"], _g["home_name"], _g["home_rating_after"]),
+            (_g["away_id"], _g["away_name"], _g["away_rating_after"]),
+        ]:
+            if _tid not in _elo_hist:
+                _elo_hist[_tid] = {
+                    "name":    _name,
+                    "dates":   [],
+                    "elos":    [1500.0],   # season starting point
+                    "changes": [],
+                }
+            _prev = _elo_hist[_tid]["elos"][-1]
+            _chg  = _elo_after - _prev
+            _elo_hist[_tid]["dates"].append(_g.get("date", ""))
+            _elo_hist[_tid]["elos"].append(_elo_after)
+            _elo_hist[_tid]["changes"].append(_chg)
+
+    # ── Screener table ────────────────────────────────────────────────────────
+    _mkt_rows = []
+    for _tid, _d in _elo_hist.items():
+        if len(_d["changes"]) < 3:
+            continue
+        _cur  = _d["elos"][-1]
+        _chgs = _d["changes"]
+        _avg  = sum(_chgs) / len(_chgs)
+        _std  = _statistics.stdev(_chgs) if len(_chgs) > 1 else 0.0
+        _sharpe = _avg / _std if _std > 0 else 0.0
+        _last10 = sum(_chgs[-10:]) if len(_chgs) >= 10 else sum(_chgs)
+        _season_chg = _cur - 1500.0
+        _season_ret = _season_chg / 1500.0 * 100
+        # Max drawdown from peak
+        _peak = max(_d["elos"])
+        _drawdown = _cur - _peak
+        _mkt_rows.append({
+            "team_id":    _tid,
+            "Team":       _d["name"],
+            "Elo":        round(_cur, 1),
+            "Season Chg": round(_season_chg, 1),
+            "Season Ret": round(_season_ret, 2),
+            "L10 Chg":    round(_last10, 1),
+            "Volatility": round(_std, 2),
+            "Sharpe":     round(_sharpe, 3),
+            "Peak":       round(_peak, 1),
+            "Drawdown":   round(_drawdown, 1),
+            "Games":      len(_chgs),
+        })
+
+    _mkt_df = (
+        pd.DataFrame(_mkt_rows)
+        .sort_values("Elo", ascending=False)
+        .reset_index(drop=True)
+    )
+    _mkt_df.index += 1
+
+    # ── Summary metrics ───────────────────────────────────────────────────────
+    _mm1, _mm2, _mm3, _mm4 = st.columns(4)
+    _mm1.metric("Teams tracked", f"{len(_mkt_df):,}")
+    _mm2.metric("Median Elo",    f"{_mkt_df['Elo'].median():.0f}")
+    _mm3.metric("Elo range",     f"{_mkt_df['Elo'].min():.0f} – {_mkt_df['Elo'].max():.0f}")
+    _mm4.metric("Avg volatility", f"{_mkt_df['Volatility'].mean():.2f} pts/game")
+    st.markdown("---")
+
+    # ── Elo stock chart ───────────────────────────────────────────────────────
+    _all_names = sorted(_mkt_df["Team"].tolist())
+    _sel_teams = st.multiselect(
+        "Select teams to plot (up to 8)",
+        options=_all_names,
+        default=_all_names[:5] if len(_all_names) >= 5 else _all_names,
+        max_selections=8,
+        help="Compare Elo trajectories like stock price charts.",
+    )
+
+    if _sel_teams:
+        _chart_fig = go.Figure()
+        _palette = [NORD["frost1"], NORD["green"], NORD["orange"],
+                    NORD["purple"], NORD["red"], NORD["yellow"],
+                    NORD["frost0"], NORD["frost3"]]
+        for _i, _tname in enumerate(_sel_teams):
+            _row = _mkt_df[_mkt_df["Team"] == _tname]
+            if _row.empty:
+                continue
+            _tid  = _row.iloc[0]["team_id"]
+            _data = _elo_hist.get(_tid, {})
+            _xs   = list(range(len(_data["elos"])))  # game 0 = season start
+            _ys   = _data["elos"]
+            _chart_fig.add_trace(go.Scatter(
+                x=_xs, y=_ys,
+                mode="lines",
+                name=_tname,
+                line=dict(color=_palette[_i % len(_palette)], width=2),
+                hovertemplate=f"<b>{_tname}</b><br>Game %{{x}}<br>Elo: %{{y:.1f}}<extra></extra>",
+            ))
+        _chart_fig.add_hline(y=1500, line_dash="dash", line_color=NORD["bg3"],
+                             line_width=1, annotation_text="Season start (1500)",
+                             annotation_font=dict(color=NORD["bg3"], size=10))
+        _chart_fig.update_layout(
+            xaxis_title="Game number (chronological)",
+            yaxis_title="Elo rating",
+            height=380,
+            margin=dict(l=55, r=10, t=30, b=50),
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(color=NORD["snow0"]),
+            legend=dict(orientation="h", y=1.08),
+        )
+        st.plotly_chart(_chart_fig, width="stretch")
+    else:
+        st.info("Select at least one team above to display the Elo chart.")
+
+    st.markdown("---")
+
+    # ── Screener table ────────────────────────────────────────────────────────
+    st.markdown("**Team Screener — financial metrics on Elo ratings**")
+    st.caption(
+        "Elo = current rating (stock price) | Season Chg = total rating change from 1500 | "
+        "L10 Chg = sum of last 10 rating updates | Volatility = std dev of per-game changes | "
+        "Sharpe = avg change / volatility (higher = more consistent improvement) | "
+        "Drawdown = current Elo minus season peak"
+    )
+    _show_mkt = _mkt_df[["Team", "Elo", "Season Chg", "Season Ret", "L10 Chg",
+                          "Volatility", "Sharpe", "Peak", "Drawdown", "Games"]].copy()
+    _show_mkt["Season Ret"] = _show_mkt["Season Ret"].map(lambda v: f"{v:+.1f}%")
+    st.dataframe(
+        _show_mkt.style
+        .background_gradient(subset=["Elo"],        cmap="Blues",  vmin=1350, vmax=1700)
+        .background_gradient(subset=["Season Chg"], cmap="RdYlGn", vmin=-150, vmax=200)
+        .background_gradient(subset=["L10 Chg"],    cmap="RdYlGn", vmin=-50,  vmax=60)
+        .background_gradient(subset=["Sharpe"],     cmap="RdYlGn", vmin=-0.5, vmax=0.5)
+        .format({
+            "Elo":        "{:.1f}",
+            "Season Chg": "{:+.1f}",
+            "L10 Chg":    "{:+.1f}",
+            "Volatility": "{:.2f}",
+            "Sharpe":     "{:.3f}",
+            "Peak":       "{:.1f}",
+            "Drawdown":   "{:+.1f}",
+        }),
+        height=500,
+    )
+
+
+# ════════════════════════════════════════════════════════════════════════════ #
+# TAB 9 — Players (CB Players + Players as Stock)
+# ════════════════════════════════════════════════════════════════════════════ #
+
+with tab_players:
+    st.subheader(f"Player Rankings | {cfg['label']} Division")
+    st.markdown(
+        "Individual college basketball players modelled as financial assets. "
+        "**Player Rating (PR)** is a composite score inspired by the NBA Game Score formula:\n\n"
+        "`PR = PPG + 0.4×RPG + 0.7×APG + 1.0×SPG + 0.7×BPG − 0.7×TPG`\n\n"
+        "Think of PPG as **revenue**, turnovers as **costs**, and PR as **net income** "
+        "— the player's total value production per game."
+    )
+    st.markdown("---")
+
+    _players = load_players(division)
+
+    if not _players:
+        st.warning(
+            "Could not fetch player data from ESPN. "
+            "Check your network connection or try again later."
+        )
+    else:
+        # ── Summary metrics ───────────────────────────────────────────────────
+        _top_p   = _players[0] if _players else {}
+        _avg_pr  = sum(p["player_rating"] for p in _players) / len(_players) if _players else 0
+        _pm1, _pm2, _pm3, _pm4 = st.columns(4)
+        _pm1.metric("Players ranked", f"{len(_players):,}")
+        _pm2.metric("Top player",     _top_p.get("name", "—"))
+        _pm3.metric("Top PR",         f"{_top_p.get('player_rating', 0):.1f}")
+        _pm4.metric("Avg PR (leaders)", f"{_avg_pr:.1f}")
+
+        st.markdown("---")
+
+        # ── Player leaderboard ────────────────────────────────────────────────
+        _pl_rows = []
+        for _rank, _p in enumerate(_players, 1):
+            _s = _p["stats"]
+            _pl_rows.append({
+                "#":      _rank,
+                "Player": _p["name"],
+                "Team":   _p["team_name"],
+                "PR":     _p["player_rating"],
+                "PPG":    round(_s.get("pointsPerGame", 0),  1),
+                "RPG":    round(_s.get("reboundsPerGame", 0), 1),
+                "APG":    round(_s.get("assistsPerGame", 0),  1),
+                "SPG":    round(_s.get("stealsPerGame", 0),   1),
+                "BPG":    round(_s.get("blocksPerGame", 0),   1),
+                "TPG":    round(_s.get("turnoversPerGame", 0),1),
+                "FG%":    round(_s.get("fieldGoalPct", 0),    1),
+                "3P%":    round(_s.get("threePointFieldGoalPct", 0), 1),
+                "FT%":    round(_s.get("freeThrowPct", 0),    1),
+            })
+        _pl_df = pd.DataFrame(_pl_rows).set_index("#")
+
+        _pl_tab_board, _pl_tab_stock = st.tabs(["📋 Leaderboard", "📈 Player Stock Profile"])
+
+        with _pl_tab_board:
+            st.markdown("**Player Rating leaders — season averages from ESPN**")
+            st.dataframe(
+                _pl_df.style
+                .background_gradient(subset=["PR"],  cmap="Blues",  vmin=0,  vmax=35)
+                .background_gradient(subset=["PPG"], cmap="Greens", vmin=0,  vmax=30)
+                .background_gradient(subset=["RPG"], cmap="Purples",vmin=0,  vmax=12)
+                .background_gradient(subset=["APG"], cmap="Oranges",vmin=0,  vmax=10)
+                .format({
+                    "PR":  "{:.2f}",
+                    "PPG": "{:.1f}", "RPG": "{:.1f}", "APG": "{:.1f}",
+                    "SPG": "{:.1f}", "BPG": "{:.1f}", "TPG": "{:.1f}",
+                    "FG%": "{:.1f}", "3P%": "{:.1f}", "FT%": "{:.1f}",
+                }),
+                height=520,
+            )
+
+        with _pl_tab_stock:
+            st.markdown("**Select a player to see their stat profile and stock framing**")
+            _pl_names = [p["name"] for p in _players]
+            _sel_player_name = st.selectbox(
+                "Player",
+                _pl_names,
+                index=0,
+            )
+            _sel_p = next((p for p in _players if p["name"] == _sel_player_name), None)
+
+            if _sel_p:
+                _sp_col, _sp_bar = st.columns([1, 2])
+                _s = _sel_p["stats"]
+
+                with _sp_col:
+                    _pr_val = _sel_p["player_rating"]
+                    # Percentile rank among all players
+                    _pct_rank = sum(1 for p in _players if p["player_rating"] <= _pr_val) / len(_players) * 100
+                    st.markdown(f"### {_sel_player_name}")
+                    st.markdown(f"**{_sel_p['team_name']}**")
+                    st.markdown("---")
+                    st.metric("Player Rating (PR)", f"{_pr_val:.2f}",
+                              help="Composite score: PPG + 0.4×RPG + 0.7×APG + SPG + 0.7×BPG − 0.7×TPG")
+                    st.metric("Percentile", f"{_pct_rank:.0f}th",
+                              help="PR rank among all players in this dataset")
+                    st.markdown("---")
+                    st.markdown("**Stock framing**")
+                    st.markdown(
+                        f"- **Revenue** (PPG): {_s.get('pointsPerGame', 0):.1f} pts/game\n"
+                        f"- **Margin** (FG%): {_s.get('fieldGoalPct', 0):.1f}%\n"
+                        f"- **Diversification**: {_s.get('reboundsPerGame', 0):.1f} reb, {_s.get('assistsPerGame', 0):.1f} ast\n"
+                        f"- **Cost** (TOV): {_s.get('turnoversPerGame', 0):.1f}/game\n"
+                        f"- **Alpha** (SPG+BPG): {_s.get('stealsPerGame', 0) + _s.get('blocksPerGame', 0):.1f}/game"
+                    )
+
+                with _sp_bar:
+                    # Bar chart: PR component breakdown
+                    _stat_labels = ["PPG (×1.0)", "RPG (×0.4)", "APG (×0.7)",
+                                    "SPG (×1.0)", "BPG (×0.7)", "TOV (×−0.7)"]
+                    _stat_keys   = ["pointsPerGame", "reboundsPerGame", "assistsPerGame",
+                                    "stealsPerGame",  "blocksPerGame",  "turnoversPerGame"]
+                    _weights     = [1.0, 0.4, 0.7, 1.0, 0.7, -0.7]
+                    _raw_vals    = [_s.get(k, 0) for k in _stat_keys]
+                    _contrib     = [v * w for v, w in zip(_raw_vals, _weights)]
+                    _bar_colors  = [NORD["green"] if c >= 0 else NORD["red"] for c in _contrib]
+
+                    _bar_fig = go.Figure(go.Bar(
+                        x=_stat_labels,
+                        y=_contrib,
+                        text=[f"{c:+.2f}" for c in _contrib],
+                        textposition="outside",
+                        marker_color=_bar_colors,
+                        textfont=dict(size=11, color=NORD["snow0"]),
+                    ))
+                    _bar_fig.add_hline(y=0, line_color=NORD["bg3"], line_width=1)
+                    _bar_fig.update_layout(
+                        title=f"PR component breakdown — total: {_pr_val:.2f}",
+                        yaxis_title="Contribution to PR",
+                        height=340,
+                        margin=dict(l=40, r=10, t=50, b=60),
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        font=dict(color=NORD["snow0"]),
+                        showlegend=False,
+                    )
+                    st.plotly_chart(_bar_fig, width="stretch")
+
+                # ── Portfolio builder ─────────────────────────────────────────
+                st.markdown("---")
+                st.markdown("**Portfolio Builder — compare up to 6 players**")
+                _port_sel = st.multiselect(
+                    "Select players",
+                    _pl_names,
+                    default=_pl_names[:4] if len(_pl_names) >= 4 else _pl_names,
+                    max_selections=6,
+                )
+                if len(_port_sel) >= 2:
+                    _port_players = [p for p in _players if p["name"] in _port_sel]
+                    _port_cats    = ["PPG", "RPG", "APG", "SPG", "BPG", "TPG", "FG%"]
+                    _cat_keys     = ["pointsPerGame", "reboundsPerGame", "assistsPerGame",
+                                     "stealsPerGame",  "blocksPerGame",  "turnoversPerGame",
+                                     "fieldGoalPct"]
+                    _port_fig = go.Figure()
+                    _pp_palette = [NORD["frost1"], NORD["green"], NORD["orange"],
+                                   NORD["purple"], NORD["red"], NORD["yellow"]]
+                    for _pi, _pp in enumerate(_port_players):
+                        _pp_vals = [_pp["stats"].get(k, 0) for k in _cat_keys]
+                        _port_fig.add_trace(go.Bar(
+                            name=_pp["name"],
+                            x=_port_cats,
+                            y=_pp_vals,
+                            marker_color=_pp_palette[_pi % len(_pp_palette)],
+                            opacity=0.85,
+                        ))
+                    _port_fig.update_layout(
+                        barmode="group",
+                        xaxis_title="Stat category",
+                        yaxis_title="Per game",
+                        height=320,
+                        margin=dict(l=40, r=10, t=30, b=50),
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        font=dict(color=NORD["snow0"]),
+                        legend=dict(orientation="h", y=1.08),
+                    )
+                    st.plotly_chart(_port_fig, width="stretch")
+
+
+# ════════════════════════════════════════════════════════════════════════════ #
+# TAB 10 — Math (renumbered)
 # ════════════════════════════════════════════════════════════════════════════ #
 
 with tab_math:
