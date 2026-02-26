@@ -85,17 +85,6 @@ DIVISION_CONFIG = {
         "is_nba":       False,
         "avg_total":    130.0,
     },
-    "nba": {
-        "label":        "NBA",
-        "cache_dir":    str(ROOT / "data" / "raw" / "nba"),
-        "emoji":        "🏆",
-        "color":        NORD["orange"],
-        "light":        NORD["bg1"],
-        "season_start": date(2025, 10, 22),
-        "season_end":   date(2026, 2, 23),
-        "is_nba":       True,
-        "avg_total":    230.0,   # avg combined points (NBA runs ~115 per team)
-    },
 }
 
 N_SIMS = 100_000
@@ -158,20 +147,6 @@ def load_engine(division: str) -> EloEngine:
 def load_bracket_data(division: str):
     engine = load_engine(division)
     rankings = engine.rankings()
-
-    if DIVISION_CONFIG[division]["is_nba"]:
-        # NBA: no 64-team bracket. Simulate all 30 teams (pads to 32 = 5 rounds).
-        top30 = [tid for tid, _, _ in rankings[:30]]
-        adv_odds = round_advancement_odds(
-            seeded_teams=top30,
-            win_prob_fn=engine.win_prob,
-            n_sims=N_SIMS,
-            seed=42,
-        )
-        # Round 5 = championship (32-slot bracket = 5 rounds)
-        champ_odds = {tid: adv_odds[tid].get(5, 0.0) for tid in top30}
-        return None, adv_odds, champ_odds
-
     regions  = assign_seeds(rankings)
 
     # Build bracket in proper seed order: East slots 0-15, West 16-31,
@@ -221,7 +196,7 @@ def load_future_games(division: str, for_date: date) -> list[dict]:
 @st.cache_data(ttl=3600, show_spinner="Loading player stats…")
 def load_players(division: str) -> list[dict]:
     """Fetch ESPN player leaders, cached 1 hr."""
-    return fetch_player_leaders(division=division, limit=100)
+    return fetch_player_leaders(division=division, limit=100, max_games=25, min_games=2)
 
 
 @st.cache_data(ttl=120, show_spinner=False)
@@ -250,17 +225,6 @@ def live_bracket_impact(
         sim.update(home_id, away_id, 60, 70, neutral=True)
 
     rankings_sim = sim.rankings()
-
-    if DIVISION_CONFIG[division]["is_nba"]:
-        top30 = [tid for tid, _, _ in rankings_sim[:30]]
-        adv = round_advancement_odds(
-            seeded_teams=top30,
-            win_prob_fn=sim.win_prob,
-            n_sims=5_000,
-            seed=42,
-        )
-        return {tid: adv[tid].get(5, 0.0) for tid in top30}
-
     regions_sim  = assign_seeds(rankings_sim)
     bracket_order: list[str] = []
     for rn in REGIONS:
@@ -964,7 +928,7 @@ with hcol1:
 with hcol2:
     division = st.radio(
         "Division",
-        options=["mens", "womens", "nba"],
+        options=["mens", "womens"],
         format_func=lambda d: f"{DIVISION_CONFIG[d]['emoji']} {DIVISION_CONFIG[d]['label']}",
         horizontal=True,
         key="division",
@@ -1004,15 +968,8 @@ tab_rank, tab_bracket, tab_live, tab_eval, tab_matchup, tab_efficiency, tab_play
 # ════════════════════════════════════════════════════════════════════════════ #
 
 with tab_rank:
-    _rank_n   = 30 if cfg["is_nba"] else 64
-    _rank_lbl = "All 30 Teams" if cfg["is_nba"] else "Top 64"
-    _rank_cap = (
-        "All 30 NBA teams ranked by Elo rating, updated through the current season."
-        if cfg["is_nba"] else
-        "The 64 teams most likely to receive an at-large or automatic bid on Selection Sunday, ranked by Elo."
-    )
-    st.subheader(f"{_rank_lbl} | {cfg['label']} Division")
-    st.caption(_rank_cap)
+    st.subheader(f"Top 64 | {cfg['label']} Division")
+    st.caption("The 64 teams most likely to receive an at-large or automatic bid on Selection Sunday, ranked by Elo.")
 
     # Build per-team efficiency from game history (for rankings table)
     _rank_eff: dict[str, dict] = {}
@@ -1029,7 +986,7 @@ with tab_rank:
                 _rank_eff[_rtid]["wins"] += 1
 
     all_rows = []
-    for rank, (tid, name, rating) in enumerate(rankings[:_rank_n], 1):
+    for rank, (tid, name, rating) in enumerate(rankings[:64], 1):
         _ed = _rank_eff.get(tid, {})
         _pf = _ed.get("pts_for", [])
         _pa = _ed.get("pts_against", [])
@@ -1091,84 +1048,43 @@ with tab_rank:
 # ════════════════════════════════════════════════════════════════════════════ #
 
 with tab_bracket:
-    if cfg["is_nba"]:
-        # ── NBA: no March Madness bracket; show playoff title odds ────────────
-        st.subheader(f"NBA Title Odds | {cfg['label']}")
+    st.subheader(f"Tournament Bracket | {cfg['label']} Division")
+    st.caption(
+        "Bracket seeded by current Elo (S-curve). "
+        "South TL | Midwest BL | East TR | West BR. "
+        "Win% and title odds shown on each Final Four team. "
+        "Actual Selection Sunday seeding may differ."
+    )
+
+    # Final Four visual at the top
+    fig_ff = draw_final_four(regions, adv_odds, engine.names, color)
+    st.pyplot(fig_ff, width="stretch")
+    plt.close()
+
+    st.markdown("---")
+
+    # Combined bracket — all 4 regions + Final Four + Championship on one canvas
+    bracket_html = combined_bracket_html(regions, engine.win_prob, color, cfg["label"], adv_odds)
+    components.html(bracket_html, height=980, scrolling=True)
+    st.caption(
+        "Highlighted box = projected winner.  "
+        "Win% shown bottom-right of each team.  "
+        "Elo shown bottom-left.  Neutral court assumption."
+    )
+
+    # Advancement probability tables (per region, collapsible)
+    with st.expander("Show advancement probability tables"):
+        reg_sub_tabs = st.tabs(REGIONS)
+        for rsub, region_name in zip(reg_sub_tabs, REGIONS):
+            with rsub:
+                df_reg = region_table(regions[region_name], adv_odds, champ_odds)
+                styled = style_region_table(df_reg, color)
+                st.dataframe(styled, width="stretch", height=420)
         st.caption(
-            "Simulated NBA championship probability for all 30 teams using "
-            "Monte Carlo bracket simulation (100,000 runs). "
-            "Teams seeded 1-30 by current Elo rating."
+            "**R64** = survives first round  ·  **R32** = Round of 32  ·  "
+            "**S16** = Sweet 16  ·  **E8** = Elite 8  ·  "
+            "**FF** = Final Four  ·  **Title** = Championship"
         )
-
-        # Full table
-        _nba_rows = []
-        for _rank, (_tid, _name, _rating) in enumerate(rankings[:30], 1):
-            _nba_rows.append({
-                "Rank":   _rank,
-                "Team":   _name,
-                "Elo":    round(_rating),
-                "Title %": champ_odds.get(_tid, 0.0),
-            })
-        _nba_df = pd.DataFrame(_nba_rows)
-
-        _nba_styled = (
-            _nba_df.style
-            .format({"Elo": "{:.0f}", "Title %": "{:.1%}"})
-            .background_gradient(subset=["Elo"], cmap="Blues")
-            .background_gradient(subset=["Title %"], cmap="Greens")
-            .set_properties(**{"text-align": "center"})
-        )
-
-        col_tbl, col_bar = st.columns([3, 2])
-        with col_tbl:
-            st.dataframe(_nba_styled, height=900, width="stretch")
-        with col_bar:
-            top15_names = [r["Team"]    for r in _nba_rows[:15]]
-            top15_odds  = [r["Title %"] for r in _nba_rows[:15]]
-            fig_nba = plotly_odds_bar(top15_names[::-1], top15_odds[::-1], color)
-            st.plotly_chart(fig_nba, width="stretch")
-            st.caption("Top 15 NBA championship odds from 100,000 Monte Carlo simulations.")
-
-    else:
-        # ── CBB: standard tournament bracket ─────────────────────────────────
-        st.subheader(f"Tournament Bracket | {cfg['label']} Division")
-        st.caption(
-            "Bracket seeded by current Elo (S-curve). "
-            "South TL | Midwest BL | East TR | West BR. "
-            "Win% and title odds shown on each Final Four team. "
-            "Actual Selection Sunday seeding may differ."
-        )
-
-        # Final Four visual at the top
-        assert regions is not None  # guaranteed for CBB by load_bracket_data
-        fig_ff = draw_final_four(regions, adv_odds, engine.names, color)
-        st.pyplot(fig_ff, width="stretch")
-        plt.close()
-
-        st.markdown("---")
-
-        # Combined bracket — all 4 regions + Final Four + Championship on one canvas
-        bracket_html = combined_bracket_html(regions, engine.win_prob, color, cfg["label"], adv_odds)
-        components.html(bracket_html, height=980, scrolling=True)
-        st.caption(
-            "Highlighted box = projected winner.  "
-            "Win% shown bottom-right of each team.  "
-            "Elo shown bottom-left.  Neutral court assumption."
-        )
-
-        # Advancement probability tables (per region, collapsible)
-        with st.expander("Show advancement probability tables"):
-            reg_sub_tabs = st.tabs(REGIONS)
-            for rsub, region_name in zip(reg_sub_tabs, REGIONS):
-                with rsub:
-                    df_reg = region_table(regions[region_name], adv_odds, champ_odds)
-                    styled = style_region_table(df_reg, color)
-                    st.dataframe(styled, width="stretch", height=420)
-            st.caption(
-                "**R64** = survives first round  ·  **R32** = Round of 32  ·  "
-                "**S16** = Sweet 16  ·  **E8** = Elite 8  ·  "
-                "**FF** = Final Four  ·  **Title** = Championship"
-            )
 
 
 # ════════════════════════════════════════════════════════════════════════════ #
@@ -2108,7 +2024,10 @@ with tab_efficiency:
                             line_width=1, annotation_text="Avg Off",
                             annotation_font=dict(color=NORD["green"], size=10))
         _scat_fig.update_layout(
-            xaxis_title="Points allowed per game (defensive efficiency — lower is better)",
+            xaxis=dict(
+                title="Points allowed per game (defensive efficiency — lower is better)",
+                autorange="reversed",
+            ),
             yaxis_title="Points scored per game (offensive efficiency — higher is better)",
             height=420,
             margin=dict(l=55, r=10, t=30, b=50),
@@ -2122,18 +2041,18 @@ with tab_efficiency:
         st.markdown("**How to read this chart**")
         st.markdown(
             "Every dot is a team. Y-axis = points scored per game (offense), "
-            "X-axis = points allowed per game (defense). Lower x = better defense.\n\n"
-            "**Top-left** (high offense, good defense): elite teams. "
+            "X-axis = points allowed per game (defense — axis reversed, right = better).\n\n"
+            "**Top-right** (high offense, good defense): most efficient teams. "
             "Score a lot and hold opponents down — tournament favorites.\n\n"
-            "**Top-right** (high offense, poor defense): prolific scorers "
+            "**Top-left** (high offense, poor defense): prolific scorers "
             "that give up a lot — fun to watch, risky to trust in March.\n\n"
-            "**Bottom-left** (low offense, good defense): grinders. "
+            "**Bottom-right** (low offense, good defense): grinders. "
             "Win ugly with defense but struggle to score at tournament pace.\n\n"
-            "**Bottom-right** (low offense, poor defense): rebuilding teams — "
+            "**Bottom-left** (low offense, poor defense): rebuilding teams — "
             "neither scoring nor stopping the other team.\n\n"
             "**Dashed diagonal**: net rating = 0. Above the line = positive net, "
             "below = negative. "
-            "**Cross-hairs** mark league averages — top-left of both = elite."
+            "**Cross-hairs** mark league averages — top-right of both = elite."
         )
 
     st.markdown("---")
@@ -2168,12 +2087,12 @@ with tab_players:
 
     _players = load_players(division)
 
-    _pl_sub_rank, _pl_sub_bracket, _pl_sub_eval, _pl_sub_matchup, _pl_sub_eff = st.tabs([
-        "📊 Rankings", "🏆 Bracket Teams", "📈 Evaluation", "⚔️ Matchup", "⚡ Efficiency",
+    _pl_sub_rank, _pl_sub_eval, _pl_sub_matchup, _pl_sub_eff = st.tabs([
+        "📊 Rankings", "📈 Evaluation", "⚔️ Matchup", "⚡ Efficiency",
     ])
 
     if not _players:
-        for _psub in [_pl_sub_rank, _pl_sub_bracket, _pl_sub_eval, _pl_sub_matchup, _pl_sub_eff]:
+        for _psub in [_pl_sub_rank, _pl_sub_eval, _pl_sub_matchup, _pl_sub_eff]:
             with _psub:
                 st.warning("Could not fetch player data from ESPN. Check network connection.")
     else:
@@ -2222,69 +2141,6 @@ with tab_players:
                          "FG%":"{:.1f}","3P%":"{:.1f}","FT%":"{:.1f}"}),
                 height=600,
             )
-
-        # ── Bracket Teams sub-tab ─────────────────────────────────────────────
-        with _pl_sub_bracket:
-            st.markdown("**Top players on projected bracket teams**")
-            st.caption("Matches player teams to the top 64 Elo-ranked teams. "
-                       "Only players whose ESPN team ID matches a ranked team are shown.")
-            _ranked_team_ids = {tid for tid, _, _ in rankings[:64]}
-            _ranked_names    = {tid: name for tid, name, _ in rankings[:64]}
-            _ranked_elo      = {tid: round(r, 1) for tid, _, r in rankings[:64]}
-            _bk_rows = []
-            for _, _row in _pl_df.iterrows():
-                _tid = _row["team_id"]
-                if _tid in _ranked_team_ids:
-                    _bk_rows.append({
-                        "Player":   _row["Player"],
-                        "Team":     _ranked_names.get(_tid, _row["Team"]),
-                        "Team Elo": _ranked_elo.get(_tid, 0),
-                        "PR":       _row["PR"],
-                        "PPG":      _row["PPG"],
-                        "RPG":      _row["RPG"],
-                        "APG":      _row["APG"],
-                        "Title %":  champ_odds.get(_tid, 0),
-                    })
-            if _bk_rows:
-                _bk_df = pd.DataFrame(_bk_rows).sort_values("PR", ascending=False).reset_index(drop=True)
-                _bk_df.index += 1
-                st.markdown(f"**{len(_bk_df)} players from top-64 projected bracket teams**")
-                _b1, _b2 = st.columns([2, 1])
-                with _b1:
-                    st.dataframe(
-                        _bk_df.style
-                        .background_gradient(subset=["PR"],       cmap="Blues",  vmin=0,   vmax=35)
-                        .background_gradient(subset=["Team Elo"], cmap="Greens", vmin=1400, vmax=1700)
-                        .background_gradient(subset=["Title %"],  cmap="Purples",vmin=0,   vmax=0.3)
-                        .format({"PR":"{:.2f}","PPG":"{:.1f}","RPG":"{:.1f}","APG":"{:.1f}",
-                                 "Team Elo":"{:.1f}","Title %":"{:.1%}"}),
-                        height=560,
-                    )
-                with _b2:
-                    # Top 10 PR players from bracket teams — bar chart
-                    _top10_bk = _bk_df.head(10)
-                    _bk_fig = go.Figure(go.Bar(
-                        x=_top10_bk["PR"],
-                        y=_top10_bk["Player"],
-                        orientation="h",
-                        marker_color=color,
-                        text=[f"{v:.2f}" for v in _top10_bk["PR"]],
-                        textposition="outside",
-                        textfont=dict(size=10, color=NORD["snow0"]),
-                    ))
-                    _bk_fig.update_layout(
-                        title="Top 10 PR — bracket teams",
-                        xaxis_title="Player Rating",
-                        yaxis=dict(autorange="reversed"),
-                        height=400,
-                        margin=dict(l=10, r=60, t=40, b=30),
-                        plot_bgcolor="rgba(0,0,0,0)",
-                        paper_bgcolor="rgba(0,0,0,0)",
-                        font=dict(color=NORD["snow0"]),
-                    )
-                    st.plotly_chart(_bk_fig, width="stretch")
-            else:
-                st.info("No player-team matches found — ESPN team IDs may differ from Elo engine IDs.")
 
         # ── Evaluation sub-tab ────────────────────────────────────────────────
         with _pl_sub_eval:
