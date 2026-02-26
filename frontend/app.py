@@ -40,9 +40,6 @@ from src.utils.metrics import evaluate
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-SEASON_START = date(2025, 11, 4)
-SEASON_END   = date(2026, 2, 23)
-
 ROOT = Path(__file__).parent.parent   # project root, works regardless of cwd
 
 # Nord colour palette constants
@@ -67,18 +64,37 @@ NORD = {
 
 DIVISION_CONFIG = {
     "mens": {
-        "label":     "Men's",
-        "cache_dir": str(ROOT / "data" / "raw" / "mens"),
-        "emoji":     "🏀",
-        "color":     NORD["frost1"],   # #88C0D0 — light blue
-        "light":     NORD["bg1"],      # #3B4252 — dark panel bg
+        "label":        "Men's CBB",
+        "cache_dir":    str(ROOT / "data" / "raw" / "mens"),
+        "emoji":        "🏀",
+        "color":        NORD["frost1"],
+        "light":        NORD["bg1"],
+        "season_start": date(2025, 11, 4),
+        "season_end":   date(2026, 2, 23),
+        "is_nba":       False,
+        "avg_total":    140.0,   # avg combined points per game
     },
     "womens": {
-        "label":     "Women's",
-        "cache_dir": str(ROOT / "data" / "raw" / "womens"),
-        "emoji":     "🏀",
-        "color":     NORD["purple"],   # #B48EAD — aurora purple
-        "light":     NORD["bg1"],      # #3B4252
+        "label":        "Women's CBB",
+        "cache_dir":    str(ROOT / "data" / "raw" / "womens"),
+        "emoji":        "🏀",
+        "color":        NORD["purple"],
+        "light":        NORD["bg1"],
+        "season_start": date(2025, 11, 4),
+        "season_end":   date(2026, 2, 23),
+        "is_nba":       False,
+        "avg_total":    130.0,
+    },
+    "nba": {
+        "label":        "NBA",
+        "cache_dir":    str(ROOT / "data" / "raw" / "nba"),
+        "emoji":        "🏆",
+        "color":        NORD["orange"],
+        "light":        NORD["bg1"],
+        "season_start": date(2025, 10, 22),
+        "season_end":   date(2026, 2, 23),
+        "is_nba":       True,
+        "avg_total":    230.0,   # avg combined points (NBA runs ~115 per team)
     },
 }
 
@@ -128,7 +144,7 @@ def _fmt_ml(ml: int) -> str:
 def load_engine(division: str) -> EloEngine:
     cfg = DIVISION_CONFIG[division]
     games = fetch_season(
-        SEASON_START, SEASON_END,
+        cfg["season_start"], cfg["season_end"],
         cache_dir=cfg["cache_dir"],
         division=division,
         verbose=False,
@@ -142,6 +158,20 @@ def load_engine(division: str) -> EloEngine:
 def load_bracket_data(division: str):
     engine = load_engine(division)
     rankings = engine.rankings()
+
+    if DIVISION_CONFIG[division]["is_nba"]:
+        # NBA: no 64-team bracket. Simulate all 30 teams (pads to 32 = 5 rounds).
+        top30 = [tid for tid, _, _ in rankings[:30]]
+        adv_odds = round_advancement_odds(
+            seeded_teams=top30,
+            win_prob_fn=engine.win_prob,
+            n_sims=N_SIMS,
+            seed=42,
+        )
+        # Round 5 = championship (32-slot bracket = 5 rounds)
+        champ_odds = {tid: adv_odds[tid].get(5, 0.0) for tid in top30}
+        return None, adv_odds, champ_odds
+
     regions  = assign_seeds(rankings)
 
     # Build bracket in proper seed order: East slots 0-15, West 16-31,
@@ -220,6 +250,17 @@ def live_bracket_impact(
         sim.update(home_id, away_id, 60, 70, neutral=True)
 
     rankings_sim = sim.rankings()
+
+    if DIVISION_CONFIG[division]["is_nba"]:
+        top30 = [tid for tid, _, _ in rankings_sim[:30]]
+        adv = round_advancement_odds(
+            seeded_teams=top30,
+            win_prob_fn=sim.win_prob,
+            n_sims=5_000,
+            seed=42,
+        )
+        return {tid: adv[tid].get(5, 0.0) for tid in top30}
+
     regions_sim  = assign_seeds(rankings_sim)
     bracket_order: list[str] = []
     for rn in REGIONS:
@@ -920,17 +961,17 @@ hcol1, hcol2 = st.columns([3, 1])
 with hcol1:
     st.markdown("## 🎯 ChalkIQ")
     st.markdown("*the favorites win*")
-    st.caption(f"Elo power ratings · Monte Carlo simulation · 2025–26 season through {SEASON_END}")
 with hcol2:
     division = st.radio(
         "Division",
-        options=["mens", "womens"],
+        options=["mens", "womens", "nba"],
         format_func=lambda d: f"{DIVISION_CONFIG[d]['emoji']} {DIVISION_CONFIG[d]['label']}",
         horizontal=True,
         key="division",
     )
 
 cfg   = DIVISION_CONFIG[division]
+st.caption(f"Elo power ratings · Monte Carlo simulation · 2025–26 season through {cfg['season_end']}")
 color = cfg["color"]
 light = cfg["light"]
 
@@ -945,15 +986,13 @@ metrics                    = evaluate(engine.history)
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 
-tab_rank, tab_bracket, tab_live, tab_eval, tab_matchup, tab_gamble, tab_efficiency, tab_markets, tab_players, tab_math, tab_sources = st.tabs([
+tab_rank, tab_bracket, tab_live, tab_eval, tab_matchup, tab_efficiency, tab_players, tab_math, tab_sources = st.tabs([
     "📊  Power Rankings",
     "🏆  Bracket",
     "🔴  Live",
     "📈  Model Evaluation",
     "⚔️  Matchup",
-    "🎰  Parlay",
     "⚡  Efficiency",
-    "📉  Markets",
     "👤  Players",
     "📐  Math",
     "📚  Sources",
@@ -965,15 +1004,48 @@ tab_rank, tab_bracket, tab_live, tab_eval, tab_matchup, tab_gamble, tab_efficien
 # ════════════════════════════════════════════════════════════════════════════ #
 
 with tab_rank:
-    st.subheader(f"Top 64 | {cfg['label']} Division")
-    st.caption("The 64 teams most likely to receive an at-large or automatic bid on Selection Sunday, ranked by Elo.")
+    _rank_n   = 30 if cfg["is_nba"] else 64
+    _rank_lbl = "All 30 Teams" if cfg["is_nba"] else "Top 64"
+    _rank_cap = (
+        "All 30 NBA teams ranked by Elo rating, updated through the current season."
+        if cfg["is_nba"] else
+        "The 64 teams most likely to receive an at-large or automatic bid on Selection Sunday, ranked by Elo."
+    )
+    st.subheader(f"{_rank_lbl} | {cfg['label']} Division")
+    st.caption(_rank_cap)
+
+    # Build per-team efficiency from game history (for rankings table)
+    _rank_eff: dict[str, dict] = {}
+    for _rg in engine.history:
+        for _rtid, _rfor, _ragainst in [
+            (_rg["home_id"], _rg["home_score"], _rg["away_score"]),
+            (_rg["away_id"], _rg["away_score"], _rg["home_score"]),
+        ]:
+            if _rtid not in _rank_eff:
+                _rank_eff[_rtid] = {"pts_for": [], "pts_against": [], "wins": 0}
+            _rank_eff[_rtid]["pts_for"].append(_rfor)
+            _rank_eff[_rtid]["pts_against"].append(_ragainst)
+            if _rfor > _ragainst:
+                _rank_eff[_rtid]["wins"] += 1
 
     all_rows = []
-    for rank, (tid, name, rating) in enumerate(rankings[:64], 1):
+    for rank, (tid, name, rating) in enumerate(rankings[:_rank_n], 1):
+        _ed = _rank_eff.get(tid, {})
+        _pf = _ed.get("pts_for", [])
+        _pa = _ed.get("pts_against", [])
+        _off = round(sum(_pf) / len(_pf), 1) if _pf else 0.0
+        _def = round(sum(_pa) / len(_pa), 1) if _pa else 0.0
+        _net = round(_off - _def, 1)
+        _gp  = len(_pf)
+        _wp  = _ed.get("wins", 0) / _gp if _gp else 0.0
         all_rows.append({
             "Rank":  rank,
             "Team":  name,
             "Elo":   round(rating, 1),
+            "Off":   _off,
+            "Def":   _def,
+            "Net":   _net,
+            "Win%":  _wp,
             "R32":   adv_odds.get(tid, {}).get(2, 0),
             "S16":   adv_odds.get(tid, {}).get(3, 0),
             "E8":    adv_odds.get(tid, {}).get(4, 0),
@@ -981,7 +1053,7 @@ with tab_rank:
             "Title": champ_odds.get(tid, 0),
         })
 
-    df_all  = pd.DataFrame(all_rows).set_index("Rank")
+    df_all   = pd.DataFrame(all_rows).set_index("Rank")
     pct_cols = ["R32", "S16", "E8", "FF", "Title"]
 
     def _fmt_pct(v):
@@ -992,8 +1064,12 @@ with tab_rank:
     styled_all = (
         df_all.style
         .format({c: _fmt_pct for c in pct_cols})
-        .format({"Elo": "{:.1f}"})
+        .format({"Win%": "{:.1%}"})
+        .format({"Elo": "{:.1f}", "Off": "{:.1f}", "Def": "{:.1f}", "Net": "{:+.1f}"})
         .background_gradient(subset=pct_cols, cmap="Blues", vmin=0, vmax=0.5)
+        .background_gradient(subset=["Off"], cmap="Greens", vmin=60, vmax=90)
+        .background_gradient(subset=["Def"], cmap="Reds_r", vmin=55, vmax=85)
+        .background_gradient(subset=["Net"], cmap="RdYlGn", vmin=-15, vmax=15)
         .bar(subset=["Elo"], color=[light, color])
         .set_properties(**{"font-size": "13px"})
     )
@@ -1007,7 +1083,7 @@ with tab_rank:
         top20_odds  = [champ_odds.get(tid, 0) for tid, _, _ in rankings[:20]]
         fig_bar = plotly_odds_bar(top20_names[::-1], top20_odds[::-1], color)
         st.plotly_chart(fig_bar, width="stretch")
-        st.caption("Top 20 championship odds from 10,000 Monte Carlo bracket simulations.")
+        st.caption(f"Top 20 championship odds from {N_SIMS:,} Monte Carlo bracket simulations.")
 
 
 # ════════════════════════════════════════════════════════════════════════════ #
@@ -1015,43 +1091,84 @@ with tab_rank:
 # ════════════════════════════════════════════════════════════════════════════ #
 
 with tab_bracket:
-    st.subheader(f"Tournament Bracket | {cfg['label']} Division")
-    st.caption(
-        "Bracket seeded by current Elo (S-curve). "
-        "South TL | Midwest BL | East TR | West BR. "
-        "Win% and title odds shown on each Final Four team. "
-        "Actual Selection Sunday seeding may differ."
-    )
-
-    # Final Four visual at the top
-    fig_ff = draw_final_four(regions, adv_odds, engine.names, color)
-    st.pyplot(fig_ff, width="stretch")
-    plt.close()
-
-    st.markdown("---")
-
-    # Combined bracket — all 4 regions + Final Four + Championship on one canvas
-    bracket_html = combined_bracket_html(regions, engine.win_prob, color, cfg["label"], adv_odds)
-    components.html(bracket_html, height=980, scrolling=True)
-    st.caption(
-        "Highlighted box = projected winner.  "
-        "Win% shown bottom-right of each team.  "
-        "Elo shown bottom-left.  Neutral court assumption."
-    )
-
-    # Advancement probability tables (per region, collapsible)
-    with st.expander("Show advancement probability tables"):
-        reg_sub_tabs = st.tabs(REGIONS)
-        for rsub, region_name in zip(reg_sub_tabs, REGIONS):
-            with rsub:
-                df_reg = region_table(regions[region_name], adv_odds, champ_odds)
-                styled = style_region_table(df_reg, color)
-                st.dataframe(styled, width="stretch", height=420)
+    if cfg["is_nba"]:
+        # ── NBA: no March Madness bracket; show playoff title odds ────────────
+        st.subheader(f"NBA Title Odds | {cfg['label']}")
         st.caption(
-            "**R64** = survives first round  ·  **R32** = Round of 32  ·  "
-            "**S16** = Sweet 16  ·  **E8** = Elite 8  ·  "
-            "**FF** = Final Four  ·  **Title** = Championship"
+            "Simulated NBA championship probability for all 30 teams using "
+            "Monte Carlo bracket simulation (100,000 runs). "
+            "Teams seeded 1-30 by current Elo rating."
         )
+
+        # Full table
+        _nba_rows = []
+        for _rank, (_tid, _name, _rating) in enumerate(rankings[:30], 1):
+            _nba_rows.append({
+                "Rank":   _rank,
+                "Team":   _name,
+                "Elo":    round(_rating),
+                "Title %": champ_odds.get(_tid, 0.0),
+            })
+        _nba_df = pd.DataFrame(_nba_rows)
+
+        _nba_styled = (
+            _nba_df.style
+            .format({"Elo": "{:.0f}", "Title %": "{:.1%}"})
+            .background_gradient(subset=["Elo"], cmap="Blues")
+            .background_gradient(subset=["Title %"], cmap="Greens")
+            .set_properties(**{"text-align": "center"})
+        )
+
+        col_tbl, col_bar = st.columns([3, 2])
+        with col_tbl:
+            st.dataframe(_nba_styled, height=900, width="stretch")
+        with col_bar:
+            top15_names = [r["Team"]    for r in _nba_rows[:15]]
+            top15_odds  = [r["Title %"] for r in _nba_rows[:15]]
+            fig_nba = plotly_odds_bar(top15_names[::-1], top15_odds[::-1], color)
+            st.plotly_chart(fig_nba, width="stretch")
+            st.caption("Top 15 NBA championship odds from 100,000 Monte Carlo simulations.")
+
+    else:
+        # ── CBB: standard tournament bracket ─────────────────────────────────
+        st.subheader(f"Tournament Bracket | {cfg['label']} Division")
+        st.caption(
+            "Bracket seeded by current Elo (S-curve). "
+            "South TL | Midwest BL | East TR | West BR. "
+            "Win% and title odds shown on each Final Four team. "
+            "Actual Selection Sunday seeding may differ."
+        )
+
+        # Final Four visual at the top
+        assert regions is not None  # guaranteed for CBB by load_bracket_data
+        fig_ff = draw_final_four(regions, adv_odds, engine.names, color)
+        st.pyplot(fig_ff, width="stretch")
+        plt.close()
+
+        st.markdown("---")
+
+        # Combined bracket — all 4 regions + Final Four + Championship on one canvas
+        bracket_html = combined_bracket_html(regions, engine.win_prob, color, cfg["label"], adv_odds)
+        components.html(bracket_html, height=980, scrolling=True)
+        st.caption(
+            "Highlighted box = projected winner.  "
+            "Win% shown bottom-right of each team.  "
+            "Elo shown bottom-left.  Neutral court assumption."
+        )
+
+        # Advancement probability tables (per region, collapsible)
+        with st.expander("Show advancement probability tables"):
+            reg_sub_tabs = st.tabs(REGIONS)
+            for rsub, region_name in zip(reg_sub_tabs, REGIONS):
+                with rsub:
+                    df_reg = region_table(regions[region_name], adv_odds, champ_odds)
+                    styled = style_region_table(df_reg, color)
+                    st.dataframe(styled, width="stretch", height=420)
+            st.caption(
+                "**R64** = survives first round  ·  **R32** = Round of 32  ·  "
+                "**S16** = Sweet 16  ·  **E8** = Elite 8  ·  "
+                "**FF** = Final Four  ·  **Title** = Championship"
+            )
 
 
 # ════════════════════════════════════════════════════════════════════════════ #
@@ -1864,232 +1981,16 @@ with tab_matchup:
 
     st.markdown("---")
     st.markdown("**Predicted score**")
-    _h_pts, _a_pts = _predicted_score(m["prob_a"])
+    _h_pts, _a_pts = _predicted_score(m["prob_a"], avg_total=cfg["avg_total"])
     sc1, sc2, sc3 = st.columns(3)
     sc1.metric(name_a[:22], str(_h_pts))
     sc2.metric(name_b[:22], str(_a_pts))
     sc3.metric("Predicted margin", f"{_h_pts - _a_pts:+d} ({name_a[:14]})" if _h_pts != _a_pts else "Pick 'em")
     st.caption(
         "Predicted score uses the Elo win probability and a random-walk scoring model "
-        f"(SIGMA = 2.0 pts/sqrt(min), average total = 140 pts). "
+        f"(SIGMA = 2.0 pts/sqrt(min), average total = {int(cfg['avg_total'])} pts). "
         "Treat as a rough estimate, not a precise forecast."
     )
-
-
-# ════════════════════════════════════════════════════════════════════════════ #
-# TAB 6 — Parlay Builder
-# ════════════════════════════════════════════════════════════════════════════ #
-
-with tab_gamble:
-    st.subheader("Parlay Builder | Simulated Only")
-    st.error(
-        "**For entertainment and analysis only. No real money involved. "
-        "This tool does not facilitate gambling.**",
-    )
-
-    import datetime as _gdt
-    _g_today    = _gdt.date.today()
-    _g_tomorrow = _g_today + _gdt.timedelta(days=1)
-    _g_games    = load_future_games(division, _g_tomorrow)
-
-    # Annotate each game with our model odds
-    for _gg in _g_games:
-        _pp = engine.win_prob(_gg["home_id"], _gg["away_id"], neutral=_gg["neutral"])
-        _gg["prob_home"]    = _pp
-        _gg["prob_away"]    = 1 - _pp
-        _gg["ml_home"]      = _prob_to_american(_pp)
-        _gg["ml_away"]      = _prob_to_american(1 - _pp)
-        _h_sc, _a_sc        = _predicted_score(_pp)
-        _gg["pred_home_pts"] = _h_sc
-        _gg["pred_away_pts"] = _a_sc
-
-    if not _g_games:
-        st.info(f"No games scheduled for {_g_tomorrow.strftime('%A %b %-d')}. Check back closer to game day.")
-    else:
-        st.caption(
-            f"Games for {_g_tomorrow.strftime('%A, %B %-d')}  |  "
-            "Moneylines derived from our Elo model (5% vig)  |  "
-            "Predicted scores use random-walk margin model"
-        )
-
-        # ── Game cards showing model odds ─────────────────────────────────────
-        _gl_cols = st.columns(2)
-        for _gi, _gg in enumerate(_g_games):
-            with _gl_cols[_gi % 2]:
-                _gc_html = f"""
-<div style="border:1px solid {NORD['bg3']};border-radius:8px;padding:12px 14px;
-            margin-bottom:8px;background:{NORD['bg1']}">
-  <div style="font-size:11px;color:{NORD['bg3']};font-family:ui-sans-serif,sans-serif;
-              margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">
-    {_html.escape(_gg.get('status_detail','') or 'Tomorrow')}
-  </div>
-  <table style="width:100%;border-collapse:collapse;font-family:ui-sans-serif,sans-serif">
-    <tr>
-      <td style="font-size:13px;font-weight:700;color:{NORD['snow2']};padding:2px 0">
-        {_html.escape(_gg['home_name'][:26])}
-      </td>
-      <td style="text-align:right;font-size:12px;color:{color};font-weight:700;padding:2px 0">
-        {_fmt_ml(_gg['ml_home'])} &nbsp; {_gg['pred_home_pts']} pts
-      </td>
-    </tr>
-    <tr>
-      <td style="font-size:13px;font-weight:700;color:{NORD['snow2']};padding:2px 0">
-        {_html.escape(_gg['away_name'][:26])}
-      </td>
-      <td style="text-align:right;font-size:12px;color:{color};font-weight:700;padding:2px 0">
-        {_fmt_ml(_gg['ml_away'])} &nbsp; {_gg['pred_away_pts']} pts
-      </td>
-    </tr>
-  </table>
-  <div style="font-size:10px;color:{NORD['bg3']};margin-top:6px;font-family:ui-sans-serif,sans-serif">
-    Model: {_gg['home_name'][:16]} {_gg['prob_home']:.0%} &nbsp;|&nbsp; {_gg['away_name'][:16]} {_gg['prob_away']:.0%}
-  </div>
-</div>
-"""
-                st.markdown(_gc_html, unsafe_allow_html=True)
-
-        st.markdown("---")
-        st.markdown("### Build Your Parlay")
-        st.caption(
-            "Select games and a team for each leg. "
-            "The hedge strategy automatically creates a safe parlay (all your picks) "
-            "plus one upset parlay per leg, so you profit if any single pick loses unexpectedly."
-        )
-
-        # ── Game selection + pick per leg ─────────────────────────────────────
-        _game_map = {f"{_g['away_name'][:22]} @ {_g['home_name'][:22]}": _g for _g in _g_games}
-        _sel_labels = st.multiselect(
-            "Select games for your parlay (2-6 legs)",
-            list(_game_map.keys()),
-            max_selections=6,
-        )
-
-        if len(_sel_labels) < 2:
-            st.info("Pick at least 2 games to build a hedge strategy.")
-        else:
-            _sel_games = [_game_map[l] for l in _sel_labels]
-
-            _picks = []
-            st.markdown("**Your picks per leg:**")
-            for _gi, _sg in enumerate(_sel_games):
-                _opts = [
-                    f"{_sg['home_name'][:24]}  ({_fmt_ml(_sg['ml_home'])})",
-                    f"{_sg['away_name'][:24]}  ({_fmt_ml(_sg['ml_away'])})",
-                ]
-                _choice = st.radio(
-                    f"**{_sg['away_name'][:20]} @ {_sg['home_name'][:20]}**",
-                    _opts,
-                    horizontal=True,
-                    key=f"parlay_pick_{_sg['game_id']}",
-                )
-                _is_home = _choice.startswith(_sg["home_name"][:5])
-                _picks.append({
-                    "game":      _sg,
-                    "pick_name": _sg["home_name"] if _is_home else _sg["away_name"],
-                    "pick_prob": _sg["prob_home"] if _is_home else _sg["prob_away"],
-                    "pick_ml":   _sg["ml_home"]   if _is_home else _sg["ml_away"],
-                    "opp_name":  _sg["away_name"] if _is_home else _sg["home_name"],
-                    "opp_prob":  _sg["prob_away"] if _is_home else _sg["prob_home"],
-                    "opp_ml":    _sg["ml_away"]   if _is_home else _sg["ml_home"],
-                })
-
-            _stake = st.number_input("Stake per parlay ($)", min_value=1, value=10, step=5)
-            _n     = len(_picks)
-            _total = _stake * (_n + 1)
-
-            # ── Build N+1 parlays ─────────────────────────────────────────────
-            def _parlay_mult(legs):
-                m = 1.0
-                for (_, ml, _) in legs:
-                    m *= _american_to_decimal(ml)
-                return m
-
-            # Parlay 0: all picks
-            _p0_legs = [(p["pick_name"], p["pick_ml"], p["pick_prob"]) for p in _picks]
-            _p0_prob = _math.prod(p["pick_prob"] for p in _picks)
-            _p0_mult = _parlay_mult(_p0_legs)
-
-            _parlays = [{
-                "name":    "All picks win",
-                "tag":     "SAFE",
-                "legs":    _p0_legs,
-                "prob":    _p0_prob,
-                "mult":    _p0_mult,
-                "payout":  _stake * _p0_mult,
-                "net":     _stake * _p0_mult - _total,
-            }]
-
-            # Parlay i: flip pick i → opponent
-            for _pi, _pivot in enumerate(_picks):
-                _legs = []
-                _prob = 1.0
-                for _pj, _p in enumerate(_picks):
-                    if _pj == _pi:
-                        _legs.append((_p["opp_name"], _p["opp_ml"], _p["opp_prob"]))
-                        _prob *= _p["opp_prob"]
-                    else:
-                        _legs.append((_p["pick_name"], _p["pick_ml"], _p["pick_prob"]))
-                        _prob *= _p["pick_prob"]
-                _mult = _parlay_mult(_legs)
-                _parlays.append({
-                    "name":   f"Upset: {_pivot['opp_name'][:20]} wins",
-                    "tag":    "HEDGE",
-                    "legs":   _legs,
-                    "prob":   _prob,
-                    "mult":   _mult,
-                    "payout": _stake * _mult,
-                    "net":    _stake * _mult - _total,
-                })
-
-            # ── Summary metrics ───────────────────────────────────────────────
-            st.markdown("---")
-            st.markdown(f"**Strategy summary**  |  Total stake: **${_total:.0f}**")
-
-            _ev = sum(par["prob"] * par["payout"] for par in _parlays) - _total
-            _p_loss = 1 - sum(par["prob"] for par in _parlays)
-
-            sc1, sc2, sc3, sc4 = st.columns(4)
-            sc1.metric("Total stake",    f"${_total:.0f}")
-            sc2.metric("Parlays built",  str(len(_parlays)))
-            sc3.metric("Expected value", f"${_ev:+.2f}")
-            sc4.metric("P(total loss)",  f"{max(0, _p_loss):.1%}",
-                       help="Probability that 2+ of your picks lose (all parlays fail).")
-
-            # ── Scenario table ────────────────────────────────────────────────
-            st.markdown("**Outcome scenarios**")
-            _scen_rows = []
-            for par in _parlays:
-                _scen_rows.append({
-                    "Scenario":    par["name"],
-                    "Type":        par["tag"],
-                    "Probability": f"{par['prob']:.1%}",
-                    "Multiplier":  f"{par['mult']:.2f}x",
-                    "Payout":      f"${par['payout']:.2f}",
-                    "Net P&L":     f"${par['net']:+.2f}",
-                })
-
-            # Add total-loss row
-            _scen_rows.append({
-                "Scenario":    "2+ picks lose",
-                "Type":        "BUST",
-                "Probability": f"{max(0, _p_loss):.1%}",
-                "Multiplier":  "0x",
-                "Payout":      "$0.00",
-                "Net P&L":     f"-${_total:.2f}",
-            })
-            st.dataframe(pd.DataFrame(_scen_rows), use_container_width=True, hide_index=True)
-
-            # ── Individual parlay detail ──────────────────────────────────────
-            st.markdown("**Parlay legs detail**")
-            for par in _parlays:
-                _leg_txt = "  +  ".join(
-                    f"{name} ({_fmt_ml(ml)})" for name, ml, _ in par["legs"]
-                )
-                st.caption(
-                    f"**{par['tag']}** {par['name']}: "
-                    f"{_leg_txt}  →  {par['mult']:.2f}x  →  "
-                    f"${par['payout']:.2f} payout  (prob {par['prob']:.1%})"
-                )
 
 
 # ════════════════════════════════════════════════════════════════════════════ #
@@ -2207,9 +2108,8 @@ with tab_efficiency:
                             line_width=1, annotation_text="Avg Off",
                             annotation_font=dict(color=NORD["green"], size=10))
         _scat_fig.update_layout(
-            xaxis_title="Defensive efficiency (lower = better defense)",
-            yaxis_title="Offensive efficiency (higher = better offense)",
-            xaxis=dict(autorange="reversed"),   # lower def eff = better → right side
+            xaxis_title="Points allowed per game (defensive efficiency — lower is better)",
+            yaxis_title="Points scored per game (offensive efficiency — higher is better)",
             height=420,
             margin=dict(l=55, r=10, t=30, b=50),
             plot_bgcolor="rgba(0,0,0,0)",
@@ -2221,20 +2121,19 @@ with tab_efficiency:
     with _scat_txt:
         st.markdown("**How to read this chart**")
         st.markdown(
-            "Every dot is a team. The two axes measure how many points they "
-            "score (y-axis, offensive efficiency) and how many they allow "
-            "(x-axis, defensive efficiency).\n\n"
-            "**Top-right quadrant** (high off, poor defense): prolific scorers "
-            "that give up a lot — high-variance, high-seed-risk teams.\n\n"
-            "**Top-left quadrant** (high off, good defense): elite teams. "
-            "They score a lot and hold opponents down — tournament favorites.\n\n"
-            "**Bottom-left quadrant** (low off, good defense): grinders. "
-            "These teams win with defense but struggle to score.\n\n"
-            "**Dashed diagonal**: where Off Eff = Def Eff (net rating = 0). "
-            "Teams above the line have positive net ratings.\n\n"
-            "**Colored cross-hairs** show the average for each axis. "
-            "Being above the green line means above-average offense; "
-            "being left of the orange line means above-average defense."
+            "Every dot is a team. Y-axis = points scored per game (offense), "
+            "X-axis = points allowed per game (defense). Lower x = better defense.\n\n"
+            "**Top-left** (high offense, good defense): elite teams. "
+            "Score a lot and hold opponents down — tournament favorites.\n\n"
+            "**Top-right** (high offense, poor defense): prolific scorers "
+            "that give up a lot — fun to watch, risky to trust in March.\n\n"
+            "**Bottom-left** (low offense, good defense): grinders. "
+            "Win ugly with defense but struggle to score at tournament pace.\n\n"
+            "**Bottom-right** (low offense, poor defense): rebuilding teams — "
+            "neither scoring nor stopping the other team.\n\n"
+            "**Dashed diagonal**: net rating = 0. Above the line = positive net, "
+            "below = negative. "
+            "**Cross-hairs** mark league averages — top-left of both = elite."
         )
 
     st.markdown("---")
@@ -2255,345 +2154,363 @@ with tab_efficiency:
 
 
 # ════════════════════════════════════════════════════════════════════════════ #
-# TAB 8 — Markets (Teams as Stock)
-# ════════════════════════════════════════════════════════════════════════════ #
-
-with tab_markets:
-    import statistics as _statistics
-
-    st.subheader(f"Team Markets | {cfg['label']} Division")
-    st.markdown(
-        "College basketball teams modelled as financial assets. "
-        "**Elo rating = stock price**, game-by-game rating changes = daily returns, "
-        "and standard deviation of those changes = volatility. "
-        "A positive Sharpe analog means consistent outperformance."
-    )
-    st.markdown("---")
-
-    # ── Build Elo timeline per team ───────────────────────────────────────────
-    _elo_hist: dict[str, dict] = {}
-    for _g in sorted(engine.history, key=lambda x: x.get("date") or ""):
-        for _tid, _name, _elo_after in [
-            (_g["home_id"], _g["home_name"], _g["home_rating_after"]),
-            (_g["away_id"], _g["away_name"], _g["away_rating_after"]),
-        ]:
-            if _tid not in _elo_hist:
-                _elo_hist[_tid] = {
-                    "name":    _name,
-                    "dates":   [],
-                    "elos":    [1500.0],   # season starting point
-                    "changes": [],
-                }
-            _prev = _elo_hist[_tid]["elos"][-1]
-            _chg  = _elo_after - _prev
-            _elo_hist[_tid]["dates"].append(_g.get("date", ""))
-            _elo_hist[_tid]["elos"].append(_elo_after)
-            _elo_hist[_tid]["changes"].append(_chg)
-
-    # ── Screener table ────────────────────────────────────────────────────────
-    _mkt_rows = []
-    for _tid, _d in _elo_hist.items():
-        if len(_d["changes"]) < 3:
-            continue
-        _cur  = _d["elos"][-1]
-        _chgs = _d["changes"]
-        _avg  = sum(_chgs) / len(_chgs)
-        _std  = _statistics.stdev(_chgs) if len(_chgs) > 1 else 0.0
-        _sharpe = _avg / _std if _std > 0 else 0.0
-        _last10 = sum(_chgs[-10:]) if len(_chgs) >= 10 else sum(_chgs)
-        _season_chg = _cur - 1500.0
-        _season_ret = _season_chg / 1500.0 * 100
-        # Max drawdown from peak
-        _peak = max(_d["elos"])
-        _drawdown = _cur - _peak
-        _mkt_rows.append({
-            "team_id":    _tid,
-            "Team":       _d["name"],
-            "Elo":        round(_cur, 1),
-            "Season Chg": round(_season_chg, 1),
-            "Season Ret": round(_season_ret, 2),
-            "L10 Chg":    round(_last10, 1),
-            "Volatility": round(_std, 2),
-            "Sharpe":     round(_sharpe, 3),
-            "Peak":       round(_peak, 1),
-            "Drawdown":   round(_drawdown, 1),
-            "Games":      len(_chgs),
-        })
-
-    _mkt_df = (
-        pd.DataFrame(_mkt_rows)
-        .sort_values("Elo", ascending=False)
-        .reset_index(drop=True)
-    )
-    _mkt_df.index += 1
-
-    # ── Summary metrics ───────────────────────────────────────────────────────
-    _mm1, _mm2, _mm3, _mm4 = st.columns(4)
-    _mm1.metric("Teams tracked", f"{len(_mkt_df):,}")
-    _mm2.metric("Median Elo",    f"{_mkt_df['Elo'].median():.0f}")
-    _mm3.metric("Elo range",     f"{_mkt_df['Elo'].min():.0f} – {_mkt_df['Elo'].max():.0f}")
-    _mm4.metric("Avg volatility", f"{_mkt_df['Volatility'].mean():.2f} pts/game")
-    st.markdown("---")
-
-    # ── Elo stock chart ───────────────────────────────────────────────────────
-    _all_names = sorted(_mkt_df["Team"].tolist())
-    _sel_teams = st.multiselect(
-        "Select teams to plot (up to 8)",
-        options=_all_names,
-        default=_all_names[:5] if len(_all_names) >= 5 else _all_names,
-        max_selections=8,
-        help="Compare Elo trajectories like stock price charts.",
-    )
-
-    if _sel_teams:
-        _chart_fig = go.Figure()
-        _palette = [NORD["frost1"], NORD["green"], NORD["orange"],
-                    NORD["purple"], NORD["red"], NORD["yellow"],
-                    NORD["frost0"], NORD["frost3"]]
-        for _i, _tname in enumerate(_sel_teams):
-            _row = _mkt_df[_mkt_df["Team"] == _tname]
-            if _row.empty:
-                continue
-            _tid  = _row.iloc[0]["team_id"]
-            _data = _elo_hist.get(_tid, {})
-            _xs   = list(range(len(_data["elos"])))  # game 0 = season start
-            _ys   = _data["elos"]
-            _chart_fig.add_trace(go.Scatter(
-                x=_xs, y=_ys,
-                mode="lines",
-                name=_tname,
-                line=dict(color=_palette[_i % len(_palette)], width=2),
-                hovertemplate=f"<b>{_tname}</b><br>Game %{{x}}<br>Elo: %{{y:.1f}}<extra></extra>",
-            ))
-        _chart_fig.add_hline(y=1500, line_dash="dash", line_color=NORD["bg3"],
-                             line_width=1, annotation_text="Season start (1500)",
-                             annotation_font=dict(color=NORD["bg3"], size=10))
-        _chart_fig.update_layout(
-            xaxis_title="Game number (chronological)",
-            yaxis_title="Elo rating",
-            height=380,
-            margin=dict(l=55, r=10, t=30, b=50),
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            font=dict(color=NORD["snow0"]),
-            legend=dict(orientation="h", y=1.08),
-        )
-        st.plotly_chart(_chart_fig, width="stretch")
-    else:
-        st.info("Select at least one team above to display the Elo chart.")
-
-    st.markdown("---")
-
-    # ── Screener table ────────────────────────────────────────────────────────
-    st.markdown("**Team Screener — financial metrics on Elo ratings**")
-    st.caption(
-        "Elo = current rating (stock price) | Season Chg = total rating change from 1500 | "
-        "L10 Chg = sum of last 10 rating updates | Volatility = std dev of per-game changes | "
-        "Sharpe = avg change / volatility (higher = more consistent improvement) | "
-        "Drawdown = current Elo minus season peak"
-    )
-    _show_mkt = _mkt_df[["Team", "Elo", "Season Chg", "Season Ret", "L10 Chg",
-                          "Volatility", "Sharpe", "Peak", "Drawdown", "Games"]].copy()
-    _show_mkt["Season Ret"] = _show_mkt["Season Ret"].map(lambda v: f"{v:+.1f}%")
-    st.dataframe(
-        _show_mkt.style
-        .background_gradient(subset=["Elo"],        cmap="Blues",  vmin=1350, vmax=1700)
-        .background_gradient(subset=["Season Chg"], cmap="RdYlGn", vmin=-150, vmax=200)
-        .background_gradient(subset=["L10 Chg"],    cmap="RdYlGn", vmin=-50,  vmax=60)
-        .background_gradient(subset=["Sharpe"],     cmap="RdYlGn", vmin=-0.5, vmax=0.5)
-        .format({
-            "Elo":        "{:.1f}",
-            "Season Chg": "{:+.1f}",
-            "L10 Chg":    "{:+.1f}",
-            "Volatility": "{:.2f}",
-            "Sharpe":     "{:.3f}",
-            "Peak":       "{:.1f}",
-            "Drawdown":   "{:+.1f}",
-        }),
-        height=500,
-    )
-
-
-# ════════════════════════════════════════════════════════════════════════════ #
 # TAB 9 — Players (CB Players + Players as Stock)
 # ════════════════════════════════════════════════════════════════════════════ #
 
 with tab_players:
-    st.subheader(f"Player Rankings | {cfg['label']} Division")
+    st.subheader(f"Player Dashboard | {cfg['label']} Division")
     st.markdown(
-        "Individual college basketball players modelled as financial assets. "
-        "**Player Rating (PR)** is a composite score inspired by the NBA Game Score formula:\n\n"
-        "`PR = PPG + 0.4×RPG + 0.7×APG + 1.0×SPG + 0.7×BPG − 0.7×TPG`\n\n"
-        "Think of PPG as **revenue**, turnovers as **costs**, and PR as **net income** "
-        "— the player's total value production per game."
+        "College basketball players as financial assets. "
+        "**Player Rating (PR)** = PPG + 0.4×RPG + 0.7×APG + SPG + 0.7×BPG − 0.7×TPG. "
+        "Data via ESPN season stat leaders."
     )
     st.markdown("---")
 
     _players = load_players(division)
 
+    _pl_sub_rank, _pl_sub_bracket, _pl_sub_eval, _pl_sub_matchup, _pl_sub_eff = st.tabs([
+        "📊 Rankings", "🏆 Bracket Teams", "📈 Evaluation", "⚔️ Matchup", "⚡ Efficiency",
+    ])
+
     if not _players:
-        st.warning(
-            "Could not fetch player data from ESPN. "
-            "Check your network connection or try again later."
-        )
+        for _psub in [_pl_sub_rank, _pl_sub_bracket, _pl_sub_eval, _pl_sub_matchup, _pl_sub_eff]:
+            with _psub:
+                st.warning("Could not fetch player data from ESPN. Check network connection.")
     else:
-        # ── Summary metrics ───────────────────────────────────────────────────
-        _top_p   = _players[0] if _players else {}
-        _avg_pr  = sum(p["player_rating"] for p in _players) / len(_players) if _players else 0
-        _pm1, _pm2, _pm3, _pm4 = st.columns(4)
-        _pm1.metric("Players ranked", f"{len(_players):,}")
-        _pm2.metric("Top player",     _top_p.get("name", "—"))
-        _pm3.metric("Top PR",         f"{_top_p.get('player_rating', 0):.1f}")
-        _pm4.metric("Avg PR (leaders)", f"{_avg_pr:.1f}")
-
-        st.markdown("---")
-
-        # ── Player leaderboard ────────────────────────────────────────────────
+        # Build player DataFrame once
         _pl_rows = []
-        for _rank, _p in enumerate(_players, 1):
+        for _pr_rank, _p in enumerate(_players, 1):
             _s = _p["stats"]
             _pl_rows.append({
-                "#":      _rank,
-                "Player": _p["name"],
-                "Team":   _p["team_name"],
-                "PR":     _p["player_rating"],
-                "PPG":    round(_s.get("pointsPerGame", 0),  1),
-                "RPG":    round(_s.get("reboundsPerGame", 0), 1),
-                "APG":    round(_s.get("assistsPerGame", 0),  1),
-                "SPG":    round(_s.get("stealsPerGame", 0),   1),
-                "BPG":    round(_s.get("blocksPerGame", 0),   1),
-                "TPG":    round(_s.get("turnoversPerGame", 0),1),
-                "FG%":    round(_s.get("fieldGoalPct", 0),    1),
-                "3P%":    round(_s.get("threePointFieldGoalPct", 0), 1),
-                "FT%":    round(_s.get("freeThrowPct", 0),    1),
+                "#":       _pr_rank,
+                "Player":  _p["name"],
+                "Team":    _p["team_name"],
+                "team_id": _p["team_id"],
+                "PR":      _p["player_rating"],
+                "PPG":     round(_s.get("pointsPerGame", 0),  1),
+                "RPG":     round(_s.get("reboundsPerGame", 0), 1),
+                "APG":     round(_s.get("assistsPerGame", 0),  1),
+                "SPG":     round(_s.get("stealsPerGame", 0),   1),
+                "BPG":     round(_s.get("blocksPerGame", 0),   1),
+                "TPG":     round(_s.get("turnoversPerGame", 0),1),
+                "FG%":     round(_s.get("fieldGoalPct", 0),    1),
+                "3P%":     round(_s.get("threePointFieldGoalPct", 0), 1),
+                "FT%":     round(_s.get("freeThrowPct", 0),    1),
             })
-        _pl_df = pd.DataFrame(_pl_rows).set_index("#")
+        _pl_df = pd.DataFrame(_pl_rows)
+        _avg_pr = sum(p["player_rating"] for p in _players) / len(_players)
 
-        _pl_tab_board, _pl_tab_stock = st.tabs(["📋 Leaderboard", "📈 Player Stock Profile"])
-
-        with _pl_tab_board:
-            st.markdown("**Player Rating leaders — season averages from ESPN**")
+        # ── Rankings sub-tab ──────────────────────────────────────────────────
+        with _pl_sub_rank:
+            st.markdown(f"**Player Rating leaderboard — top {len(_pl_df)} players**")
+            _top_p = _players[0]
+            _r1, _r2, _r3, _r4 = st.columns(4)
+            _r1.metric("Players ranked", f"{len(_players):,}")
+            _r2.metric("Top player",     _top_p["name"])
+            _r3.metric("Top PR",         f"{_top_p['player_rating']:.2f}")
+            _r4.metric("Avg PR",         f"{_avg_pr:.2f}")
+            st.markdown("---")
+            _show_pl = _pl_df[["#","Player","Team","PR","PPG","RPG","APG","SPG","BPG","TPG","FG%","3P%","FT%"]].set_index("#")
             st.dataframe(
-                _pl_df.style
-                .background_gradient(subset=["PR"],  cmap="Blues",  vmin=0,  vmax=35)
-                .background_gradient(subset=["PPG"], cmap="Greens", vmin=0,  vmax=30)
-                .background_gradient(subset=["RPG"], cmap="Purples",vmin=0,  vmax=12)
-                .background_gradient(subset=["APG"], cmap="Oranges",vmin=0,  vmax=10)
-                .format({
-                    "PR":  "{:.2f}",
-                    "PPG": "{:.1f}", "RPG": "{:.1f}", "APG": "{:.1f}",
-                    "SPG": "{:.1f}", "BPG": "{:.1f}", "TPG": "{:.1f}",
-                    "FG%": "{:.1f}", "3P%": "{:.1f}", "FT%": "{:.1f}",
-                }),
-                height=520,
+                _show_pl.style
+                .background_gradient(subset=["PR"],  cmap="Blues",   vmin=0,  vmax=35)
+                .background_gradient(subset=["PPG"],  cmap="Greens",  vmin=0,  vmax=30)
+                .background_gradient(subset=["RPG"],  cmap="Purples", vmin=0,  vmax=12)
+                .background_gradient(subset=["APG"],  cmap="Oranges", vmin=0,  vmax=10)
+                .format({"PR":"{:.2f}","PPG":"{:.1f}","RPG":"{:.1f}","APG":"{:.1f}",
+                         "SPG":"{:.1f}","BPG":"{:.1f}","TPG":"{:.1f}",
+                         "FG%":"{:.1f}","3P%":"{:.1f}","FT%":"{:.1f}"}),
+                height=600,
             )
 
-        with _pl_tab_stock:
-            st.markdown("**Select a player to see their stat profile and stock framing**")
-            _pl_names = [p["name"] for p in _players]
-            _sel_player_name = st.selectbox(
-                "Player",
-                _pl_names,
-                index=0,
-            )
-            _sel_p = next((p for p in _players if p["name"] == _sel_player_name), None)
-
-            if _sel_p:
-                _sp_col, _sp_bar = st.columns([1, 2])
-                _s = _sel_p["stats"]
-
-                with _sp_col:
-                    _pr_val = _sel_p["player_rating"]
-                    # Percentile rank among all players
-                    _pct_rank = sum(1 for p in _players if p["player_rating"] <= _pr_val) / len(_players) * 100
-                    st.markdown(f"### {_sel_player_name}")
-                    st.markdown(f"**{_sel_p['team_name']}**")
-                    st.markdown("---")
-                    st.metric("Player Rating (PR)", f"{_pr_val:.2f}",
-                              help="Composite score: PPG + 0.4×RPG + 0.7×APG + SPG + 0.7×BPG − 0.7×TPG")
-                    st.metric("Percentile", f"{_pct_rank:.0f}th",
-                              help="PR rank among all players in this dataset")
-                    st.markdown("---")
-                    st.markdown("**Stock framing**")
-                    st.markdown(
-                        f"- **Revenue** (PPG): {_s.get('pointsPerGame', 0):.1f} pts/game\n"
-                        f"- **Margin** (FG%): {_s.get('fieldGoalPct', 0):.1f}%\n"
-                        f"- **Diversification**: {_s.get('reboundsPerGame', 0):.1f} reb, {_s.get('assistsPerGame', 0):.1f} ast\n"
-                        f"- **Cost** (TOV): {_s.get('turnoversPerGame', 0):.1f}/game\n"
-                        f"- **Alpha** (SPG+BPG): {_s.get('stealsPerGame', 0) + _s.get('blocksPerGame', 0):.1f}/game"
+        # ── Bracket Teams sub-tab ─────────────────────────────────────────────
+        with _pl_sub_bracket:
+            st.markdown("**Top players on projected bracket teams**")
+            st.caption("Matches player teams to the top 64 Elo-ranked teams. "
+                       "Only players whose ESPN team ID matches a ranked team are shown.")
+            _ranked_team_ids = {tid for tid, _, _ in rankings[:64]}
+            _ranked_names    = {tid: name for tid, name, _ in rankings[:64]}
+            _ranked_elo      = {tid: round(r, 1) for tid, _, r in rankings[:64]}
+            _bk_rows = []
+            for _, _row in _pl_df.iterrows():
+                _tid = _row["team_id"]
+                if _tid in _ranked_team_ids:
+                    _bk_rows.append({
+                        "Player":   _row["Player"],
+                        "Team":     _ranked_names.get(_tid, _row["Team"]),
+                        "Team Elo": _ranked_elo.get(_tid, 0),
+                        "PR":       _row["PR"],
+                        "PPG":      _row["PPG"],
+                        "RPG":      _row["RPG"],
+                        "APG":      _row["APG"],
+                        "Title %":  champ_odds.get(_tid, 0),
+                    })
+            if _bk_rows:
+                _bk_df = pd.DataFrame(_bk_rows).sort_values("PR", ascending=False).reset_index(drop=True)
+                _bk_df.index += 1
+                st.markdown(f"**{len(_bk_df)} players from top-64 projected bracket teams**")
+                _b1, _b2 = st.columns([2, 1])
+                with _b1:
+                    st.dataframe(
+                        _bk_df.style
+                        .background_gradient(subset=["PR"],       cmap="Blues",  vmin=0,   vmax=35)
+                        .background_gradient(subset=["Team Elo"], cmap="Greens", vmin=1400, vmax=1700)
+                        .background_gradient(subset=["Title %"],  cmap="Purples",vmin=0,   vmax=0.3)
+                        .format({"PR":"{:.2f}","PPG":"{:.1f}","RPG":"{:.1f}","APG":"{:.1f}",
+                                 "Team Elo":"{:.1f}","Title %":"{:.1%}"}),
+                        height=560,
                     )
-
-                with _sp_bar:
-                    # Bar chart: PR component breakdown
-                    _stat_labels = ["PPG (×1.0)", "RPG (×0.4)", "APG (×0.7)",
-                                    "SPG (×1.0)", "BPG (×0.7)", "TOV (×−0.7)"]
-                    _stat_keys   = ["pointsPerGame", "reboundsPerGame", "assistsPerGame",
-                                    "stealsPerGame",  "blocksPerGame",  "turnoversPerGame"]
-                    _weights     = [1.0, 0.4, 0.7, 1.0, 0.7, -0.7]
-                    _raw_vals    = [_s.get(k, 0) for k in _stat_keys]
-                    _contrib     = [v * w for v, w in zip(_raw_vals, _weights)]
-                    _bar_colors  = [NORD["green"] if c >= 0 else NORD["red"] for c in _contrib]
-
-                    _bar_fig = go.Figure(go.Bar(
-                        x=_stat_labels,
-                        y=_contrib,
-                        text=[f"{c:+.2f}" for c in _contrib],
+                with _b2:
+                    # Top 10 PR players from bracket teams — bar chart
+                    _top10_bk = _bk_df.head(10)
+                    _bk_fig = go.Figure(go.Bar(
+                        x=_top10_bk["PR"],
+                        y=_top10_bk["Player"],
+                        orientation="h",
+                        marker_color=color,
+                        text=[f"{v:.2f}" for v in _top10_bk["PR"]],
                         textposition="outside",
-                        marker_color=_bar_colors,
-                        textfont=dict(size=11, color=NORD["snow0"]),
+                        textfont=dict(size=10, color=NORD["snow0"]),
                     ))
-                    _bar_fig.add_hline(y=0, line_color=NORD["bg3"], line_width=1)
-                    _bar_fig.update_layout(
-                        title=f"PR component breakdown — total: {_pr_val:.2f}",
-                        yaxis_title="Contribution to PR",
-                        height=340,
-                        margin=dict(l=40, r=10, t=50, b=60),
+                    _bk_fig.update_layout(
+                        title="Top 10 PR — bracket teams",
+                        xaxis_title="Player Rating",
+                        yaxis=dict(autorange="reversed"),
+                        height=400,
+                        margin=dict(l=10, r=60, t=40, b=30),
                         plot_bgcolor="rgba(0,0,0,0)",
                         paper_bgcolor="rgba(0,0,0,0)",
                         font=dict(color=NORD["snow0"]),
-                        showlegend=False,
                     )
-                    st.plotly_chart(_bar_fig, width="stretch")
+                    st.plotly_chart(_bk_fig, width="stretch")
+            else:
+                st.info("No player-team matches found — ESPN team IDs may differ from Elo engine IDs.")
 
-                # ── Portfolio builder ─────────────────────────────────────────
-                st.markdown("---")
-                st.markdown("**Portfolio Builder — compare up to 6 players**")
-                _port_sel = st.multiselect(
-                    "Select players",
-                    _pl_names,
-                    default=_pl_names[:4] if len(_pl_names) >= 4 else _pl_names,
-                    max_selections=6,
+        # ── Evaluation sub-tab ────────────────────────────────────────────────
+        with _pl_sub_eval:
+            st.markdown("**Player Rating distribution and stat correlations**")
+            _e1, _e2 = st.columns(2)
+            with _e1:
+                # PR distribution histogram
+                _pr_vals = _pl_df["PR"].tolist()
+                _hist_fig = go.Figure(go.Histogram(
+                    x=_pr_vals, nbinsx=30,
+                    marker_color=color, opacity=0.8,
+                ))
+                _hist_fig.add_vline(x=_avg_pr, line_dash="dash", line_color=NORD["yellow"],
+                                    annotation_text=f"Avg PR {_avg_pr:.1f}",
+                                    annotation_font=dict(color=NORD["yellow"], size=10))
+                _hist_fig.update_layout(
+                    title="PR Distribution",
+                    xaxis_title="Player Rating", yaxis_title="Players",
+                    height=300, margin=dict(l=40,r=10,t=40,b=40),
+                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color=NORD["snow0"]),
                 )
-                if len(_port_sel) >= 2:
-                    _port_players = [p for p in _players if p["name"] in _port_sel]
-                    _port_cats    = ["PPG", "RPG", "APG", "SPG", "BPG", "TPG", "FG%"]
-                    _cat_keys     = ["pointsPerGame", "reboundsPerGame", "assistsPerGame",
-                                     "stealsPerGame",  "blocksPerGame",  "turnoversPerGame",
-                                     "fieldGoalPct"]
-                    _port_fig = go.Figure()
-                    _pp_palette = [NORD["frost1"], NORD["green"], NORD["orange"],
-                                   NORD["purple"], NORD["red"], NORD["yellow"]]
-                    for _pi, _pp in enumerate(_port_players):
-                        _pp_vals = [_pp["stats"].get(k, 0) for k in _cat_keys]
-                        _port_fig.add_trace(go.Bar(
-                            name=_pp["name"],
-                            x=_port_cats,
-                            y=_pp_vals,
-                            marker_color=_pp_palette[_pi % len(_pp_palette)],
-                            opacity=0.85,
-                        ))
-                    _port_fig.update_layout(
-                        barmode="group",
-                        xaxis_title="Stat category",
-                        yaxis_title="Per game",
-                        height=320,
-                        margin=dict(l=40, r=10, t=30, b=50),
-                        plot_bgcolor="rgba(0,0,0,0)",
-                        paper_bgcolor="rgba(0,0,0,0)",
-                        font=dict(color=NORD["snow0"]),
-                        legend=dict(orientation="h", y=1.08),
-                    )
-                    st.plotly_chart(_port_fig, width="stretch")
+                st.plotly_chart(_hist_fig, width="stretch")
+            with _e2:
+                # PPG vs PR scatter
+                _corr_fig = go.Figure(go.Scatter(
+                    x=_pl_df["PPG"], y=_pl_df["PR"],
+                    mode="markers",
+                    marker=dict(color=color, size=6, opacity=0.7),
+                    hovertext=[f"{r['Player']} ({r['Team']})<br>PPG: {r['PPG']} | PR: {r['PR']:.2f}"
+                               for _, r in _pl_df.iterrows()],
+                    hoverinfo="text",
+                ))
+                _corr_fig.update_layout(
+                    title="PPG vs Player Rating",
+                    xaxis_title="Points per game",
+                    yaxis_title="Player Rating",
+                    height=300, margin=dict(l=50,r=10,t=40,b=40),
+                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color=NORD["snow0"]),
+                )
+                st.plotly_chart(_corr_fig, width="stretch")
+
+            _e3, _e4 = st.columns(2)
+            with _e3:
+                # APG vs PR scatter
+                _apg_fig = go.Figure(go.Scatter(
+                    x=_pl_df["APG"], y=_pl_df["PR"],
+                    mode="markers",
+                    marker=dict(color=NORD["green"], size=6, opacity=0.7),
+                    hovertext=[f"{r['Player']}<br>APG: {r['APG']} | PR: {r['PR']:.2f}"
+                               for _, r in _pl_df.iterrows()],
+                    hoverinfo="text",
+                ))
+                _apg_fig.update_layout(
+                    title="APG vs Player Rating",
+                    xaxis_title="Assists per game",
+                    yaxis_title="Player Rating",
+                    height=300, margin=dict(l=50,r=10,t=40,b=40),
+                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color=NORD["snow0"]),
+                )
+                st.plotly_chart(_apg_fig, width="stretch")
+            with _e4:
+                # TOV cost bar
+                _topn_tov = _pl_df.nlargest(15, "TPG")[["Player","TPG","PR"]].reset_index(drop=True)
+                _tov_fig = go.Figure(go.Bar(
+                    x=_topn_tov["TPG"],
+                    y=_topn_tov["Player"],
+                    orientation="h",
+                    marker_color=NORD["red"],
+                    text=[f"{v:.1f}" for v in _topn_tov["TPG"]],
+                    textposition="outside",
+                    textfont=dict(size=9, color=NORD["snow0"]),
+                ))
+                _tov_fig.update_layout(
+                    title="Highest turnover cost (TPG)",
+                    xaxis_title="Turnovers per game",
+                    yaxis=dict(autorange="reversed"),
+                    height=300, margin=dict(l=10,r=60,t=40,b=40),
+                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color=NORD["snow0"]),
+                )
+                st.plotly_chart(_tov_fig, width="stretch")
+
+        # ── Matchup sub-tab ───────────────────────────────────────────────────
+        with _pl_sub_matchup:
+            st.markdown("**Head-to-head player comparison**")
+            _pl_names = _pl_df["Player"].tolist()
+            _mc1, _mc2 = st.columns(2)
+            with _mc1:
+                _sel_p1 = st.selectbox("Player A", _pl_names, index=0, key="pl_matchup_a")
+            with _mc2:
+                _sel_p2 = st.selectbox("Player B", _pl_names,
+                                       index=min(1, len(_pl_names)-1), key="pl_matchup_b")
+
+            _pd1 = next((p for p in _players if p["name"] == _sel_p1), None)
+            _pd2 = next((p for p in _players if p["name"] == _sel_p2), None)
+
+            if _pd1 and _pd2:
+                _stat_labels = ["PPG", "RPG", "APG", "SPG", "BPG", "TPG", "FG%", "3P%", "FT%"]
+                _stat_keys   = ["pointsPerGame","reboundsPerGame","assistsPerGame",
+                                "stealsPerGame","blocksPerGame","turnoversPerGame",
+                                "fieldGoalPct","threePointFieldGoalPct","freeThrowPct"]
+                _v1 = [_pd1["stats"].get(k, 0) for k in _stat_keys]
+                _v2 = [_pd2["stats"].get(k, 0) for k in _stat_keys]
+
+                # Summary metrics
+                _sm1, _sm2, _sm3 = st.columns(3)
+                _sm1.metric(f"PR — {_sel_p1}", f"{_pd1['player_rating']:.2f}")
+                _sm2.metric(f"PR — {_sel_p2}", f"{_pd2['player_rating']:.2f}")
+                _pr_diff = _pd1['player_rating'] - _pd2['player_rating']
+                _sm3.metric("PR edge", f"{_pr_diff:+.2f}",
+                            help="Positive = Player A has higher PR")
+                st.markdown("---")
+
+                _mf = go.Figure()
+                _mf.add_trace(go.Bar(
+                    name=_sel_p1, x=_stat_labels, y=_v1,
+                    marker_color=color, opacity=0.85,
+                ))
+                _mf.add_trace(go.Bar(
+                    name=_sel_p2, x=_stat_labels, y=_v2,
+                    marker_color=NORD["orange"], opacity=0.85,
+                ))
+                _mf.update_layout(
+                    barmode="group",
+                    xaxis_title="Stat", yaxis_title="Per game",
+                    height=340,
+                    margin=dict(l=40,r=10,t=30,b=50),
+                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color=NORD["snow0"]),
+                    legend=dict(orientation="h", y=1.08),
+                )
+                st.plotly_chart(_mf, width="stretch")
+
+                # Stat comparison table
+                _cmp_rows = []
+                for lbl, v1, v2 in zip(_stat_labels, _v1, _v2):
+                    _cmp_rows.append({
+                        "Stat": lbl,
+                        _sel_p1: round(v1, 1),
+                        _sel_p2: round(v2, 1),
+                        "Edge": f"{'+' if v1>=v2 else ''}{v1-v2:.1f} {'(A)' if v1>v2 else ('(B)' if v2>v1 else '(tie)')}",
+                    })
+                st.dataframe(pd.DataFrame(_cmp_rows).set_index("Stat"), width="stretch")
+
+        # ── Efficiency sub-tab ────────────────────────────────────────────────
+        with _pl_sub_eff:
+            st.markdown("**Scoring efficiency and two-way contribution**")
+            st.caption("FG% as offensive efficiency; SPG+BPG as defensive contribution (alpha); PR net = value minus turnover cost.")
+
+            _ef1, _ef2 = st.columns(2)
+            with _ef1:
+                # FG% vs PPG scatter — efficiency frontier
+                _eff_sc = go.Figure(go.Scatter(
+                    x=_pl_df["FG%"], y=_pl_df["PPG"],
+                    mode="markers",
+                    marker=dict(
+                        size=[max(6, r["PR"]/2) for _, r in _pl_df.iterrows()],
+                        color=_pl_df["PR"].tolist(),
+                        colorscale=[[0,NORD["bg3"]],[0.5,color],[1,NORD["frost0"]]],
+                        showscale=True,
+                        colorbar=dict(title="PR", thickness=12),
+                    ),
+                    hovertext=[f"{r['Player']}<br>FG%: {r['FG%']} | PPG: {r['PPG']} | PR: {r['PR']:.2f}"
+                               for _, r in _pl_df.iterrows()],
+                    hoverinfo="text",
+                ))
+                _eff_sc.update_layout(
+                    title="Shooting efficiency vs scoring volume",
+                    xaxis_title="Field goal % (efficiency)",
+                    yaxis_title="Points per game (volume)",
+                    height=340, margin=dict(l=50,r=60,t=40,b=40),
+                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color=NORD["snow0"]),
+                )
+                st.plotly_chart(_eff_sc, width="stretch")
+            with _ef2:
+                # Two-way players: SPG+BPG vs PPG
+                _pl_df["DefAlpha"] = _pl_df["SPG"] + _pl_df["BPG"]
+                _two_way = go.Figure(go.Scatter(
+                    x=_pl_df["PPG"], y=_pl_df["DefAlpha"],
+                    mode="markers",
+                    marker=dict(
+                        size=[max(6, r["PR"]/2) for _, r in _pl_df.iterrows()],
+                        color=color, opacity=0.7,
+                    ),
+                    hovertext=[f"{r['Player']}<br>PPG: {r['PPG']} | Stl+Blk: {r['DefAlpha']:.1f}"
+                               for _, r in _pl_df.iterrows()],
+                    hoverinfo="text",
+                ))
+                _two_way.update_layout(
+                    title="Two-way players: scoring vs defensive alpha",
+                    xaxis_title="Points per game (offense)",
+                    yaxis_title="Steals + Blocks per game (defense)",
+                    height=340, margin=dict(l=50,r=10,t=40,b=40),
+                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color=NORD["snow0"]),
+                )
+                st.plotly_chart(_two_way, width="stretch")
+
+            # Net contribution: PR vs TPG cost
+            st.markdown("**Value vs cost — best net producers**")
+            _top20_pr = _pl_df.nlargest(20, "PR").reset_index(drop=True)
+            _pr_net_colors = [NORD["green"] if r["PR"] > _avg_pr else NORD["red"]
+                              for _, r in _top20_pr.iterrows()]
+            _net_fig = go.Figure(go.Bar(
+                x=_top20_pr["Player"],
+                y=_top20_pr["PR"],
+                marker_color=_pr_net_colors,
+                text=[f"{v:.2f}" for v in _top20_pr["PR"]],
+                textposition="outside",
+                textfont=dict(size=9, color=NORD["snow0"]),
+            ))
+            _net_fig.add_hline(y=_avg_pr, line_dash="dash", line_color=NORD["yellow"],
+                               annotation_text=f"Avg PR {_avg_pr:.1f}",
+                               annotation_font=dict(color=NORD["yellow"], size=10))
+            _net_fig.update_layout(
+                xaxis_title="Player", yaxis_title="Player Rating",
+                height=320, margin=dict(l=40,r=10,t=20,b=120),
+                xaxis=dict(tickangle=-35),
+                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                font=dict(color=NORD["snow0"]),
+            )
+            st.plotly_chart(_net_fig, width="stretch")
 
 
 # ════════════════════════════════════════════════════════════════════════════ #
