@@ -67,7 +67,7 @@ def _get_game_ids(
     sport: str,
     days_back: int,
     max_games: int,
-    max_per_day: int = 6,
+    max_per_day: int = 8,
 ) -> list[str]:
     """
     Collect ESPN game IDs for completed games over the last `days_back` days.
