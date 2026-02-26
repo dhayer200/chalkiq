@@ -18,6 +18,7 @@ Usage:
 
 from __future__ import annotations
 
+import time
 from datetime import date, timedelta
 
 import requests
@@ -137,6 +138,7 @@ def _aggregate_from_boxscores(
             data = resp.json()
         except requests.RequestException:
             continue
+        time.sleep(0.05)   # polite pacing to avoid ESPN rate limiting
 
         box = data.get("boxscore", {})
         for team_data in box.get("players", []):
