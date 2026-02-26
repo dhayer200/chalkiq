@@ -36,7 +36,10 @@ _ESPN_TMPL = (
 _SPORTS = {
     "mens":   "mens-college-basketball",
     "womens": "womens-college-basketball",
+    "nba":    "nba",
 }
+
+_FINAL_STATUSES = {"STATUS_FINAL", "STATUS_FINAL_OT", "STATUS_FINAL_OVERTIME"}
 
 
 def fetch_day(dt: date, division: str = "mens") -> list[dict]:
@@ -50,7 +53,7 @@ def fetch_day(dt: date, division: str = "mens") -> list[dict]:
     games = []
     for event in r.json().get("events", []):
         status = event.get("status", {}).get("type", {}).get("name", "")
-        if status != "STATUS_FINAL":
+        if status not in _FINAL_STATUSES:
             continue
 
         comp = event["competitions"][0]

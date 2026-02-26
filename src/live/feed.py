@@ -25,7 +25,11 @@ _ESPN_TMPL = (
 _SPORTS = {
     "mens":   "mens-college-basketball",
     "womens": "womens-college-basketball",
+    "nba":    "nba",
 }
+
+# Divisions that use NBA quarter structure (4 × 12 min)
+_NBA_DIVISIONS = {"nba"}
 
 # Statuses that count as a "live" game we want to show
 _LIVE_STATUSES = {"STATUS_IN_PROGRESS", "STATUS_HALFTIME"}
@@ -34,8 +38,10 @@ _LIVE_STATUSES = {"STATUS_IN_PROGRESS", "STATUS_HALFTIME"}
 _FINAL_STATUSES     = {"STATUS_FINAL", "STATUS_FINAL_OT", "STATUS_FINAL_OVERTIME"}
 _SCHEDULED_STATUSES = {"STATUS_SCHEDULED", "STATUS_PREGAME", "STATUS_DELAYED"}
 
-# College basketball: 2 halves of 20 min, OT periods of 5 min
-_HALF_MINUTES = 20.0
+# College basketball: 2 halves of 20 min
+_HALF_MINUTES    = 20.0
+# NBA: 4 quarters of 12 min
+_QUARTER_MINUTES = 12.0
 
 
 def _parse_clock(display_clock: str) -> float:
@@ -52,25 +58,35 @@ def _parse_clock(display_clock: str) -> float:
     return 0.0
 
 
-def _minutes_remaining(period: int, clock_mins: float, status_name: str) -> float:
+def _minutes_remaining(
+    period: int,
+    clock_mins: float,
+    status_name: str,
+    division: str = "mens",
+) -> float:
     """
-    Total minutes remaining in the game (regulation + future halves).
+    Total minutes remaining in the game (regulation + future periods).
 
-    period:      1 = 1st half, 2 = 2nd half, 3+ = OT
-    clock_mins:  minutes left in the *current* period
-    status_name: ESPN status type name
+    For CBB: 2 halves × 20 min.  period 1 = first half, 2 = second half.
+    For NBA: 4 quarters × 12 min. period 1-4 = quarters, 5+ = OT.
     """
+    if division in _NBA_DIVISIONS:
+        # NBA: 4 quarters, each 12 min
+        if period <= 4:
+            remaining_quarters = 4 - period
+            return clock_mins + remaining_quarters * _QUARTER_MINUTES
+        else:
+            return clock_mins  # OT
+
+    # CBB: 2 halves × 20 min
     if status_name == "STATUS_HALFTIME":
         return _HALF_MINUTES   # full second half still to be played
-
     if period == 1:
-        # time in current half  +  full second half
         return clock_mins + _HALF_MINUTES
     elif period == 2:
         return clock_mins
     else:
-        # OT — just use time remaining in current OT period
-        return clock_mins
+        return clock_mins  # OT
 
 
 def fetch_live_games(
@@ -140,7 +156,7 @@ def fetch_live_games(
         clk_part     = display_clk.split(" - ")[0].strip() if " - " in display_clk else display_clk
         clock_mins   = _parse_clock(clk_part)
 
-        mins_left = _minutes_remaining(period, clock_mins, status_name)
+        mins_left = _minutes_remaining(period, clock_mins, status_name, division)
 
         games.append({
             "game_id":           event.get("id", ""),
