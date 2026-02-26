@@ -67,8 +67,13 @@ def _get_game_ids(
     sport: str,
     days_back: int,
     max_games: int,
+    max_per_day: int = 6,
 ) -> list[str]:
-    """Collect ESPN game IDs for completed games over the last `days_back` days."""
+    """
+    Collect ESPN game IDs for completed games over the last `days_back` days.
+    Takes at most `max_per_day` games per day so the sample spans multiple days
+    (CBB has 100+ games/day which would otherwise exhaust max_games in one day).
+    """
     url = _SCOREBOARD_TMPL.format(sport=sport)
     game_ids: list[str] = []
     today = date.today()
@@ -85,12 +90,16 @@ def _get_game_ids(
         except requests.RequestException:
             continue
 
+        day_count = 0
         for event in resp.json().get("events", []):
             stype = event.get("status", {}).get("type", {}).get("name", "")
             if stype in _FINAL_STATUSES:
                 gid = event.get("id", "")
                 if gid:
                     game_ids.append(gid)
+                    day_count += 1
+                    if day_count >= max_per_day:
+                        break
 
         if len(game_ids) >= max_games:
             break
