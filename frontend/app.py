@@ -197,7 +197,9 @@ def load_future_games(division: str, for_date: date) -> list[dict]:
 def load_players(division: str) -> list[dict]:
     """Fetch ESPN player leaders, cached 1 hr."""
     try:
-        return fetch_player_leaders(division=division, limit=100, max_games=25, min_games=2)
+        # days_back=7, max_games=35 (capped at 6/day) => sample spans ~7 days
+        return fetch_player_leaders(division=division, limit=100,
+                                    days_back=7, max_games=35, min_games=1)
     except Exception:
         return []
 
