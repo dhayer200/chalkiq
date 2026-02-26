@@ -1614,7 +1614,7 @@ with tab_eval:
     # ── Graph 2: PnL by Edge Bucket ──────────────────────────────────────────
     g2_chart, g2_text = st.columns([2, 1])
     with g2_chart:
-        st.markdown("**Returns by model confidence (flat $1 bets at even money)**")
+        st.markdown("**Returns by model confidence (flat \\$1 bets at even money)**")
         _edge_map: dict[float, list[float]] = {}
         for g in _hist:
             p       = g["pregame_prob_home"]
@@ -1651,8 +1651,8 @@ with tab_eval:
         st.markdown(
             "Each bar groups games where our model deviated from 50/50 by a certain "
             "amount — that deviation is the **edge**. For every game in that group "
-            "we simulate betting $1 on whoever our model favoured, at even-money "
-            "payout (+$1 win, -$1 loss), then average the results.\n\n"
+            "we simulate betting \\$1 on whoever our model favoured, at even-money "
+            "payout (+\\$1 win, -\\$1 loss), then average the results.\n\n"
             "**0-10% edge:** the model barely has a lean — these are essentially "
             "coin flips, so returns cluster near zero.\n\n"
             "**20%+ edge:** the model is confident. If those predictions are correct "
@@ -1760,8 +1760,8 @@ with tab_eval:
     with g4_text:
         st.markdown("**What this shows**")
         st.markdown(
-            "Imagine betting $1 on every single game in our dataset — always "
-            "on whoever our model liked — at fair 50/50 payout (+$1 win, -$1 loss). "
+            "Imagine betting \\$1 on every single game in our dataset — always "
+            "on whoever our model liked — at fair 50/50 payout (+\\$1 win, -\\$1 loss). "
             "This chart shows how your bankroll would have moved game-by-game "
             "through the entire season.\n\n"
             "**A rising line** means the model is picking winners more than 50% "
