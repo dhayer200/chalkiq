@@ -197,8 +197,8 @@ def load_future_games(division: str, for_date: date) -> list[dict]:
 @st.cache_data(ttl=3600, show_spinner="Loading player stats…")
 def load_players(division: str) -> list[dict]:
     try:
-        return fetch_player_leaders(division=division, limit=100,
-                                    days_back=7, max_games=35, min_games=1)
+        return fetch_player_leaders(division=division, limit=10_000,
+                                    days_back=21, max_games=150, min_games=1)
     except Exception:
         return []
 
