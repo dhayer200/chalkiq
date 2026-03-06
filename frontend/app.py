@@ -1509,195 +1509,146 @@ Y_{ij} = \begin{cases} 1 & \text{team } i \text{ wins} \\ 0 & \text{team } i \te
                 "factors, conference tournaments, and the committee's own metrics."
             )
 
-    # ── 12. Live win probability model ────────────────────────────────────────
-    with st.expander("12 · Live win probability: the random-walk model", expanded=True):
+    # ── 12. Adjusted efficiency ───────────────────────────────────────────────
+    with st.expander("12 · Adjusted offensive and defensive efficiency"):
         col_f, col_e = st.columns([1, 1])
         with col_f:
-            st.markdown("**The model:**")
+            st.markdown("**Raw efficiency:**")
+            st.latex(r"\text{Raw Off}_i = \frac{1}{G_i}\sum_{g \in G_i} \text{pts scored}_g")
+            st.latex(r"\text{Raw Def}_i = \frac{1}{G_i}\sum_{g \in G_i} \text{pts allowed}_g")
+            st.markdown("**Iterative opponent adjustment (20 passes):**")
             st.latex(
-                r"P(\text{win} \mid d,\, t,\, p_0)"
-                r"= \sigma\!\left(\frac{d}{\sigma_s \sqrt{t}} + z_{\text{prior}}\right)"
+                r"\text{Adj Off}_i^{(k+1)} = \text{Raw Off}_i \cdot "
+                r"\frac{\bar{\mu}}{\sum_j w_j \cdot \text{Adj Def}_j^{(k)} / \sum_j w_j}"
             )
             st.markdown(
-                "where:\n"
-                r"- $d$ = current score differential (positive = team leading)" "\n"
-                r"- $t$ = minutes remaining in the game" "\n"
-                r"- $\sigma_s = 2.0$ pts$/$√min (scoring diffusion constant)" "\n"
-                r"- $z_{\text{prior}}$ = Elo prior in $z$-score space (see section 13)" "\n"
-                r"- $\sigma(z) = \tfrac{1}{1+e^{-z}}$ is the logistic function"
+                "where $w_j = G_j$ (games played by opponent $j$) and "
+                "$\\bar{\\mu}$ is the league average. "
+                "Adj Def updates symmetrically. Both are renormalized to $\\bar{\\mu}$ after each pass."
             )
-            st.markdown("**Worked examples:**")
+            st.markdown("**Net rating:**")
+            st.latex(r"\text{Net}_i = \text{Adj Off}_i - \text{Adj Def}_i")
+        with col_e:
+            st.markdown("**Simple explanation**")
             st.markdown(
-                "| Scenario | Live prob |\n"
-                "|---|---|\n"
-                "| Tied at tip-off, 60% Elo fav | 60.0% |\n"
-                "| Up 7, 8.5 min left, 60% fav | 93.0% |\n"
-                "| Up 10 at halftime, equal teams | 88.4% |\n"
-                "| Down 5, 3 min left, 65% fav | 11.9% |\n"
-                "| Up 1, 1 min left, equal teams | 71.2% |"
+                "Raw scoring averages are misleading: a team that scores 85 ppg against "
+                "elite defenses is far more impressive than one that scores 85 against "
+                "bottom-feeders.\n\n"
+                "Adjusted efficiency corrects for that. Each team's offense is scaled up "
+                "if they played tough defenses, and scaled down if their schedule was weak. "
+                "Same for defense.\n\n"
+                "**Weighting by games played** means opponents with more data pull more "
+                "weight in the adjustment — a team with 30 games is more reliable evidence "
+                "than a team with 6.\n\n"
+                "After 20 iterative passes the numbers converge. The result is a KenPom-style "
+                "efficiency rating built entirely from ESPN score data — no possession "
+                "tracking required.\n\n"
+                "**Net rating** is the single best summary: positive = better offense than defense, "
+                "which is what elite teams look like."
+            )
+
+    # ── 13. Closing line value ────────────────────────────────────────────────
+    with st.expander("13 · Closing Line Value (CLV)"):
+        col_f, col_e = st.columns([1, 1])
+        with col_f:
+            st.markdown("**Implied probability from American moneyline:**")
+            st.latex(
+                r"p_{\text{impl}} = \begin{cases}"
+                r"\dfrac{|ML|}{|ML|+100} & ML < 0 \text{ (favorite)} \\[8pt]"
+                r"\dfrac{100}{ML+100} & ML > 0 \text{ (underdog)}"
+                r"\end{cases}"
+            )
+            st.markdown("**Vig removal (two-sided market):**")
+            st.latex(
+                r"p_{\text{fair}} = \frac{p_{\text{impl,home}}}{p_{\text{impl,home}} + p_{\text{impl,away}}}"
+            )
+            st.markdown("**CLV vs closing line:**")
+            st.latex(r"\text{CLV} = p_{\text{model}} - p_{\text{fair,close}}")
+            st.markdown("**CLV vs opening line:**")
+            st.latex(r"\text{CLV}_{\text{open}} = p_{\text{model}} - p_{\text{fair,open}}")
+        with col_e:
+            st.markdown("**Simple explanation**")
+            st.markdown(
+                "The closing line is the sharpest price signal in sports betting. "
+                "By the time a game starts, the market has absorbed all publicly "
+                "available information — sharp bettors, injury reports, weather, everything.\n\n"
+                "**CLV** measures whether our model was smarter than the closing market. "
+                "Positive CLV means our model assigned a higher probability than the "
+                "book's final implied probability — we would have had an edge.\n\n"
+                "**Why it matters:** A model that consistently beats closing lines "
+                "has genuine predictive signal. Win rate alone can be misleading "
+                "(you can win 55% betting only huge favorites). CLV is harder to fake.\n\n"
+                "**Vig removal** strips out the bookmaker's margin (the juice) so we're "
+                "comparing fair probabilities, not inflated ones."
+            )
+
+    # ── 14. Line movement awareness ───────────────────────────────────────────
+    with st.expander("14 · Line Movement Awareness (LMA)"):
+        col_f, col_e = st.columns([1, 1])
+        with col_f:
+            st.markdown("**Line move size:**")
+            st.latex(r"\Delta p = p_{\text{fair}}(t_2) - p_{\text{fair}}(t_1)")
+            st.markdown("**Sharp classification threshold:**")
+            st.latex(r"|\Delta p| \geq 0.04 \implies \text{likely sharp money}")
+            st.markdown("**Reverse line movement:**")
+            st.markdown(
+                "Public betting % favors team A, but the line moves *against* team A "
+                "(toward team B). This suggests sharp bettors disagree with the public."
+            )
+            st.latex(
+                r"\text{RLM} = \mathbf{1}\{\text{public favors A}\} \cap \mathbf{1}\{\Delta p_A < 0\}"
             )
         with col_e:
             st.markdown("**Simple explanation**")
             st.markdown(
-                "Think of the score difference as a **drunk walk on a number line**. "
-                "At every possession, the score ticks up for one team or the other "
-                "somewhat randomly. Over time, this walk wanders up and down.\n\n"
-                "The key insight is **time remaining**. With 35 minutes left, a "
-                "5-point lead is nearly meaningless — the walk has dozens of steps "
-                "left to erase it. With 1 minute left, a 5-point lead is almost "
-                "insurmountable — there simply aren't enough possessions to overcome it.\n\n"
-                "Mathematically, the uncertainty in the final score grows like "
-                r"$\sigma_s \sqrt{t}$: the longer the game, the more the score can wander. "
-                "Dividing the current lead by $\\sigma_s \\sqrt{t}$ tells us how many "
-                "'standard deviations' ahead this team is, accounting for how much time "
-                "is left to flip the result.\n\n"
-                "At tip-off ($d=0$, $t=40$), the model gives exactly the Elo pregame "
-                "probability — no game information yet, so only the prior matters."
+                "Sportsbooks move lines for two reasons: **public money** (casual bettors "
+                "all piling on one side) or **sharp money** (professional bettors with "
+                "genuine edge).\n\n"
+                "A line move of 4%+ in implied probability is large enough that it's "
+                "unlikely to be casual public action — it's more consistent with a "
+                "sharp bet that forced the book to reprice.\n\n"
+                "**Reverse line movement** is the strongest signal: the public is "
+                "overwhelmingly on one team, but the line moves the other way. "
+                "That means the book is intentionally moving toward the sharp side, "
+                "accepting liability on the public side because they trust the sharps more.\n\n"
+                "LMA doesn't tell you who will win. It tells you where the informed "
+                "money is — which is useful context when our model also agrees."
             )
 
-    # ── 13. Logit-probit bridge ───────────────────────────────────────────────
-    with st.expander("13 · Connecting the Elo prior to the live model"):
+    # ── 15. Backtesting and edge ──────────────────────────────────────────────
+    with st.expander("15 · Backtesting and edge over breakeven"):
         col_f, col_e = st.columns([1, 1])
         with col_f:
-            st.markdown("**The approximation:**")
+            st.markdown("**Breakeven win rate at -110 juice:**")
+            st.latex(r"p_{\text{break}} = \frac{100}{110 + 100} \approx 52.4\%")
+            st.markdown("**Model edge on a bet:**")
+            st.latex(r"\text{edge} = p_{\text{model}} - p_{\text{break}}")
+            st.markdown("**P&L per bet (flat $100 stake at -110):**")
             st.latex(
-                r"\text{logit}(p) = \ln\!\frac{p}{1-p} \approx \frac{\pi}{\sqrt{3}}\,\Phi^{-1}(p)"
+                r"\text{P\&L} = \begin{cases} +\$90.91 & \text{if win} \\ -\$100 & \text{if loss} \end{cases}"
             )
-            st.markdown("**Converting the Elo prior to a z-score:**")
-            st.latex(
-                r"z_{\text{prior}} = \text{logit}(p_0) \cdot \frac{\sqrt{3}}{\pi}"
-            )
-            st.markdown("**Combined live z-score:**")
-            st.latex(
-                r"z_{\text{total}} = \underbrace{\frac{d}{\sigma_s\sqrt{t}}}_{\text{game evidence}}"
-                r"+ \underbrace{\text{logit}(p_0)\cdot\frac{\sqrt{3}}{\pi}}_{\text{Elo prior}}"
-            )
-            st.markdown("**Example:** $p_0 = 0.60$")
-            st.latex(
-                r"z_{\text{prior}} = \ln\!\tfrac{0.6}{0.4} \cdot \tfrac{\sqrt{3}}{\pi}"
-                r"= 0.405 \times 0.551 = 0.223"
-            )
+            st.markdown("**ROI over } $n$ bets:**")
+            st.latex(r"\text{ROI} = \frac{\sum \text{P\&L}}{n \times \text{stake}}")
         with col_e:
             st.markdown("**Simple explanation**")
             st.markdown(
-                "The random-walk model uses **normal distribution** units (z-scores). "
-                "The Elo model outputs a **logistic probability**. These live in slightly "
-                "different mathematical spaces, so we need a bridge between them.\n\n"
-                "The key fact: the logit function ($\\ln(p/(1-p))$) and the probit "
-                "function ($\\Phi^{-1}(p)$, the inverse normal CDF) are very close to "
-                "proportional — differing by the constant $\\pi/\\sqrt{3} \\approx 1.81$. "
-                "This is the standard **logit-probit approximation**.\n\n"
-                "In plain English: we're asking *'if the Elo model says 60%, where does "
-                "that sit on the normal bell curve?'* The answer is about 0.22 standard "
-                "deviations above center. We then add the score-differential z-score on "
-                "top of that prior.\n\n"
-                "This means:\n"
-                "- If the game is tied ($d=0$), the live probability equals the Elo prior exactly.\n"
-                "- A lead *adds* to the prior; a deficit *subtracts* from it.\n"
-                "- As time runs out, the score evidence overwhelms the prior completely."
+                "At standard -110 juice (bet $110 to win $100), you need to win "
+                "**52.4%** of bets just to break even. Anything above that is profit.\n\n"
+                "The backtest walks through every historical game in order — "
+                "ratings build from scratch exactly as they would in real time, "
+                "no future data leaks in. Whenever the model sees an edge above "
+                "the threshold, it simulates placing a flat $100 bet.\n\n"
+                "**Edge bucket analysis** groups bets by how much edge the model "
+                "claimed. If the model is well-calibrated, higher-edge buckets "
+                "should show higher win rates — that's the key validation check.\n\n"
+                "**Important caveat:** the backtest assumes -110 is always available. "
+                "Real books move lines, may not offer the price you want, and will "
+                "limit winning accounts. The backtest measures signal quality, "
+                "not guaranteed real-world returns."
             )
 
-    # ── 14. Upset detection ───────────────────────────────────────────────────
-    with st.expander("14 · Upset detection: when the underdog flips"):
-        col_f, col_e = st.columns([1, 1])
-        with col_f:
-            st.markdown("**Formal definition:**")
-            st.latex(r"\text{UPSET ALERT if:} \quad p_0 < 0.5 \;\text{ and }\; p_{\text{live}} \geq 0.5")
-            st.markdown(
-                "where $p_0$ is the pregame Elo probability for team $A$ "
-                "and $p_{\\text{live}}$ is the current in-game probability."
-            )
-            st.markdown("**Probability swing:**")
-            st.latex(r"\Delta p = p_{\text{live}} - p_0")
-            st.markdown(
-                "Positive $\\Delta p$ means team $A$ has gained probability since tip-off. "
-                "The upset alert fires at the exact moment $\\Delta p$ crosses the 50% threshold."
-            )
-        with col_e:
-            st.markdown("**Simple explanation**")
-            st.markdown(
-                "An upset alert is exactly what it sounds like: the team that was supposed "
-                "to lose is now more likely to win.\n\n"
-                "The pregame model said the underdog had, say, a **38% chance**. "
-                "But they went on a 12-0 run and now lead by 7 with 10 minutes left. "
-                "The live model recalculates and says **61%** — the underdog has flipped "
-                "to become the live favourite. That's the moment the alert fires.\n\n"
-                "Why does this matter for the bracket? Because in a tournament, every "
-                "team's path to the title depends on who comes out of each game. "
-                "If the #12 seed is live-favourite over the #5 seed, the entire "
-                "right side of that region's bracket just changed its expected shape.\n\n"
-                "The probability swing $\\Delta p$ also tells you **how dramatic** the "
-                "reversal is. A +35% swing (from 25% to 60%) is a much bigger moment "
-                "than a +10% swing (from 45% to 55%)."
-            )
-
-    # ── 15. Live bracket impact ────────────────────────────────────────────────
-    with st.expander("15 · Live bracket impact: upset propagation"):
-        col_f, col_e = st.columns([1, 1])
-        with col_f:
-            st.markdown("**Process:**")
-            st.markdown(
-                "1. **Clone** the current Elo engine (copy all ratings).\n"
-                "2. **Apply** the hypothetical game result (team A wins or team B wins).\n"
-                "3. **Update** both teams' ratings via the Elo rule: $R' = R + K(S - E)$.\n"
-                "4. **Re-seed** the 64-team bracket from the updated ratings.\n"
-                "5. **Simulate** 5,000 Monte Carlo tournaments.\n"
-                "6. **Compare** new title odds $\\hat{p}'$ to baseline $\\hat{p}$.\n"
-                "7. **Report** $\\Delta = \\hat{p}' - \\hat{p}$ for each team."
-            )
-            st.latex(r"\Delta_i = \hat{p}'_i(\text{if upset}) - \hat{p}_i(\text{baseline})")
-        with col_e:
-            st.markdown("**Simple explanation**")
-            st.markdown(
-                "The live bracket impact answers: *'if this upset actually holds, "
-                "what happens to everybody's championship odds?'*\n\n"
-                "It's a **counterfactual simulation**. We freeze the current state of "
-                "all other teams, hypothetically record the current live game's outcome, "
-                "and re-run the entire tournament 5,000 times with that one change.\n\n"
-                "The upsets that matter most are ones where:\n"
-                "- The losing team was a **deep title contender** (their odds drop sharply).\n"
-                "- The winning team now has an **easier projected path** to the Final Four.\n"
-                "- The winner's **next opponent** shifts because the bracket re-seeds.\n\n"
-                "This is the same logic as financial scenario analysis: *'if this event "
-                "occurs, how does the entire portfolio of outcomes shift?'* "
-                "The answer is never just about the two teams in the game."
-            )
-
-    # ── 16. Parameters used ──────────────────────────────────────────────────
-    with st.expander("16 · Model parameters used in this dashboard"):
-        st.markdown(
-            "**Elo / bracket model**\n\n"
-            "| Parameter | Value | What it controls |\n"
-            "|---|---|---|\n"
-            "| $K$ (update factor) | 24 | How fast ratings respond to results |\n"
-            "| Initial rating | 1500 | Starting Elo for all new teams |\n"
-            "| Home advantage | 100 pts | Temporary boost for home team |\n"
-            "| Elo scale | 400 | Sensitivity of win probability to rating gap |\n"
-            "| Simulations (bracket) | 100,000 | Monte Carlo runs for bracket odds |\n"
-            "| Simulations (impact) | 5,000 | Quick re-sim for live bracket impact |\n"
-            "| Season | Nov 4, 2025 – Feb 23, 2026 | Data range for ratings |\n"
-            "| Top $N$ seeded | 64 | Teams included in bracket simulation |\n\n"
-            "**Live win probability model**\n\n"
-            "| Parameter | Value | What it controls |\n"
-            "|---|---|---|\n"
-            r"| $\sigma_s$ (diffusion constant) | 2.0 pts/√min | Scoring uncertainty per unit time |"
-            "\n"
-            "| Prior bridge | $\\sqrt{3}/\\pi$ | Logit-to-probit conversion factor |\n"
-            "| Live data TTL | 120 s | How often live games are re-fetched |"
-        )
-        st.markdown(
-            "**Why K = 24?** Chess originally used K = 10 for experienced players. "
-            "Basketball has more variance per game and a shorter season relative to chess, "
-            "so a larger K is appropriate: ratings need to move faster to stay meaningful. "
-            "K = 24 is a widely-used starting point for college basketball Elo models.\n\n"
-            "**Why 1500?** It's arbitrary: only rating *differences* matter, not absolute values. "
-            "1500 is the chess convention; you could start at 0 or 1000 and the win probabilities "
-            "would be identical as long as all teams start at the same value.\n\n"
-            "**Why 100 points for home advantage?** Empirical studies of college basketball "
-            "suggest home teams win about 60–64% of games, corresponding to roughly 80–100 Elo points."
-        )
-
-    with st.expander("17 · Projected score from win probability"):
+    # ── 16. Projected score ───────────────────────────────────────────────────
+    with st.expander("16 · Projected score from win probability"):
         col_f, col_e = st.columns([1, 1])
         with col_f:
             st.markdown("**The chain of formulas**")
@@ -1760,6 +1711,45 @@ Y_{ij} = \begin{cases} 1 & \text{team } i \text{ wins} \\ 0 & \text{team } i \te
                 "| $\\bar{T}$ | 140 pts | Average total; shifts both scores equally |\n"
                 "| $z$ | varies | Higher → bigger predicted margin |"
             )
+
+    # ── 17. Model parameters ─────────────────────────────────────────────────
+    with st.expander("17 · Model parameters used in this dashboard"):
+        st.markdown(
+            "**Elo / bracket engine**\n\n"
+            "| Parameter | Value | What it controls |\n"
+            "|---|---|---|\n"
+            "| $K$ (update factor) | 24 | How fast ratings respond to results |\n"
+            "| Initial rating | 1500 | Starting Elo for all new teams |\n"
+            "| Home advantage | 100 pts | Temporary boost for home team |\n"
+            "| Elo scale | 400 | Sensitivity of win probability to rating gap |\n"
+            "| Simulations (bracket) | 100,000 | Monte Carlo runs for bracket odds |\n"
+            "| Teams seeded | 64 | Teams included in bracket simulation |\n\n"
+            "**Adjusted efficiency engine**\n\n"
+            "| Parameter | Value | What it controls |\n"
+            "|---|---|---|\n"
+            "| Iterations | 20 | Convergence passes for opponent adjustment |\n"
+            "| Min games | 5 | Teams excluded below this threshold |\n"
+            "| Opponent weight | games played | More data = more pull in the adjustment |\n\n"
+            "**Signals engine**\n\n"
+            "| Parameter | Value | What it controls |\n"
+            "|---|---|---|\n"
+            "| Edge threshold | 5% | Min model vs line gap to flag as EDGE |\n"
+            "| Sharp move threshold | 4% | Min implied prob shift to classify as sharp |\n"
+            "| Breakeven (-110) | 52.4% | Win rate needed to profit at standard juice |\n"
+            "| Backtest stake | $100 flat | Per-bet size in walk-forward simulation |\n"
+        )
+        st.markdown(
+            "**Why K = 24?** Basketball has more variance per game and a shorter season "
+            "than chess, so ratings need to move faster. K = 24 is a widely-used starting "
+            "point for college basketball Elo models.\n\n"
+            "**Why 1500?** Only rating *differences* matter. You could start at 0 or 1000 "
+            "and win probabilities would be identical.\n\n"
+            "**Why 100 pts home advantage?** Empirical college basketball data suggests "
+            "home teams win ~60-64% of games, corresponding to ~80-100 Elo points.\n\n"
+            "**Why 5% edge threshold?** Below 5%, the signal is too close to noise "
+            "given typical model error. At 5%+, the expected value is meaningfully positive "
+            "even accounting for model uncertainty."
+        )
 
 
 # ════════════════════════════════════════════════════════════════════════════ #
