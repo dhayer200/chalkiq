@@ -129,4 +129,5 @@ def parse_player(athlete_dict: dict, team_id: str, labels: list[str]) -> dict | 
         "stl":       stl,   "blk":   blk,
         "pf":        pf,
         "game_score": round(gmsc, 2),
+        "off_score":  round(pts + 0.7 * ast - to_, 2),
     }

@@ -77,6 +77,7 @@ class PlayerEloEngine:
                 "team_id":     player.get("team_id", ""),
                 "game_date":   game_date,
                 "game_score":  gmsc,
+                "off_score":   player.get("off_score", 0.0),
                 "rating_pre":  round(r, 2),
                 "rating_post": round(self.ratings[pid], 2),
                 "min":         min_,
@@ -281,3 +282,92 @@ def load_boxscores(cache_dir: str) -> list[dict]:
         except Exception:
             continue
     return games
+
+
+def build_dnp_timeline(
+    games: list[dict],
+    team_elo_fn,
+    min_avg_min: float = 15.0,
+    min_prior_games: int = 5,
+) -> dict[str, dict[str, float]]:
+    """
+    Build {game_date: {team_id: elo_penalty}} from boxscore DNPs.
+
+    A "surprise DNP" is when a player who averaged min_avg_min+ minutes
+    over at least min_prior_games previous games in the same season plays
+    0 minutes (i.e. is absent from the boxscore entirely or records 0 min).
+
+    team_elo_fn: callable(team_id) -> float — current team Elo (used to
+    scale the impact estimate the same way estimate_impact() does).
+
+    Returns a timeline dict suitable for passing to Backtester.run().
+    """
+    from collections import defaultdict
+    from src.signals.injuries import estimate_impact
+
+    # Sort games chronologically
+    sorted_games = sorted(games, key=lambda g: g.get("game_date", ""))
+
+    # Track per-player minutes history within the season
+    # {player_id: [min, min, ...]} — rolling window of recent games
+    player_minutes: dict[str, list[float]] = defaultdict(list)
+    player_team:    dict[str, str]         = {}
+    player_pos:     dict[str, str]         = {}
+    player_name:    dict[str, str]         = {}
+
+    # Build set of (game_date, team_id) -> set of player_ids who DID play
+    played: dict[tuple, set] = defaultdict(set)
+    for g in sorted_games:
+        date = g.get("game_date", "")
+        for p in g.get("players", []):
+            pid = p.get("player_id", "")
+            if pid and p.get("min", 0) >= 5:
+                played[(date, p.get("team_id", ""))].add(pid)
+                player_team[pid] = p.get("team_id", "")
+                player_pos[pid]  = p.get("position", "")
+                player_name[pid] = p.get("name", "")
+
+    timeline: dict[str, dict[str, float]] = {}
+
+    for g in sorted_games:
+        date = g.get("game_date", "")
+        teams_in_game = {p.get("team_id", "") for p in g.get("players", [])}
+
+        # Update minutes history for players who DID play this game
+        for p in g.get("players", []):
+            pid = p.get("player_id", "")
+            if pid and p.get("min", 0) >= 5:
+                player_minutes[pid].append(float(p["min"]))
+
+        # For each team in this game, find players who are absent
+        for team_id in teams_in_game:
+            if not team_id:
+                continue
+            team_played = played.get((date, team_id), set())
+
+            for pid, mins_history in player_minutes.items():
+                if player_team.get(pid) != team_id:
+                    continue
+                if len(mins_history) < min_prior_games:
+                    continue
+                avg_min = sum(mins_history[-10:]) / min(10, len(mins_history))
+                if avg_min < min_avg_min:
+                    continue
+                if pid in team_played:
+                    continue  # played — not a DNP
+
+                # Surprise DNP: estimate Elo impact
+                team_elo = team_elo_fn(team_id)
+                pos = player_pos.get(pid, "")
+                impact = estimate_impact(
+                    player_name=player_name.get(pid, ""),
+                    position=pos,
+                    team_elo=team_elo,
+                    status="Out",
+                )
+                if impact != 0.0:
+                    if date not in timeline:
+                        timeline[date] = {}
+                    timeline[date][team_id] = timeline[date].get(team_id, 0.0) + impact
+
+    return timeline

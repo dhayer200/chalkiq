@@ -1915,6 +1915,7 @@ with tab_players:
             for rank, (pid, name, rating, tid, pos) in enumerate(_top, 1):
                 _hist = _p_engine.player_history(pid)
                 _avg_gmsc = sum(r["game_score"] for r in _hist) / len(_hist) if _hist else 0
+                _avg_off  = sum(r.get("off_score", 0) for r in _hist) / len(_hist) if _hist else 0
                 _avg_pts  = sum(r["pts"] for r in _hist) / len(_hist) if _hist else 0
                 _avg_reb  = sum(r["reb"] for r in _hist) / len(_hist) if _hist else 0
                 _avg_ast  = sum(r["ast"] for r in _hist) / len(_hist) if _hist else 0
@@ -1923,13 +1924,14 @@ with tab_players:
                 _trend = (_recent5[-1]["rating_post"] - _recent5[0]["rating_pre"]) if len(_recent5) >= 2 else 0
                 _team_name = engine.names.get(tid, tid)
                 _p_rows.append({
-                    "#":      rank,
-                    "Player": name,
-                    "Team":   _team_name,
-                    "Pos":    pos,
-                    "GP":     _gc.get(pid, 0),
-                    "Rating": round(rating, 1),
+                    "#":        rank,
+                    "Player":   name,
+                    "Team":     _team_name,
+                    "Pos":      pos,
+                    "GP":       _gc.get(pid, 0),
+                    "Rating":   round(rating, 1),
                     "Avg GmSc": round(_avg_gmsc, 1),
+                    "Avg OFF":  round(_avg_off, 1),
                     "Avg PTS":  round(_avg_pts, 1),
                     "Avg REB":  round(_avg_reb, 1),
                     "Avg AST":  round(_avg_ast, 1),
@@ -3019,54 +3021,71 @@ with tab_backtest:
     }
 
     # ── Injury timeline for backtest (current season only) ──────────────────
-    def _build_bt_injury_timeline() -> dict:
+    def _build_bt_injury_timeline(bt_games: list[dict]) -> dict:
         """
-        Build {game_date: {team_id: elo_delta}} from injury alerts.
+        Build {game_date: {team_id: elo_delta}} for use in injury-adjusted backtesting.
 
-        For each OUT/Doubtful alert, apply the Elo penalty to that team for
-        every date from detection until a return-to-active alert is recorded.
-        Only works for dates covered by collected injury alerts.
+        Primary source: boxscore DNPs — players who averaged 15+ min over the prior
+        5 games but are absent from a boxscore. Covers all seasons with cached boxscores.
+
+        Fallback: timestamped injury alerts from data/signals/injury_alerts.jsonl.
+        Only covers dates since polling started (current season only).
+
+        The two sources are merged; boxscore DNPs take precedence since they are
+        observed facts rather than status-change estimates.
         """
+        from src.players.engine import build_dnp_timeline, load_boxscores
+
+        # ── Primary: DNP timeline from boxscores ──────────────────────────────
+        _box_dir = ROOT / "data" / "raw" / division / "boxscores"
+        _boxscores = load_boxscores(str(_box_dir))
+        timeline: dict = {}
+        if _boxscores:
+            timeline = build_dnp_timeline(
+                _boxscores,
+                team_elo_fn=engine.rating,
+                min_avg_min=15.0,
+                min_prior_games=5,
+            )
+
+        # ── Fallback: alert-based timeline for dates not covered by boxscores ─
         from src.signals.injuries import load_alerts as _load_inj, estimate_impact, _OUT_STATUSES
         _raw = _load_inj()
-        if not _raw:
-            return {}
-
-        from datetime import date as _d, timedelta
-        _player_events: dict = {}
-        for _a in _raw:
-            _pid = _a.get("player_id", "")
-            if not _pid:
-                continue
-            _dt = _a.get("detected_at", "")[:10]
-            _tid = _a.get("team_id", "")
-            _status = _a.get("new_status", "")
-            _imp = estimate_impact(
-                player_name=_a.get("player_name", ""),
-                position=_a.get("position", ""),
-                team_elo=engine.rating(_tid),
-                status=_status,
-            )
-            _player_events.setdefault(_pid, []).append((_dt, _status, _tid, _imp))
-
-        today_str = str(_d.today())
-        timeline: dict = {}
-
-        for _pid, _events in _player_events.items():
-            _events.sort(key=lambda x: x[0])
-            for _i, (_dt, _status, _tid, _imp) in enumerate(_events):
-                if _status not in _OUT_STATUSES:
+        if _raw:
+            from datetime import date as _d, timedelta as _td
+            _player_events: dict = {}
+            for _a in _raw:
+                _pid = _a.get("player_id", "")
+                if not _pid:
                     continue
-                _end = _events[_i + 1][0] if _i + 1 < len(_events) else today_str
-                _cur = _d.fromisoformat(_dt)
-                _end_d = _d.fromisoformat(_end)
-                from datetime import timedelta as _td
-                while _cur <= _end_d:
-                    _ds = str(_cur)
-                    if _ds not in timeline:
-                        timeline[_ds] = {}
-                    timeline[_ds][_tid] = timeline[_ds].get(_tid, 0.0) + _imp
-                    _cur += _td(days=1)
+                _dt = _a.get("detected_at", "")[:10]
+                _tid = _a.get("team_id", "")
+                _status = _a.get("new_status", "")
+                _imp = estimate_impact(
+                    player_name=_a.get("player_name", ""),
+                    position=_a.get("position", ""),
+                    team_elo=engine.rating(_tid),
+                    status=_status,
+                )
+                _player_events.setdefault(_pid, []).append((_dt, _status, _tid, _imp))
+
+            today_str = str(_d.today())
+            for _pid, _events in _player_events.items():
+                _events.sort(key=lambda x: x[0])
+                for _i, (_dt, _status, _tid, _imp) in enumerate(_events):
+                    if _status not in _OUT_STATUSES:
+                        continue
+                    _end = _events[_i + 1][0] if _i + 1 < len(_events) else today_str
+                    _cur = _d.fromisoformat(_dt)
+                    _end_d = _d.fromisoformat(_end)
+                    while _cur <= _end_d:
+                        _ds = str(_cur)
+                        # Only add if boxscore DNPs didn't already cover this date+team
+                        if _ds not in timeline or _tid not in timeline[_ds]:
+                            if _ds not in timeline:
+                                timeline[_ds] = {}
+                            timeline[_ds][_tid] = timeline[_ds].get(_tid, 0.0) + _imp
+                        _cur += _td(days=1)
 
         return timeline
 
@@ -3115,7 +3134,7 @@ with tab_backtest:
         with st.spinner("Running backtest…"):
             if _bt_use_injuries:
                 _bt_games = _fetch_bt_games(_bt_div, tuple(sorted(_bt_seasons)))
-                _timeline = _build_bt_injury_timeline()
+                _timeline = _build_bt_injury_timeline(_bt_games)
                 from src.backtest.engine import Backtester as _BTAdj
                 _bt_adj = _BTAdj(k=24.0, home_advantage=100.0, decay_half_life=float(_bt_decay))
                 _results = _bt_adj.run(
@@ -3123,13 +3142,19 @@ with tab_backtest:
                     warmup_games=_bt_warmup, injury_timeline=_timeline or None,
                 )
                 if _timeline:
+                    _n_dnp_dates = len(_timeline)
+                    _box_count_bt = len(list((ROOT / "data" / "raw" / _bt_div / "boxscores").glob("*.json")))
                     st.caption(
-                        f"Injury adjustments applied across {len(_timeline)} game dates. "
-                        "Note: only current-season (2025-26) injury alerts are available."
+                        f"Injury adjustments applied across {_n_dnp_dates} game dates "
+                        f"({_box_count_bt:,} boxscores used for DNP detection). "
+                        "Fetch historical boxscores to extend coverage to prior seasons: "
+                        "`python scripts/fetch_boxscores.py --seasons 2023 2024 2025`"
                     )
                 else:
-                    st.warning("No injury alerts found in data/signals/injury_alerts.jsonl. "
-                               "Run `python scripts/poll_injuries.py --once` to collect data.")
+                    st.warning(
+                        "No injury data found. Fetch boxscores to enable DNP-based adjustments: "
+                        "`python scripts/fetch_boxscores.py --seasons 2023 2024 2025 2026`"
+                    )
             else:
                 _results = _run_backtest(
                     _bt_div,
