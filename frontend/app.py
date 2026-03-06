@@ -949,7 +949,6 @@ with hcol2:
     )
 
 cfg   = DIVISION_CONFIG[division]
-st.caption(f"Elo power ratings · Monte Carlo simulation · 2025–26 season through {date.today().strftime('%b %d, %Y')}")
 color = cfg["color"]
 light = cfg["light"]
 
@@ -1059,10 +1058,6 @@ with tab_rank:
 
     st.caption(
         "**Elo** — team strength rating; 1500 = average, updates after every game via win/loss + margin of victory. "
-        "**Adj Off** — points scored per 100 possessions, adjusted for opponent defense strength "
-        "(KenPom-style iterative method, 20 passes, GP-weighted). Higher is better. "
-        "**Adj Def** — points allowed per 100 possessions, adjusted for opponent offense. Lower is better. "
-        "**Net** = Adj Off - Adj Def; best predictor of future win rate. "
         "**Pace** — avg total points per game (proxy for possessions per 40 min). "
         "**SoS** — avg Elo of opponents faced. "
         "**R32 / S16 / E8 / FF / Title** — tournament advancement odds from 100,000 Monte Carlo simulations."
@@ -1086,6 +1081,7 @@ with tab_rank:
             _sy   = [e["adj_off"] for _, _, e in _scatter_top]
             _slbl = [n for _, n, _ in _scatter_top]
             _snet = [e["net_adj"] for _, _, e in _scatter_top]
+            _scdata = [[net, i + 1] for i, net in enumerate(_snet)]
 
             _fig_eff = go.Figure(go.Scatter(
                 x=_sx, y=_sy,
@@ -1093,6 +1089,7 @@ with tab_rank:
                 text=_slbl,
                 textposition="top center",
                 textfont=dict(size=7),
+                customdata=_scdata,
                 marker=dict(
                     size=8,
                     color=_snet,
@@ -1105,6 +1102,8 @@ with tab_rank:
                     "<b>%{text}</b><br>"
                     "Adj Off: %{y:.1f}<br>"
                     "Adj Def: %{x:.1f}<br>"
+                    "Net Adj: %{customdata[0]:+.1f}<br>"
+                    "Rank: #%{customdata[1]}<br>"
                     "<extra></extra>"
                 ),
             ))
@@ -1123,11 +1122,9 @@ with tab_rank:
             )
             st.markdown("**Offense vs Defense (Top 120)**")
             st.caption(
-                "Each dot is a team. Upper-right = elite offense + elite defense. "
-                "X-axis reversed: farther right = better defense (fewer pts allowed). "
-                "Color = Net Adj (Adj Off - Adj Def). "
-                "Formula: Adj Off = Raw Off x (league avg / opponent Adj Def), "
-                "iterated 20x with GP-weighted opponent averages, renormalized each pass."
+                "Net Adj = Adj Off - Adj Def. "
+                "Adj Off = Raw Off x (league avg / opp Adj Def), iterated 20x with GP-weighted opponent averages, renormalized each pass. "
+                "Adj Def = Raw Def x (league avg / opp Adj Off), iterated 20x with GP-weighted opponent averages, renormalized each pass."
             )
             st.plotly_chart(_fig_eff, width="stretch")
 
@@ -1292,38 +1289,6 @@ Y_{ij} = \begin{cases} 1 & \text{team } i \text{ wins} \\ 0 & \text{team } i \te
                 "- The formula is symmetric: $p_{ji} = 1 - p_{ij}$ always.\n\n"
                 "The '400' and 'base 10' are historical convention from chess Elo. "
                 "They set the *sensitivity* of the scale: how much a rating difference matters."
-            )
-
-    # ── 3. Why base 10 / 400? ────────────────────────────────────────────────
-    with st.expander("3 · Why base 10 and why divide by 400?"):
-        col_f, col_e = st.columns([1, 1])
-        with col_f:
-            st.markdown("**The logistic connection**")
-            st.latex(r"p_{ij} = \frac{1}{1 + e^{-(\ln 10 / 400)\,\Delta R}}")
-            st.markdown("where $\\Delta R = R_i - R_j$.")
-            st.markdown("**Reference points**")
-            st.markdown(
-                "| Rating diff | Win probability |\n"
-                "|---|---|\n"
-                "| 0 | 50.0% |\n"
-                "| 100 | 64.0% |\n"
-                "| 200 | 76.0% |\n"
-                "| 400 | 90.9% |\n"
-                "| 800 | 99.0% |"
-            )
-        with col_e:
-            st.markdown("**Simple explanation**")
-            st.markdown(
-                "Using $10^x = e^{x \\ln 10}$, the Elo formula is just a logistic sigmoid with slope "
-                "$\\ln(10)/400 \\approx 0.00576$. So Elo is actually a **logistic regression model** "
-                "with one input: the rating difference.\n\n"
-                "- **Base 10** is a historical choice from chess. You could use base $e$ with "
-                "a different divisor and get the same behavior.\n"
-                "- **Dividing by 400** sets the scale. Smaller values make ratings more sensitive "
-                "(a small difference matters more). Larger values flatten the curve "
-                "(you need a huge gap to get a very high win probability).\n\n"
-                "This project uses the standard chess constants because they are well-studied "
-                "and give sensible probabilities for college basketball rating gaps."
             )
 
     # ── 4. Elo rating update ─────────────────────────────────────────────────
@@ -1576,10 +1541,14 @@ Y_{ij} = \begin{cases} 1 & \text{team } i \text{ wins} \\ 0 & \text{team } i \te
                 r"\text{Adj Off}_i^{(k+1)} = \text{Raw Off}_i \cdot "
                 r"\frac{\bar{\mu}}{\sum_j w_j \cdot \text{Adj Def}_j^{(k)} / \sum_j w_j}"
             )
+            st.latex(
+                r"\text{Adj Def}_i^{(k+1)} = \text{Raw Def}_i \cdot "
+                r"\frac{\bar{\mu}}{\sum_j w_j \cdot \text{Adj Off}_j^{(k)} / \sum_j w_j}"
+            )
             st.markdown(
                 "where $w_j = G_j$ (games played by opponent $j$) and "
                 "$\\bar{\\mu}$ is the league average. "
-                "Adj Def updates symmetrically. Both are renormalized to $\\bar{\\mu}$ after each pass."
+                "Both renormalized to $\\bar{\\mu}$ after each pass."
             )
             st.markdown("**Net rating:**")
             st.latex(r"\text{Net}_i = \text{Adj Off}_i - \text{Adj Def}_i")
@@ -1909,6 +1878,75 @@ with tab_players:
                 width="stretch",
                 hide_index=True,
             )
+
+            # ── Player Off vs Defense scatter (top 200) ───────────────────
+            _p_scatter_all = _p_engine.top_players(n=200, min_games=_p_min_gp, position=_pos_arg)
+            if len(_p_scatter_all) >= 5:
+                _psx, _psy, _pslbl, _psrating, _pscdata = [], [], [], [], []
+                for _rank_i, (_pid, _pname, _prating, _ptid, _ppos) in enumerate(_p_scatter_all, 1):
+                    _phist = _p_engine.player_history(_pid)
+                    if not _phist:
+                        continue
+                    _pn = len(_phist)
+                    _pavg_pts = sum(r["pts"] for r in _phist) / _pn
+                    _pavg_ast = sum(r["ast"] for r in _phist) / _pn
+                    _pavg_stl = sum(r["stl"] for r in _phist) / _pn
+                    _pavg_blk = sum(r["blk"] for r in _phist) / _pn
+                    _pavg_reb = sum(r["reb"] for r in _phist) / _pn
+                    _p_off = round(_pavg_pts + 0.7 * _pavg_ast, 2)
+                    _p_def = round(_pavg_stl + 0.7 * _pavg_blk + 0.3 * _pavg_reb, 2)
+                    _psx.append(_p_def)
+                    _psy.append(_p_off)
+                    _pslbl.append(_pname)
+                    _psrating.append(_prating)
+                    _pscdata.append([round(_prating, 1), _rank_i])
+
+                _fig_peff = go.Figure(go.Scatter(
+                    x=_psx, y=_psy,
+                    mode="markers+text",
+                    text=_pslbl,
+                    textposition="top center",
+                    textfont=dict(size=7),
+                    customdata=_pscdata,
+                    marker=dict(
+                        size=8,
+                        color=_psrating,
+                        colorscale="RdYlGn",
+                        showscale=True,
+                        colorbar=dict(title="Elo Rating"),
+                        cmin=1450,
+                        cmax=1700,
+                        line=dict(width=0.5, color=NORD["bg3"]),
+                    ),
+                    hovertemplate=(
+                        "<b>%{text}</b><br>"
+                        "Off Score: %{y:.1f}<br>"
+                        "Def Score: %{x:.1f}<br>"
+                        "Elo Rating: %{customdata[0]:.1f}<br>"
+                        "Rank: #%{customdata[1]}<br>"
+                        "<extra></extra>"
+                    ),
+                ))
+                _pmed_def = sorted(_psx)[len(_psx) // 2]
+                _pmed_off = sorted(_psy)[len(_psy) // 2]
+                _fig_peff.add_vline(x=_pmed_def, line_color=NORD["bg3"], line_dash="dot")
+                _fig_peff.add_hline(y=_pmed_off, line_color=NORD["bg3"], line_dash="dot")
+                _fig_peff.update_layout(
+                    xaxis=dict(title="Def Score (STL + 0.7*BLK + 0.3*REB per game, higher = better)"),
+                    yaxis=dict(title="Off Score (PTS + 0.7*AST per game)"),
+                    height=520,
+                    margin=dict(l=60, r=20, t=30, b=50),
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                )
+                st.markdown("**Offense vs Defense (Top 200)**")
+                st.caption(
+                    "Off Score = PTS + 0.7 x AST per game (scoring + playmaking). "
+                    "Def Score = STL + 0.7 x BLK + 0.3 x REB per game (defensive contribution). "
+                    "Upper-right = two-way impact player. Color = Elo Rating. "
+                    "Hover for Elo Rating + rank."
+                )
+                st.plotly_chart(_fig_peff, width="stretch")
 
         # ── Season Trajectory ─────────────────────────────────────────────
         with _p_tab_traj:

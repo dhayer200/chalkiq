@@ -98,6 +98,32 @@ def load_alerts(data_dir: Path = _DEFAULT_DIR) -> list[dict]:
     return read_all("alerts.jsonl", data_dir)
 
 
+def save_prop_snapshot(prop_record: dict, data_dir: Path = _DEFAULT_DIR) -> None:
+    """Save a single player prop snapshot."""
+    append(prop_record, "props.jsonl", data_dir)
+
+
+def load_prop_snapshots(data_dir: Path = _DEFAULT_DIR) -> list[dict]:
+    return read_all("props.jsonl", data_dir)
+
+
+def get_prop_history(
+    event_id: str,
+    player_name: str,
+    stat: str,
+    bookmaker: str,
+    data_dir: Path = _DEFAULT_DIR,
+) -> list[dict]:
+    """All prop snapshots for one player+stat+event+book, chronological."""
+    return [
+        r for r in read_all("props.jsonl", data_dir)
+        if (r.get("event_id") == event_id
+            and r.get("player_name") == player_name
+            and r.get("stat") == stat
+            and r.get("bookmaker") == bookmaker)
+    ]
+
+
 def get_opening_line(
     game_id: str,
     bookmaker: str,

@@ -200,6 +200,141 @@ def fetch_historical_odds(
     return results
 
 
+def fetch_events(sport: str = SPORT_NCAAB) -> list[dict]:
+    """
+    Fetch upcoming events with their Odds API event IDs.
+    Costs 1 API request. Use this to get event IDs for fetch_player_props().
+
+    Returns list of {event_id, home_team, away_team, commence_time}.
+    """
+    try:
+        resp = requests.get(
+            f"{_BASE}/sports/{sport}/events",
+            params={"apiKey": _key()},
+            timeout=15,
+        )
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        print(f"  [odds-api] events request failed: {e}")
+        return []
+
+    return [
+        {
+            "event_id":      e["id"],
+            "home_team":     e.get("home_team", ""),
+            "away_team":     e.get("away_team", ""),
+            "commence_time": e.get("commence_time", ""),
+        }
+        for e in resp.json()
+    ]
+
+
+_PROP_STAT_MAP = {
+    "player_points":   "pts",
+    "player_rebounds": "reb",
+    "player_assists":  "ast",
+    "player_steals":   "stl",
+    "player_blocks":   "blk",
+}
+
+
+def fetch_player_props(
+    sport: str,
+    event_id: str,
+    markets: str = "player_points,player_rebounds,player_assists,player_steals,player_blocks",
+    bookmakers: str = "draftkings,fanduel,betmgm",
+) -> list[dict]:
+    """
+    Fetch player prop lines for a single event. Costs 1 API request.
+
+    Returns list of dicts, one per player per stat per bookmaker:
+    {
+        "event_id":    str,
+        "player_name": str,
+        "stat":        str,   # 'pts', 'reb', 'ast', 'stl', 'blk'
+        "line":        float,
+        "over_price":  int,   # American moneyline
+        "under_price": int,
+        "over_prob":   float, # vig-removed implied prob
+        "under_prob":  float,
+        "bookmaker":   str,
+        "fetched_at":  str,
+    }
+    """
+    try:
+        resp = requests.get(
+            f"{_BASE}/sports/{sport}/events/{event_id}/odds",
+            params={
+                "apiKey":     _key(),
+                "regions":    "us",
+                "markets":    markets,
+                "oddsFormat": "american",
+                "bookmakers": bookmakers,
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        print(f"  [odds-api] props request failed (event={event_id}): {e}")
+        return []
+
+    remaining = resp.headers.get("x-requests-remaining", "?")
+    used      = resp.headers.get("x-requests-used", "?")
+    print(f"  [odds-api] props event={event_id}  used={used}  remaining={remaining}")
+
+    fetched_at = datetime.now(timezone.utc).isoformat()
+    results: list[dict] = []
+    data = resp.json()
+
+    for bookmaker in data.get("bookmakers", []):
+        book_key = bookmaker["key"]
+        for market in bookmaker.get("markets", []):
+            market_key = market["key"]
+            stat = _PROP_STAT_MAP.get(market_key)
+            if not stat:
+                continue
+
+            # Group outcomes by player name
+            outcomes = market.get("outcomes", [])
+            players: dict[str, dict] = {}
+            for o in outcomes:
+                player_name = o.get("description", "")
+                side        = o.get("name", "")  # "Over" or "Under"
+                price       = o.get("price", 0)
+                point       = o.get("point", 0.0)
+                if not player_name:
+                    continue
+                if player_name not in players:
+                    players[player_name] = {"line": point}
+                if side == "Over":
+                    players[player_name]["over_price"] = int(price)
+                elif side == "Under":
+                    players[player_name]["under_price"] = int(price)
+
+            for player_name, p in players.items():
+                over_price  = p.get("over_price")
+                under_price = p.get("under_price")
+                if over_price is None or under_price is None:
+                    continue
+                raw_o = american_to_prob(over_price)
+                raw_u = american_to_prob(under_price)
+                fair_o, fair_u = remove_vig(raw_o, raw_u)
+                results.append({
+                    "event_id":    event_id,
+                    "player_name": player_name,
+                    "stat":        stat,
+                    "line":        p["line"],
+                    "over_price":  over_price,
+                    "under_price": under_price,
+                    "over_prob":   round(fair_o, 4),
+                    "under_prob":  round(fair_u, 4),
+                    "bookmaker":   book_key,
+                    "fetched_at":  fetched_at,
+                })
+
+    return results
+
+
 def fetch_scores(sport: str = SPORT_NCAAB, days_from: int = 1) -> list[dict]:
     """
     Fetch recent completed scores. Used to match closing lines to outcomes.
