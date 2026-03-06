@@ -2990,7 +2990,7 @@ with tab_signals:
             "| **CLV vs Close** — our model prob minus the closing implied prob. "
             "Closing line is the most important: the market is sharpest right before tip-off. "
             "Positive CLV vs close means our model had an edge over the final market price. "
-            "| **Beat Close** — YES if CLV vs close is positive. "
+            "| **Beat Close (home)** — YES if model was above closing line for the home team. "
             "Consistently beating the closing line is the strongest evidence of real model edge."
         )
         if not _clv_recs:
@@ -3016,18 +3016,23 @@ with tab_signals:
             _clv_rows = []
             for _r in reversed(_clv_filtered):
                 _beat = (_r.get("clv_vs_closing", 0) or 0) > 0
+                _open_prob  = _r.get("opening_home_prob") or 0
+                _close_prob = _r.get("closing_home_prob") or 0
+                _line_moved = abs(_close_prob - _open_prob) >= 0.005  # ≥0.5% shift
+                _line_dir   = "" if not _line_moved else ("toward home" if _close_prob > _open_prob else "toward away")
                 _clv_rows.append({
-                    "Matchup":       f"{_r.get('away_team','?')} @ {_r.get('home_team','?')}",
-                    "Date":          _r.get("game_date", _r.get("recorded_at", ""))[:10],
-                    "Book":          _r.get("bookmaker", ""),
-                    "Source":        _r.get("source", "live"),
-                    "Model Prob":    f"{_r.get('model_prob_home', 0):.1%}",
-                    "Open ML":       _fmt_ml(int(_r["opening_home_ml"])) if _r.get("opening_home_ml") else "-",
-                    "Close ML":      _fmt_ml(int(_r["closing_home_ml"])) if _r.get("closing_home_ml") else "-",
-                    "CLV vs Open":   f"{(_r.get('clv_vs_opening') or 0):+.2%}",
-                    "CLV vs Close":  f"{(_r.get('clv_vs_closing') or 0):+.2%}",
-                    "Beat Close":    "YES" if _beat else "no",
-                    "Home Won":      "W" if _r.get("home_won") else ("L" if _r.get("home_won") is False else "?"),
+                    "Matchup":            f"{_r.get('away_team','?')} @ {_r.get('home_team','?')}",
+                    "Date":               _r.get("game_date", _r.get("recorded_at", ""))[:10],
+                    "Book":               _r.get("bookmaker", ""),
+                    "Source":             _r.get("source", "live"),
+                    "Model (home)":       f"{_r.get('model_prob_home', 0):.1%}",
+                    "Open ML":            _fmt_ml(int(_r["opening_home_ml"])) if _r.get("opening_home_ml") else "-",
+                    "Close ML":           _fmt_ml(int(_r["closing_home_ml"])) if _r.get("closing_home_ml") else "-",
+                    "Line moved":         _line_dir if _line_moved else "stable",
+                    "CLV vs Open":        f"{(_r.get('clv_vs_opening') or 0):+.2%}",
+                    "CLV vs Close":       f"{(_r.get('clv_vs_closing') or 0):+.2%}",
+                    "Beat Close (home)":  "YES" if _beat else "no",
+                    "Home Won":           "W" if _r.get("home_won") else ("L" if _r.get("home_won") is False else "?"),
                 })
             _df_clv = pd.DataFrame(_clv_rows)
 
@@ -3042,7 +3047,7 @@ with tab_signals:
             _c1, _c2, _c3, _c4 = st.columns(4)
             _c1.metric("Games shown", f"{_n_clv} / {_n_total}",
                        help=f"{_n_hist} historical  |  {_n_live} live")
-            _c2.metric("Beat closing line", f"{_beat_n}/{_n_clv} ({_beat_n/_n_clv:.0%})" if _n_clv else "-")
+            _c2.metric("Beat close (home side)", f"{_beat_n}/{_n_clv} ({_beat_n/_n_clv:.0%})" if _n_clv else "-")
             _c3.metric("Avg CLV vs close", f"{_avg_clv:+.2%}")
             _c4.metric("Target", "> 55% beat rate")
             st.markdown("---")
@@ -3054,7 +3059,7 @@ with tab_signals:
 
             if _clv_rows:
                 st.dataframe(
-                    _df_clv.style.map(_color_beat, subset=["Beat Close"]),
+                    _df_clv.style.map(_color_beat, subset=["Beat Close (home)"]),
                     width="stretch",
                     hide_index=True,
                 )
@@ -3438,7 +3443,10 @@ with tab_backtest:
                     "Cross-references backtest bets against CLV records collected by poll_odds.py. "
                     "Only games present in both datasets are shown. "
                     "| **Bet beat close** — YES when our model had positive CLV on the bet side. "
-                    "This is the real-world sharpness test: did the bet we placed beat the closing line?"
+                    "This is the real-world sharpness test: did the bet we placed beat the closing line?\n\n"
+                    "Note: CLV is stored from the home perspective; sign flips for away bets.\n"
+                    "A game showing negative CLV in Signals (home side) can show YES here if the backtest bet away.\n"
+                    "CLV vs Open = CLV vs Close simply means the market line did not move open-to-close."
                 )
                 # Filter to bets that have CLV data
                 _clv_bets = [
