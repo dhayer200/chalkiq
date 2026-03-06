@@ -1849,6 +1849,75 @@ Y_{ij} = \begin{cases} 1 & \text{team } i \text{ wins} \\ 0 & \text{team } i \te
             "even accounting for model uncertainty."
         )
 
+    with st.expander("18 · Offensive Efficiency (player scatter X-axis)"):
+        col_f, col_e = st.columns([1, 1])
+        with col_f:
+            st.markdown("**Formula**")
+            st.latex(r"\text{Off Eff} = \text{TS\%} \times 100 + \frac{\text{AST}}{36} - 1.5 \times \frac{\text{TO}}{36}")
+            st.markdown("where **True Shooting %** is:")
+            st.latex(r"\text{TS\%} = \frac{\text{PTS}}{2 \times (\text{FGA} + 0.44 \times \text{FTA})}")
+            st.markdown(
+                "All per-36 values are normalised: raw stat \u00f7 avg minutes \u00d7 36, "
+                "so part-time and full-time players are on equal footing."
+            )
+            st.markdown("**Worked example** \u2014 20 PTS, 5 AST, 2 TO, 14 FGA, 4 FTA, 32 MIN:")
+            st.latex(r"\text{TS\%} = \frac{20}{2(14 + 0.44 \times 4)} = \frac{20}{31.52} \approx 63.5\%")
+            st.latex(r"\text{Off Eff} = 63.5 + 5.6 - 1.5 \times 2.25 = 65.7")
+        with col_e:
+            st.markdown("**Simple explanation**")
+            st.markdown(
+                "Offensive Efficiency answers: how many quality offensive actions does this player "
+                "produce per 36 minutes, weighted by how efficient those actions are?\n\n"
+                "**True Shooting %** is the foundation. It measures scoring efficiency across "
+                "all three shot types using the 0.44 free-throw multiplier (the standard adjustment "
+                "for and-ones and technical free throws). A player who scores 20 points by making "
+                "layups and foul shots is more efficient than one who scores 20 on mid-range jumpers "
+                "\u2014 TS% captures that.\n\n"
+                "**+ AST/36** rewards playmaking. A pass that creates a basket has roughly the same "
+                "possession value as a made 2-pointer.\n\n"
+                "**\u2212 1.5 \u00d7 TO/36** penalises turnovers. The 1.5 weight reflects that "
+                "surrendering a possession costs more than an assist earns \u2014 the opponent "
+                "often converts it into easy points.\n\n"
+                "**Per-36 normalisation** puts a 20-minute role player and a 35-minute starter "
+                "on the same scale so the comparison is fair."
+            )
+
+    with st.expander("19 · Defensive Impact (player scatter Y-axis)"):
+        col_f, col_e = st.columns([1, 1])
+        with col_f:
+            st.markdown("**Formula**")
+            st.latex(r"\text{Def Impact} = 3 \cdot \text{STL}_{36} + 2 \cdot \text{BLK}_{36} + 0.3 \cdot \text{DREB}_{36} - \text{PF}_{36}")
+            st.markdown("(subscript 36 = per-36-minute normalised rate)")
+            st.markdown(
+                "| Component | Weight | Rationale |\n"
+                "|---|---|---|\n"
+                "| STL | 3 | Turnover forced + live-ball transition opportunity |\n"
+                "| BLK | 2 | Shot denied; ball stays live (no transition bonus) |\n"
+                "| DREB | 0.3 | Secures stop; shared team activity, lower individual credit |\n"
+                "| PF | \u22121 | Gifts opponent free-throw possessions |\n"
+            )
+            st.markdown("**Worked example** \u2014 1.5 STL, 0.8 BLK, 5.0 DREB, 2.0 PF per 36:")
+            st.latex(r"\text{Def Impact} = 3(1.5) + 2(0.8) + 0.3(5.0) - 2.0 = 4.5 + 1.6 + 1.5 - 2.0 = 5.6")
+        with col_e:
+            st.markdown("**Simple explanation**")
+            st.markdown(
+                "Defensive Impact answers: how much does this player disrupt the opponent per 36 min?\n\n"
+                "**Steals (\u00d73)** are the highest-value defensive play. A steal ends the "
+                "opponent's possession, prevents a shot, and generates a transition opportunity "
+                "\u2014 all at once. That triple benefit justifies the highest weight.\n\n"
+                "**Blocks (\u00d72)** deny a shot but the ball can land anywhere. The opponent "
+                "may retain possession, so the credit is lower than a steal.\n\n"
+                "**Defensive rebounds (\u00d70.3)** finish a stop by securing the ball. "
+                "The weight is low because rebounding is a team activity \u2014 someone has "
+                "to get it, and position matters more than individual skill.\n\n"
+                "**Personal fouls (\u22121)** are subtracted because they hand the opponent "
+                "free throws at 75%+ efficiency. A physically aggressive defender who fouls "
+                "constantly creates more damage than they prevent.\n\n"
+                "**Quadrant reading:** Top-right = two-way stars. Top-left = defensive anchors. "
+                "Bottom-right = efficient scorers who don't defend. Bottom-left = players "
+                "a contender cannot carry."
+            )
+
 
 # ════════════════════════════════════════════════════════════════════════════ #
 # TAB 8 — Players
@@ -1914,11 +1983,30 @@ with tab_players:
             _p_rows = []
             for rank, (pid, name, rating, tid, pos) in enumerate(_top, 1):
                 _hist = _p_engine.player_history(pid)
-                _avg_gmsc = sum(r["game_score"] for r in _hist) / len(_hist) if _hist else 0
-                _avg_off  = sum(r.get("off_score", 0) for r in _hist) / len(_hist) if _hist else 0
-                _avg_pts  = sum(r["pts"] for r in _hist) / len(_hist) if _hist else 0
-                _avg_reb  = sum(r["reb"] for r in _hist) / len(_hist) if _hist else 0
-                _avg_ast  = sum(r["ast"] for r in _hist) / len(_hist) if _hist else 0
+                _pn   = len(_hist) if _hist else 1
+                _avg_gmsc = sum(r["game_score"] for r in _hist) / _pn if _hist else 0
+                _avg_pts  = sum(r["pts"]  for r in _hist) / _pn if _hist else 0
+                _avg_reb  = sum(r["reb"]  for r in _hist) / _pn if _hist else 0
+                _avg_ast  = sum(r["ast"]  for r in _hist) / _pn if _hist else 0
+                _avg_to   = sum(r["to"]   for r in _hist) / _pn if _hist else 0
+                _avg_min  = sum(r["min"]  for r in _hist) / _pn if _hist else 1
+                # Compute off_score from raw stats (handles old cached records missing off_score)
+                _avg_off  = round(_avg_pts + 0.7 * _avg_ast - _avg_to, 1)
+                # Per-36 for efficiency metrics
+                _sc36 = 36.0 / max(_avg_min, 1.0)
+                _avg_stl  = sum(r["stl"]  for r in _hist) / _pn * _sc36 if _hist else 0
+                _avg_blk  = sum(r["blk"]  for r in _hist) / _pn * _sc36 if _hist else 0
+                _avg_dreb = sum(r.get("dreb", r["reb"] * 0.7) for r in _hist) / _pn * _sc36 if _hist else 0
+                _avg_pf36 = sum(r.get("pf", 0) for r in _hist) / _pn * _sc36 if _hist else 0
+                _avg_fga  = sum(r.get("fg_a", 0) for r in _hist) / _pn if _hist else 0
+                _avg_fta  = sum(r.get("ft_a", 0) for r in _hist) / _pn if _hist else 0
+                _pts36    = _avg_pts * _sc36
+                _ast36    = _avg_ast * _sc36
+                _to36     = _avg_to  * _sc36
+                _usage    = _avg_fga + 0.44 * _avg_fta
+                _ts       = (_avg_pts / (2 * _usage)) if _usage > 0.5 else 0.45
+                _off_eff  = round(_ts * 100 + _ast36 - 1.5 * _to36, 1)
+                _def_imp  = round(_avg_stl * 3 + _avg_blk * 2 + _avg_dreb * 0.3 - _avg_pf36, 1)
                 # Trend: rating change over last 5 games
                 _recent5 = _hist[-5:]
                 _trend = (_recent5[-1]["rating_post"] - _recent5[0]["rating_pre"]) if len(_recent5) >= 2 else 0
@@ -1931,7 +2019,9 @@ with tab_players:
                     "GP":       _gc.get(pid, 0),
                     "Rating":   round(rating, 1),
                     "Avg GmSc": round(_avg_gmsc, 1),
-                    "Avg OFF":  round(_avg_off, 1),
+                    "Avg OFF":  _avg_off,
+                    "Off Eff":  _off_eff,
+                    "Def Imp":  _def_imp,
                     "Avg PTS":  round(_avg_pts, 1),
                     "Avg REB":  round(_avg_reb, 1),
                     "Avg AST":  round(_avg_ast, 1),
@@ -1950,8 +2040,10 @@ with tab_players:
             st.dataframe(
                 _df_players.style
                     .map(_color_trend, subset=["Trend"])
-                    .background_gradient(subset=["Rating"], cmap="Blues", vmin=1400, vmax=1700)
-                    .background_gradient(subset=["Avg GmSc"], cmap="Greens", vmin=0, vmax=25),
+                    .background_gradient(subset=["Rating"],   cmap="Blues",   vmin=1400, vmax=1700)
+                    .background_gradient(subset=["Avg GmSc"], cmap="Greens",  vmin=0,    vmax=25)
+                    .background_gradient(subset=["Off Eff"],  cmap="YlOrRd",  vmin=40,   vmax=80)
+                    .background_gradient(subset=["Def Imp"],  cmap="PuBuGn",  vmin=0,    vmax=12),
                 width="stretch",
                 hide_index=True,
             )
@@ -1988,8 +2080,8 @@ with tab_players:
                     # Defensive Impact: stl×3 + blk×2 + dreb×0.3 − pf (all per 36)
                     _def_imp = round(_avg_stl * 3 + _avg_blk * 2 + _avg_dreb * 0.3 - _avg_pf, 2)
 
-                    _psx.append(_off_eff)
-                    _psy.append(_def_imp)
+                    _psx.append(_def_imp)
+                    _psy.append(_off_eff)
                     _pslbl.append(_pname)
                     _psrating.append(_prating)
                     _pscdata.append([
@@ -1998,8 +2090,8 @@ with tab_players:
                         round(_avg_stl, 1), round(_avg_blk, 1),
                     ])
 
-                _pmed_off = sorted(_psx)[len(_psx) // 2]
-                _pmed_def = sorted(_psy)[len(_psy) // 2]
+                _pmed_def = sorted(_psx)[len(_psx) // 2]
+                _pmed_off = sorted(_psy)[len(_psy) // 2]
 
                 _fig_peff = go.Figure()
 
@@ -2007,10 +2099,10 @@ with tab_players:
                 _x_range = [min(_psx) - 1, max(_psx) + 1]
                 _y_range = [min(_psy) - 0.5, max(_psy) + 0.5]
                 for _qx, _qy, _qlabel, _qcolor in [
-                    ([_pmed_off, _x_range[1]], [_pmed_def, _y_range[1]], "Two-Way",           "rgba(163,190,140,0.07)"),
-                    ([_x_range[0], _pmed_off], [_pmed_def, _y_range[1]], "Defensive Spec.",   "rgba(136,192,208,0.07)"),
-                    ([_pmed_off, _x_range[1]], [_y_range[0], _pmed_def], "Offensive Spec.",   "rgba(235,203,139,0.07)"),
-                    ([_x_range[0], _pmed_off], [_y_range[0], _pmed_def], "Limited Impact",    "rgba(191,97,106,0.07)"),
+                    ([_pmed_def, _x_range[1]], [_pmed_off, _y_range[1]], "Two-Way",           "rgba(163,190,140,0.07)"),
+                    ([_x_range[0], _pmed_def], [_pmed_off, _y_range[1]], "Offensive Spec.",   "rgba(235,203,139,0.07)"),
+                    ([_pmed_def, _x_range[1]], [_y_range[0], _pmed_off], "Defensive Spec.",   "rgba(136,192,208,0.07)"),
+                    ([_x_range[0], _pmed_def], [_y_range[0], _pmed_off], "Limited Impact",    "rgba(191,97,106,0.07)"),
                 ]:
                     _fig_peff.add_shape(type="rect",
                         x0=_qx[0], x1=_qx[1], y0=_qy[0], y1=_qy[1],
@@ -2040,7 +2132,7 @@ with tab_players:
                     ),
                     hovertemplate=(
                         "<b>%{text}</b><br>"
-                        "Off Eff: %{x:.1f}  |  Def Impact: %{y:.1f}<br>"
+                        "Def Impact: %{x:.1f}  |  Off Eff: %{y:.1f}<br>"
                         "TS%%: %{customdata[2]:.1f}%%<br>"
                         "AST/36: %{customdata[3]:.1f}  |  TO/36: %{customdata[4]:.1f}<br>"
                         "STL/36: %{customdata[5]:.1f}  |  BLK/36: %{customdata[6]:.1f}<br>"
@@ -2056,7 +2148,7 @@ with tab_players:
                         gridcolor=NORD["bg2"],
                     ),
                     yaxis=dict(
-                        title="Defensive Impact  (3×STL + 2×BLK + 0.3×DREB − PF, per 36)",
+                        title="Offensive Efficiency  (TS% × 100 + AST/36 − 1.5 × TO/36)",
                         gridcolor=NORD["bg2"],
                     ),
                     height=560,
