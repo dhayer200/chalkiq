@@ -964,7 +964,7 @@ metrics                    = evaluate(engine.history)
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 
-tab_rank, tab_bracket, tab_eval, tab_math, tab_ncaa361, tab_signals, tab_backtest, tab_sources = st.tabs([
+tab_rank, tab_bracket, tab_eval, tab_math, tab_ncaa361, tab_signals, tab_backtest, tab_players, tab_sources = st.tabs([
     "📊  Power Rankings",
     "🏆  Bracket",
     "📈  Model Evaluation",
@@ -972,6 +972,7 @@ tab_rank, tab_bracket, tab_eval, tab_math, tab_ncaa361, tab_signals, tab_backtes
     "📈  NCAA 361",
     "🔍  Signals",
     "📉  Backtest",
+    "🏀  Players",
     "📚  Sources",
 ])
 
@@ -1807,7 +1808,297 @@ Y_{ij} = \begin{cases} 1 & \text{team } i \text{ wins} \\ 0 & \text{team } i \te
 
 
 # ════════════════════════════════════════════════════════════════════════════ #
-# TAB 7 — Sources
+# TAB 8 — Players
+# ════════════════════════════════════════════════════════════════════════════ #
+
+with tab_players:
+    st.subheader("Players | CBB Player Ratings, Trajectories, Prop Edge, Injury Impact")
+    st.caption(
+        "Player ratings use the same Elo framework as teams. "
+        "Each game a player's Game Score (Hollinger) is normalized to a [0,1] outcome "
+        "and their rating updates: R' = R + K*(outcome - expected). "
+        "K=16 (lower than team K=24 because individual games are noisier). "
+        "Ratings update after every game in chronological order."
+    )
+
+    _box_dir = ROOT / "data" / "raw" / division / "boxscores"
+
+    @st.cache_resource(show_spinner="Building player ratings...")
+    def _build_player_engine(box_dir: str) -> "PlayerEloEngine | None":
+        from src.players.engine import PlayerEloEngine, load_boxscores
+        games = load_boxscores(box_dir)
+        if not games:
+            return None
+        engine = PlayerEloEngine()
+        engine.process_games(games)
+        return engine
+
+    _p_engine = _build_player_engine(str(_box_dir))
+
+    if _p_engine is None or not _p_engine.ratings:
+        st.info(
+            "No player data yet. Run the box score fetcher first:\n\n"
+            "```\npython scripts/fetch_boxscores.py --seasons 2026\n```"
+        )
+    else:
+        _p_tab_top, _p_tab_traj, _p_tab_inj, _p_tab_prop = st.tabs([
+            "Top Players", "Season Trajectory", "Injury Impact", "Prop Edge"
+        ])
+
+        # ── Top Players ───────────────────────────────────────────────────
+        with _p_tab_top:
+            st.caption(
+                "**Rating** — Elo rating (1500 = average). "
+                "**GmSc** — Hollinger Game Score: PTS + 0.4*FGM - 0.7*FGA - 0.4*(FTA-FTM) "
+                "+ 0.7*OREB + 0.3*DREB + STL + 0.7*AST + 0.7*BLK - 0.4*PF - TO. "
+                "Elite game = 25+, average = ~8. "
+                "**Trend** — rating change over last 5 games (positive = improving form)."
+            )
+            _gc = _p_engine.player_game_counts()
+
+            _p_col1, _p_col2, _p_col3 = st.columns([2, 2, 2])
+            with _p_col1:
+                _p_pos_filter = st.selectbox("Position", ["All", "G", "F", "C"], key="p_pos")
+            with _p_col2:
+                _p_min_gp = st.slider("Min games played", 1, 20, 5, key="p_mingp")
+            with _p_col3:
+                _p_top_n = st.slider("Show top N", 25, 200, 100, step=25, key="p_topn")
+
+            _pos_arg = None if _p_pos_filter == "All" else _p_pos_filter
+            _top = _p_engine.top_players(n=_p_top_n, min_games=_p_min_gp, position=_pos_arg)
+
+            _p_rows = []
+            for rank, (pid, name, rating, tid, pos) in enumerate(_top, 1):
+                _hist = _p_engine.player_history(pid)
+                _avg_gmsc = sum(r["game_score"] for r in _hist) / len(_hist) if _hist else 0
+                _avg_pts  = sum(r["pts"] for r in _hist) / len(_hist) if _hist else 0
+                _avg_reb  = sum(r["reb"] for r in _hist) / len(_hist) if _hist else 0
+                _avg_ast  = sum(r["ast"] for r in _hist) / len(_hist) if _hist else 0
+                # Trend: rating change over last 5 games
+                _recent5 = _hist[-5:]
+                _trend = (_recent5[-1]["rating_post"] - _recent5[0]["rating_pre"]) if len(_recent5) >= 2 else 0
+                _team_name = engine.names.get(tid, tid)
+                _p_rows.append({
+                    "#":      rank,
+                    "Player": name,
+                    "Team":   _team_name,
+                    "Pos":    pos,
+                    "GP":     _gc.get(pid, 0),
+                    "Rating": round(rating, 1),
+                    "Avg GmSc": round(_avg_gmsc, 1),
+                    "Avg PTS":  round(_avg_pts, 1),
+                    "Avg REB":  round(_avg_reb, 1),
+                    "Avg AST":  round(_avg_ast, 1),
+                    "Trend":    round(_trend, 1),
+                })
+
+            _df_players = pd.DataFrame(_p_rows)
+
+            def _color_trend(val):
+                if isinstance(val, float) and val > 3:
+                    return f"color: {NORD['green']}; font-weight: bold"
+                if isinstance(val, float) and val < -3:
+                    return f"color: {NORD['red']}"
+                return ""
+
+            st.dataframe(
+                _df_players.style
+                    .map(_color_trend, subset=["Trend"])
+                    .background_gradient(subset=["Rating"], cmap="Blues", vmin=1400, vmax=1700)
+                    .background_gradient(subset=["Avg GmSc"], cmap="Greens", vmin=0, vmax=25),
+                width="stretch",
+                hide_index=True,
+            )
+
+        # ── Season Trajectory ─────────────────────────────────────────────
+        with _p_tab_traj:
+            st.caption(
+                "Select a player to see their Game Score and Elo rating trend over the season. "
+                "Rolling 5-game average smooths out single-game variance. "
+                "Rising rating = consistent above-average performances."
+            )
+            _all_players = _p_engine.top_players(n=500, min_games=1)
+            _player_options = {f"{name} ({_p_engine.teams.get(pid,'')})": pid
+                               for pid, name, *_ in _all_players}
+            _selected_label = st.selectbox("Select player", list(_player_options.keys()), key="p_traj_sel")
+            _selected_pid   = _player_options.get(_selected_label, "")
+
+            if _selected_pid:
+                _traj = _p_engine.season_trajectory(_selected_pid)
+                if _traj:
+                    _t_dates = [t["date"] for t in _traj]
+                    _t_gmsc  = [t["game_score"] for t in _traj]
+                    _t_roll  = [t["rolling_avg"] for t in _traj]
+                    _t_rat   = [t["rating"] for t in _traj]
+
+                    _fig_traj = go.Figure()
+                    _fig_traj.add_trace(go.Bar(
+                        x=_t_dates, y=_t_gmsc,
+                        name="Game Score",
+                        marker_color=NORD["frost1"] + "99",
+                        hovertemplate="%{x}<br>GmSc: %{y:.1f}<extra></extra>",
+                    ))
+                    _fig_traj.add_trace(go.Scatter(
+                        x=_t_dates, y=_t_roll,
+                        name="5-game avg",
+                        line=dict(color=NORD["green"], width=2.5),
+                        hovertemplate="%{x}<br>5-game avg: %{y:.1f}<extra></extra>",
+                    ))
+                    _fig_traj.add_hline(
+                        y=8.0, line_dash="dash", line_color=NORD["bg3"],
+                        annotation_text="League avg (8.0)",
+                        annotation_position="bottom right",
+                    )
+                    _fig_traj.update_layout(
+                        title=f"{_selected_label} | Season Game Score",
+                        xaxis_title="Date",
+                        yaxis_title="Game Score",
+                        height=350,
+                        margin=dict(l=60, r=20, t=50, b=50),
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        legend=dict(orientation="h", y=1.1),
+                    )
+                    st.plotly_chart(_fig_traj, width="stretch")
+
+                    # Rating trend on secondary chart
+                    _fig_rat = go.Figure()
+                    _fig_rat.add_trace(go.Scatter(
+                        x=_t_dates, y=_t_rat,
+                        mode="lines+markers",
+                        line=dict(color=color, width=2),
+                        marker=dict(size=5),
+                        name="Elo rating",
+                        hovertemplate="%{x}<br>Rating: %{y:.1f}<extra></extra>",
+                    ))
+                    _fig_rat.add_hline(y=1500, line_dash="dash", line_color=NORD["bg3"])
+                    _fig_rat.update_layout(
+                        title=f"{_selected_label} | Elo Rating Over Season",
+                        xaxis_title="Date",
+                        yaxis_title="Elo Rating",
+                        height=260,
+                        margin=dict(l=60, r=20, t=50, b=50),
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        paper_bgcolor="rgba(0,0,0,0)",
+                    )
+                    st.plotly_chart(_fig_rat, width="stretch")
+
+                    # Stat breakdown
+                    _last5 = _traj[-5:]
+                    _s1, _s2, _s3, _s4 = st.columns(4)
+                    _s1.metric("Last 5 avg GmSc", f"{sum(t['game_score'] for t in _last5)/len(_last5):.1f}")
+                    _s2.metric("Last 5 avg PTS",  f"{sum(t['pts'] for t in _last5)/len(_last5):.1f}")
+                    _s3.metric("Last 5 avg REB",  f"{sum(t['reb'] for t in _last5)/len(_last5):.1f}")
+                    _s4.metric("Last 5 avg AST",  f"{sum(t['ast'] for t in _last5)/len(_last5):.1f}")
+
+        # ── Injury Impact ─────────────────────────────────────────────────
+        with _p_tab_inj:
+            st.caption(
+                "**Elo Impact** — how many Elo points the team loses if this player misses the game. "
+                "Formula: (player_rating - 1500) x minutes_share x position_weight. "
+                "**Adj Team Elo** — the team's current Elo minus this player's contribution. "
+                "Use this to reprice win probabilities when injury news breaks."
+            )
+            # Team selector — only teams with player data
+            _teams_with_data = sorted(set(
+                _p_engine.teams[pid]
+                for pid in _p_engine.ratings
+                if _p_engine.teams.get(pid)
+            ))
+            _team_names_map = {tid: engine.names.get(tid, tid) for tid in _teams_with_data}
+            _team_options = {v: k for k, v in _team_names_map.items() if v}
+            _sel_team_name = st.selectbox(
+                "Select team", sorted(_team_options.keys()), key="p_inj_team"
+            )
+            _sel_team_id = _team_options.get(_sel_team_name, "")
+
+            if _sel_team_id:
+                _team_elo = engine.rating(_sel_team_id)
+                _inj_report = _p_engine.team_injury_report(_sel_team_id, _team_elo, min_games=3)
+
+                if not _inj_report:
+                    st.info("Not enough player data for this team yet.")
+                else:
+                    _i1, _i2, _i3 = st.columns(3)
+                    _i1.metric("Team Elo", f"{_team_elo:.1f}")
+                    _top_impact = _inj_report[0] if _inj_report else {}
+                    _i2.metric("Highest impact player", _top_impact.get("name", "-"))
+                    _i3.metric("Their Elo impact", f"{_top_impact.get('elo_impact', 0):+.1f} pts")
+
+                    st.markdown("---")
+                    _inj_rows = [{
+                        "Player":       r["name"],
+                        "Pos":          r["position"],
+                        "Rating":       r["rating"],
+                        "Avg MIN":      r["avg_min"],
+                        "GP":           r["games"],
+                        "Elo Impact":   r["elo_impact"],
+                        "Adj Team Elo": r["adj_team_elo"],
+                    } for r in _inj_report]
+
+                    def _color_impact(val):
+                        if isinstance(val, (int, float)) and val > 20:
+                            return f"color: {NORD['red']}; font-weight: bold"
+                        if isinstance(val, (int, float)) and val > 10:
+                            return f"color: {NORD['orange']}"
+                        return ""
+
+                    st.dataframe(
+                        pd.DataFrame(_inj_rows).style.map(_color_impact, subset=["Elo Impact"]),
+                        width="stretch",
+                        hide_index=True,
+                    )
+                    st.caption(
+                        "Position weights: C=1.1, F=1.0, G=0.95. "
+                        "Minutes share = avg minutes / 200 (5 players x 40 min). "
+                        "Only players with 3+ games shown."
+                    )
+
+        # ── Prop Edge ─────────────────────────────────────────────────────
+        with _p_tab_prop:
+            st.caption(
+                "Model projects a player's stat distribution from recent games (normal approximation). "
+                "**Edge** = P(exceeds line) - 52.38% breakeven at -110. "
+                "Positive edge = model thinks the over has value. "
+                "Use as a signal, not a guarantee — small samples have high variance."
+            )
+            _prop_all = _p_engine.top_players(n=500, min_games=3)
+            _prop_options = {f"{name} ({_p_engine.teams.get(pid,'')})": pid
+                             for pid, name, *_ in _prop_all}
+            _prop_sel_label = st.selectbox("Select player", list(_prop_options.keys()), key="p_prop_sel")
+            _prop_pid = _prop_options.get(_prop_sel_label, "")
+
+            if _prop_pid:
+                _pc1, _pc2, _pc3 = st.columns(3)
+                with _pc1:
+                    _prop_stat = st.selectbox("Stat", ["pts", "reb", "ast", "stl", "blk"], key="p_prop_stat")
+                with _pc2:
+                    _prop_line = st.number_input("Prop line", min_value=0.0, value=14.5, step=0.5, key="p_prop_line")
+                with _pc3:
+                    _prop_n = st.slider("Last N games", 3, 20, 10, key="p_prop_n")
+
+                _edge_result = _p_engine.prop_edge(_prop_pid, _prop_stat, _prop_line, last_n=_prop_n)
+
+                if "error" not in _edge_result:
+                    _e1, _e2, _e3, _e4 = st.columns(4)
+                    _e1.metric("Model projection", f"{_edge_result['mean']:.1f}")
+                    _e2.metric("Std dev",          f"± {_edge_result['std_dev']:.1f}")
+                    _e3.metric("P(over)",           f"{_edge_result['p_over']:.1%}")
+                    _edge_val = _edge_result['edge']
+                    _e4.metric("Edge vs -110",
+                               f"{_edge_val:+.1%}",
+                               delta=f"{'OVER value' if _edge_val > 0 else 'UNDER value'}",
+                               delta_color="normal")
+
+                    st.markdown("---")
+                    st.caption(
+                        f"Based on last {_edge_result['n_games']} games: "
+                        f"{_edge_result['last_values']}. "
+                        f"Normal approximation with continuity correction."
+                    )
+
+# ════════════════════════════════════════════════════════════════════════════ #
+# TAB 9 — Sources
 # ════════════════════════════════════════════════════════════════════════════ #
 
 with tab_sources:
