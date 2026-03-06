@@ -984,6 +984,7 @@ with tab_rank:
             "GP":      _gp,
             "Win%":    _wp,
             "SoS":     _sos,
+            "Pace":    _e.get("pace"),
             "Adj Off": _e.get("adj_off"),
             "Adj Def": _e.get("adj_def"),
             "Net":     _e.get("net_adj"),
@@ -1009,9 +1010,10 @@ with tab_rank:
         df_all.style
         .format({c: _fmt_pct for c in pct_cols})
         .format({"Win%": "{:.1%}", "Elo": "{:.1f}", "GP": "{:.0f}", "SoS": "{:.1f}"})
-        .format({"Adj Off": _fmt_eff, "Adj Def": _fmt_eff, "Net": _fmt_eff})
+        .format({"Adj Off": _fmt_eff, "Adj Def": _fmt_eff, "Net": _fmt_eff, "Pace": _fmt_eff})
         .background_gradient(subset=pct_cols, cmap="Blues", vmin=0, vmax=0.5)
         .background_gradient(subset=["SoS"], cmap="Oranges", vmin=1450, vmax=1600)
+        .background_gradient(subset=["Pace"], cmap="Purples", vmin=120, vmax=165)
         .background_gradient(subset=["Adj Off"], cmap="Greens", vmin=60, vmax=95)
         .background_gradient(subset=["Adj Def"], cmap="Reds_r", vmin=60, vmax=95)
         .bar(subset=["Elo"], color=[light, color])

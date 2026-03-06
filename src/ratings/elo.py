@@ -6,7 +6,11 @@ Key design choices:
   - Home-court advantage is modeled as a fixed Elo offset added to the
     home team's effective rating before computing win probability.
   - Ratings are updated after every game using the standard Elo formula:
-        R' = R + K * (outcome - expected)
+        R' = R + K * mov_factor * (outcome - expected)
+  - Margin of victory scaling (FiveThirtyEight method):
+        mov_factor = ln(|margin| + 1) * 2.2 / (rating_gap * 0.001 + 2.2)
+    The second term corrects for autocorrelation — blowouts against weak
+    opponents shouldn't move ratings as much as blowouts against equals.
   - The engine records a full history of predictions + outcomes so that
     log loss and Brier score can be computed externally.
 
@@ -17,6 +21,7 @@ Usage:
     p = engine.win_prob("150", "248")     # Duke vs Houston (neutral)
 """
 
+import math
 from dataclasses import dataclass, field
 
 DEFAULT_RATING = 1500.0
@@ -75,8 +80,17 @@ class EloEngine:
         r_home = self.rating(home_id)
         r_away = self.rating(away_id)
 
-        self.ratings[home_id] = r_home + self.k * (outcome - p_home)
-        self.ratings[away_id] = r_away + self.k * ((1.0 - outcome) - (1.0 - p_home))
+        # Margin of victory scaling (FiveThirtyEight method).
+        # Larger margins move ratings more, but diminishing returns via log.
+        # Autocorrelation correction: blowouts vs weak teams count less.
+        margin = abs(home_score - away_score)
+        winner_elo = r_home if outcome == 1.0 else r_away
+        loser_elo  = r_away if outcome == 1.0 else r_home
+        elo_diff   = abs(winner_elo - loser_elo)
+        mov_factor = math.log(margin + 1) * (2.2 / (elo_diff * 0.001 + 2.2))
+
+        self.ratings[home_id] = r_home + self.k * mov_factor * (outcome - p_home)
+        self.ratings[away_id] = r_away + self.k * mov_factor * ((1.0 - outcome) - (1.0 - p_home))
 
         self.history.append(
             {
