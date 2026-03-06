@@ -73,15 +73,23 @@ def load_season(season: int, division: str) -> list[dict]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Backtest the Elo model")
-    parser.add_argument("--division",  default="mens",   choices=["mens", "womens"])
-    parser.add_argument("--seasons",   nargs="+", type=int, default=[2026], help="Season year(s)")
-    parser.add_argument("--min-edge",  type=float, default=0.03, help="Min edge to bet (default 0.03 = 3%%)")
-    parser.add_argument("--warmup",    type=int, default=50, help="Games to skip before betting")
-    parser.add_argument("--stake",     type=float, default=100.0, help="Flat stake per bet")
-    parser.add_argument("--combined",  action="store_true", help="Combine all seasons into one run")
+    parser.add_argument("--division",   default="mens",   choices=["mens", "womens"])
+    parser.add_argument("--seasons",    nargs="+", type=int, default=[2026], help="Season year(s)")
+    parser.add_argument("--min-edge",   type=float, default=0.03, help="Min edge to bet (default 0.03 = 3%%)")
+    parser.add_argument("--warmup",     type=int, default=50, help="Games to skip before betting")
+    parser.add_argument("--stake",      type=float, default=100.0, help="Flat stake per bet")
+    parser.add_argument("--decay",      type=float, default=0.0,
+                        help="Recency decay half-life in days (default 0 = off). "
+                             "Games N days old get K scaled by 0.5^(N/decay). "
+                             "Try 60-90 to weight recent form more heavily.")
+    parser.add_argument("--combined",   action="store_true", help="Combine all seasons into one run")
     args = parser.parse_args()
 
-    bt = Backtester(k=24.0, home_advantage=100.0)
+    if args.decay > 0:
+        print(f"  Recency decay: half-life = {args.decay:.0f} days "
+              f"(games {args.decay:.0f}d ago have 50% K weight, {args.decay*2:.0f}d ago have 25%)")
+
+    bt = Backtester(k=24.0, home_advantage=100.0, decay_half_life=args.decay)
 
     if args.combined and len(args.seasons) > 1:
         # Load and combine all seasons
