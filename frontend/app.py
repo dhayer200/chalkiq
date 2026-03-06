@@ -1956,7 +1956,7 @@ with tab_players:
                 hide_index=True,
             )
 
-            # ── Player Off vs Defense scatter (top 200) ───────────────────
+            # ── Offensive Efficiency vs Defensive Impact scatter (top 200) ──
             _p_scatter_all = _p_engine.top_players(n=200, min_games=_p_min_gp, position=_pos_arg)
             if len(_p_scatter_all) >= 5:
                 _psx, _psy, _pslbl, _psrating, _pscdata = [], [], [], [], []
@@ -1965,25 +1965,69 @@ with tab_players:
                     if not _phist:
                         continue
                     _pn = len(_phist)
-                    _pavg_pts = sum(r["pts"] for r in _phist) / _pn
-                    _pavg_ast = sum(r["ast"] for r in _phist) / _pn
-                    _pavg_stl = sum(r["stl"] for r in _phist) / _pn
-                    _pavg_blk = sum(r["blk"] for r in _phist) / _pn
-                    _pavg_reb = sum(r["reb"] for r in _phist) / _pn
-                    _p_off = round(_pavg_pts + 0.7 * _pavg_ast, 2)
-                    _p_def = round(_pavg_stl + 0.7 * _pavg_blk + 0.3 * _pavg_reb, 2)
-                    _psx.append(_p_def)
-                    _psy.append(_p_off)
+
+                    # Per-36 normalization — fair comparison across roles / playing time
+                    _avg_min = sum(r["min"] for r in _phist) / _pn
+                    _scale   = 36.0 / max(_avg_min, 1.0)
+
+                    _avg_pts  = sum(r["pts"]  for r in _phist) / _pn
+                    _avg_ast  = sum(r["ast"]  for r in _phist) / _pn * _scale
+                    _avg_to   = sum(r["to"]   for r in _phist) / _pn * _scale
+                    _avg_stl  = sum(r["stl"]  for r in _phist) / _pn * _scale
+                    _avg_blk  = sum(r["blk"]  for r in _phist) / _pn * _scale
+                    _avg_dreb = sum(r.get("dreb", r["reb"] * 0.7) for r in _phist) / _pn * _scale
+                    _avg_pf   = sum(r["pf"]   for r in _phist) / _pn * _scale
+                    _avg_fga  = sum(r.get("fg_a", 0) for r in _phist) / _pn
+                    _avg_fta  = sum(r.get("ft_a", 0) for r in _phist) / _pn
+
+                    # Offensive Efficiency: TS% × 100 + ast_per36 − to_per36 × 1.5
+                    _usage = _avg_fga + 0.44 * _avg_fta
+                    _ts    = (_avg_pts / (2 * _usage)) if _usage > 0.5 else 0.45
+                    _off_eff = round(_ts * 100 + _avg_ast - _avg_to * 1.5, 2)
+
+                    # Defensive Impact: stl×3 + blk×2 + dreb×0.3 − pf (all per 36)
+                    _def_imp = round(_avg_stl * 3 + _avg_blk * 2 + _avg_dreb * 0.3 - _avg_pf, 2)
+
+                    _psx.append(_off_eff)
+                    _psy.append(_def_imp)
                     _pslbl.append(_pname)
                     _psrating.append(_prating)
-                    _pscdata.append([round(_prating, 1), _rank_i])
+                    _pscdata.append([
+                        round(_prating, 1), _rank_i,
+                        round(_ts * 100, 1), round(_avg_ast, 1), round(_avg_to, 1),
+                        round(_avg_stl, 1), round(_avg_blk, 1),
+                    ])
 
-                _fig_peff = go.Figure(go.Scatter(
+                _pmed_off = sorted(_psx)[len(_psx) // 2]
+                _pmed_def = sorted(_psy)[len(_psy) // 2]
+
+                _fig_peff = go.Figure()
+
+                # Quadrant shading
+                _x_range = [min(_psx) - 1, max(_psx) + 1]
+                _y_range = [min(_psy) - 0.5, max(_psy) + 0.5]
+                for _qx, _qy, _qlabel, _qcolor in [
+                    ([_pmed_off, _x_range[1]], [_pmed_def, _y_range[1]], "Two-Way",           "rgba(163,190,140,0.07)"),
+                    ([_x_range[0], _pmed_off], [_pmed_def, _y_range[1]], "Defensive Spec.",   "rgba(136,192,208,0.07)"),
+                    ([_pmed_off, _x_range[1]], [_y_range[0], _pmed_def], "Offensive Spec.",   "rgba(235,203,139,0.07)"),
+                    ([_x_range[0], _pmed_off], [_y_range[0], _pmed_def], "Limited Impact",    "rgba(191,97,106,0.07)"),
+                ]:
+                    _fig_peff.add_shape(type="rect",
+                        x0=_qx[0], x1=_qx[1], y0=_qy[0], y1=_qy[1],
+                        fillcolor=_qcolor, line_width=0,
+                    )
+                    _fig_peff.add_annotation(
+                        x=(_qx[0] + _qx[1]) / 2, y=(_qy[0] + _qy[1]) / 2,
+                        text=_qlabel, showarrow=False,
+                        font=dict(size=9, color=NORD["bg3"]),
+                    )
+
+                _fig_peff.add_trace(go.Scatter(
                     x=_psx, y=_psy,
                     mode="markers+text",
                     text=_pslbl,
                     textposition="top center",
-                    textfont=dict(size=7),
+                    textfont=dict(size=7, color=NORD["snow0"]),
                     customdata=_pscdata,
                     marker=dict(
                         size=8,
@@ -1991,39 +2035,45 @@ with tab_players:
                         colorscale="RdYlGn",
                         showscale=True,
                         colorbar=dict(title="Elo Rating"),
-                        cmin=1450,
-                        cmax=1700,
+                        cmin=1450, cmax=1700,
                         line=dict(width=0.5, color=NORD["bg3"]),
                     ),
                     hovertemplate=(
                         "<b>%{text}</b><br>"
-                        "Off Score: %{y:.1f}<br>"
-                        "Def Score: %{x:.1f}<br>"
-                        "Elo Rating: %{customdata[0]:.1f}<br>"
-                        "Rank: #%{customdata[1]}<br>"
+                        "Off Eff: %{x:.1f}  |  Def Impact: %{y:.1f}<br>"
+                        "TS%%: %{customdata[2]:.1f}%%<br>"
+                        "AST/36: %{customdata[3]:.1f}  |  TO/36: %{customdata[4]:.1f}<br>"
+                        "STL/36: %{customdata[5]:.1f}  |  BLK/36: %{customdata[6]:.1f}<br>"
+                        "Elo: %{customdata[0]:.1f}  |  Rank: #%{customdata[1]}<br>"
                         "<extra></extra>"
                     ),
                 ))
-                _pmed_def = sorted(_psx)[len(_psx) // 2]
-                _pmed_off = sorted(_psy)[len(_psy) // 2]
-                _fig_peff.add_vline(x=_pmed_def, line_color=NORD["bg3"], line_dash="dot")
-                _fig_peff.add_hline(y=_pmed_off, line_color=NORD["bg3"], line_dash="dot")
+                _fig_peff.add_vline(x=_pmed_off, line_color=NORD["bg3"], line_dash="dot", line_width=1)
+                _fig_peff.add_hline(y=_pmed_def, line_color=NORD["bg3"], line_dash="dot", line_width=1)
                 _fig_peff.update_layout(
-                    xaxis=dict(title="Def Score (STL + 0.7*BLK + 0.3*REB per game, higher = better)"),
-                    yaxis=dict(title="Off Score (PTS + 0.7*AST per game)"),
-                    height=520,
-                    margin=dict(l=60, r=20, t=30, b=50),
-                    plot_bgcolor="rgba(0,0,0,0)",
+                    xaxis=dict(
+                        title="Offensive Efficiency  (TS% × 100 + AST/36 − 1.5 × TO/36)",
+                        gridcolor=NORD["bg2"],
+                    ),
+                    yaxis=dict(
+                        title="Defensive Impact  (3×STL + 2×BLK + 0.3×DREB − PF, per 36)",
+                        gridcolor=NORD["bg2"],
+                    ),
+                    height=560,
+                    margin=dict(l=60, r=20, t=40, b=60),
+                    plot_bgcolor=NORD["bg1"],
                     paper_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color=NORD["snow0"]),
                 )
-                st.markdown("**Offense vs Defense (Top 200)**")
+                st.markdown("**Offensive Efficiency vs Defensive Impact (Top 200)**")
                 st.caption(
-                    "Off Score = PTS + 0.7 x AST per game (scoring + playmaking). "
-                    "Def Score = STL + 0.7 x BLK + 0.3 x REB per game (defensive contribution). "
-                    "Upper-right = two-way impact player. Color = Elo Rating. "
-                    "Hover for Elo Rating + rank."
+                    "**Off Eff** = True Shooting % × 100 + AST/36 − 1.5 × TO/36.  "
+                    "TS% = PTS ÷ (2 × (FGA + 0.44 × FTA)) — rewards efficient scoring regardless of shot type.  "
+                    "**Def Impact** = (3×STL + 2×BLK + 0.3×DREB − PF) per 36 min.  "
+                    "All stats normalized per 36 minutes — starters and role players compared fairly.  "
+                    "Upper-right = elite two-way player."
                 )
-                st.plotly_chart(_fig_peff, width="stretch")
+                st.plotly_chart(_fig_peff, use_container_width=True)
 
         # ── Season Trajectory ─────────────────────────────────────────────
         with _p_tab_traj:

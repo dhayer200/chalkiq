@@ -87,6 +87,10 @@ class PlayerEloEngine:
                 "stl":         player.get("stl", 0),
                 "blk":         player.get("blk", 0),
                 "to":          player.get("to", 0),
+                "pf":          player.get("pf", 0),
+                "fg_a":        player.get("fg_a", 0),
+                "ft_a":        player.get("ft_a", 0),
+                "dreb":        player.get("dreb", 0),
                 "starter":     player.get("starter", False),
             })
 
