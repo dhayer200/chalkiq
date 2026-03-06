@@ -2047,7 +2047,7 @@ with tab_players:
                     _fig_traj.add_trace(go.Bar(
                         x=_t_dates, y=_t_gmsc,
                         name="Game Score",
-                        marker_color=NORD["frost1"] + "99",
+                        marker_color="rgba(136,192,208,0.6)",
                         hovertemplate="%{x}<br>GmSc: %{y:.1f}<extra></extra>",
                     ))
                     _fig_traj.add_trace(go.Scatter(
