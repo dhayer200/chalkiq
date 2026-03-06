@@ -1056,6 +1056,16 @@ with tab_rank:
         .set_properties(**{"font-size": "13px"})
     )
 
+    st.caption(
+        "**Elo** — team strength rating; 1500 = average, updates after every game via win/loss + margin of victory. "
+        "**Adj Off** — points scored per 100 possessions, adjusted for opponent defense strength "
+        "(KenPom-style iterative method, 20 passes, GP-weighted). Higher is better. "
+        "**Adj Def** — points allowed per 100 possessions, adjusted for opponent offense. Lower is better. "
+        "**Net** = Adj Off - Adj Def; best predictor of future win rate. "
+        "**Pace** — avg total points per game (proxy for possessions per 40 min). "
+        "**SoS** — avg Elo of opponents faced. "
+        "**R32 / S16 / E8 / FF / Title** — tournament advancement odds from 100,000 Monte Carlo simulations."
+    )
     col_tbl, col_chart = st.columns([3, 2])
     with col_tbl:
         st.dataframe(styled_all, height=1800, width="stretch")
@@ -1111,7 +1121,13 @@ with tab_rank:
                 paper_bgcolor="rgba(0,0,0,0)",
             )
             st.markdown("**Offense vs Defense (Top 120)**")
-            st.caption("X-axis reversed: farther right = better defense.")
+            st.caption(
+                "Each dot is a team. Upper-right = elite offense + elite defense. "
+                "X-axis reversed: farther right = better defense (fewer pts allowed). "
+                "Color = Net Adj (Adj Off - Adj Def). "
+                "Formula: Adj Off = Raw Off x (league avg / opponent Adj Def), "
+                "iterated 20x with GP-weighted opponent averages, renormalized each pass."
+            )
             st.plotly_chart(_fig_eff, width="stretch")
 
 
@@ -2211,22 +2227,26 @@ with tab_signals:
     # Load all data upfront
     _odds_dir = ROOT / "data" / "odds"
     try:
-        from src.odds.store import (
-            load_snapshots, load_clv_records, load_alerts, load_historical_clv_records
-        )
-        _snapshots  = load_snapshots(_odds_dir)
-        _live_clv   = load_clv_records(_odds_dir)
-        _hist_clv   = load_historical_clv_records(_odds_dir)
-        _alerts     = load_alerts(_odds_dir)
-        # Tag source then merge: historical first, live appended last
-        for _r in _hist_clv:
-            _r.setdefault("source", "historical")
+        from src.odds.store import load_snapshots, load_clv_records, load_alerts
+        _snapshots = load_snapshots(_odds_dir)
+        _live_clv  = load_clv_records(_odds_dir)
+        _alerts    = load_alerts(_odds_dir)
         for _r in _live_clv:
             _r.setdefault("source", "live")
-        _clv_recs = _hist_clv + _live_clv
+        _clv_recs  = _live_clv
     except Exception as _e:
         st.warning(f"Could not load odds data: {_e}")
         _snapshots, _clv_recs, _alerts = [], [], []
+
+    # Historical CLV — loaded separately so it never breaks live signals
+    try:
+        from src.odds.store import load_historical_clv_records as _load_hist
+        _hist_clv = _load_hist(_odds_dir)
+        for _r in _hist_clv:
+            _r.setdefault("source", "historical")
+        _clv_recs = _hist_clv + _clv_recs
+    except Exception:
+        pass  # historical file or function missing — silently skip
 
     _lma_alerts = [a for a in _alerts if a.get("type") == "line_move"]
     _inj_alerts = [a for a in _alerts if a.get("type") == "injury"]
