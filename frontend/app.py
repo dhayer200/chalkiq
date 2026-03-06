@@ -1976,7 +1976,7 @@ with tab_players:
                     _avg_stl  = sum(r["stl"]  for r in _phist) / _pn * _scale
                     _avg_blk  = sum(r["blk"]  for r in _phist) / _pn * _scale
                     _avg_dreb = sum(r.get("dreb", r["reb"] * 0.7) for r in _phist) / _pn * _scale
-                    _avg_pf   = sum(r["pf"]   for r in _phist) / _pn * _scale
+                    _avg_pf   = sum(r.get("pf", 0)   for r in _phist) / _pn * _scale
                     _avg_fga  = sum(r.get("fg_a", 0) for r in _phist) / _pn
                     _avg_fta  = sum(r.get("ft_a", 0) for r in _phist) / _pn
 
