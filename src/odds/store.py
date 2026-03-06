@@ -90,6 +90,10 @@ def load_clv_records(data_dir: Path = _DEFAULT_DIR) -> list[dict]:
     return read_all("clv.jsonl", data_dir)
 
 
+def load_historical_clv_records(data_dir: Path = _DEFAULT_DIR) -> list[dict]:
+    return read_all("historical_clv.jsonl", data_dir)
+
+
 def load_alerts(data_dir: Path = _DEFAULT_DIR) -> list[dict]:
     return read_all("alerts.jsonl", data_dir)
 

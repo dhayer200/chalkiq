@@ -2211,10 +2211,19 @@ with tab_signals:
     # Load all data upfront
     _odds_dir = ROOT / "data" / "odds"
     try:
-        from src.odds.store import load_snapshots, load_clv_records, load_alerts
-        _snapshots = load_snapshots(_odds_dir)
-        _clv_recs  = load_clv_records(_odds_dir)
-        _alerts    = load_alerts(_odds_dir)
+        from src.odds.store import (
+            load_snapshots, load_clv_records, load_alerts, load_historical_clv_records
+        )
+        _snapshots  = load_snapshots(_odds_dir)
+        _live_clv   = load_clv_records(_odds_dir)
+        _hist_clv   = load_historical_clv_records(_odds_dir)
+        _alerts     = load_alerts(_odds_dir)
+        # Tag source then merge: historical first, live appended last
+        for _r in _hist_clv:
+            _r.setdefault("source", "historical")
+        for _r in _live_clv:
+            _r.setdefault("source", "live")
+        _clv_recs = _hist_clv + _live_clv
     except Exception as _e:
         st.warning(f"Could not load odds data: {_e}")
         _snapshots, _clv_recs, _alerts = [], [], []
@@ -2392,7 +2401,9 @@ with tab_signals:
                 _beat = (_r.get("clv_vs_closing", 0) or 0) > 0
                 _clv_rows.append({
                     "Matchup":       f"{_r.get('away_team','?')} @ {_r.get('home_team','?')}",
+                    "Date":          _r.get("game_date", _r.get("recorded_at", ""))[:10],
                     "Book":          _r.get("bookmaker", ""),
+                    "Source":        _r.get("source", "live"),
                     "Model Prob":    f"{_r.get('model_prob_home', 0):.1%}",
                     "Open ML":       _fmt_ml(int(_r["opening_home_ml"])) if _r.get("opening_home_ml") else "-",
                     "Close ML":      _fmt_ml(int(_r["closing_home_ml"])) if _r.get("closing_home_ml") else "-",
@@ -2404,13 +2415,16 @@ with tab_signals:
             _df_clv = pd.DataFrame(_clv_rows)
 
             # Summary metrics for filtered set
-            _n_clv = len(_clv_filtered)
-            _beat_n = sum(1 for _r in _clv_filtered if (_r.get("clv_vs_closing") or 0) > 0)
+            _n_clv   = len(_clv_filtered)
+            _beat_n  = sum(1 for _r in _clv_filtered if (_r.get("clv_vs_closing") or 0) > 0)
             _avg_clv = sum(_r.get("clv_vs_closing") or 0 for _r in _clv_filtered) / _n_clv if _n_clv else 0
+            _n_hist  = sum(1 for _r in _clv_filtered if _r.get("source") == "historical")
+            _n_live  = _n_clv - _n_hist
             _n_total = len(_clv_recs)
 
             _c1, _c2, _c3, _c4 = st.columns(4)
-            _c1.metric("Games shown", f"{_n_clv} / {_n_total}")
+            _c1.metric("Games shown", f"{_n_clv} / {_n_total}",
+                       help=f"{_n_hist} historical  |  {_n_live} live")
             _c2.metric("Beat closing line", f"{_beat_n}/{_n_clv} ({_beat_n/_n_clv:.0%})" if _n_clv else "-")
             _c3.metric("Avg CLV vs close", f"{_avg_clv:+.2%}")
             _c4.metric("Target", "> 55% beat rate")

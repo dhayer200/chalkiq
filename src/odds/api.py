@@ -135,6 +135,71 @@ def fetch_odds(
     return results
 
 
+def fetch_historical_odds(
+    sport: str = SPORT_NCAAB,
+    date_iso: str = "",
+    bookmakers: str = "draftkings,fanduel,betmgm",
+) -> list[dict]:
+    """
+    Fetch historical odds at a specific UTC timestamp (paid plan required).
+
+    date_iso: ISO 8601 string, e.g. "2024-01-15T22:00:00Z"
+
+    Returns same format as fetch_odds() — one dict per game per bookmaker.
+    The historical endpoint wraps events in a "data" key.
+    """
+    try:
+        resp = requests.get(
+            f"{_BASE}/historical/sports/{sport}/odds",
+            params={
+                "apiKey":      _key(),
+                "date":        date_iso,
+                "regions":     "us",
+                "markets":     "h2h",
+                "oddsFormat":  "american",
+                "bookmakers":  bookmakers,
+            },
+            timeout=20,
+        )
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        print(f"  [hist-api] request failed: {e}")
+        return []
+
+    remaining = resp.headers.get("x-requests-remaining", "?")
+    used      = resp.headers.get("x-requests-used", "?")
+    print(f"  [hist-api] {date_iso}  used={used}  remaining={remaining}")
+
+    results: list[dict] = []
+    for event in resp.json().get("data", []):
+        home_team = event.get("home_team", "")
+        away_team = event.get("away_team", "")
+        for bookmaker in event.get("bookmakers", []):
+            for market in bookmaker.get("markets", []):
+                if market["key"] != "h2h":
+                    continue
+                outcomes = market.get("outcomes", [])
+                h = next((o for o in outcomes if o["name"] == home_team), None)
+                a = next((o for o in outcomes if o["name"] == away_team), None)
+                if not h or not a:
+                    continue
+                home_ml = int(h["price"])
+                away_ml = int(a["price"])
+                raw_h, raw_a = american_to_prob(home_ml), american_to_prob(away_ml)
+                fair_h, fair_a = remove_vig(raw_h, raw_a)
+                results.append({
+                    "game_id":   event["id"],
+                    "home_team": home_team,
+                    "away_team": away_team,
+                    "bookmaker": bookmaker["key"],
+                    "home_ml":   home_ml,
+                    "away_ml":   away_ml,
+                    "home_prob": round(fair_h, 4),
+                    "away_prob": round(fair_a, 4),
+                })
+    return results
+
+
 def fetch_scores(sport: str = SPORT_NCAAB, days_from: int = 1) -> list[dict]:
     """
     Fetch recent completed scores. Used to match closing lines to outcomes.
