@@ -112,11 +112,13 @@ def fetch_season(
     while d <= end:
         cache_file = (cache / f"{d.strftime('%Y%m%d')}.json") if cache else None
 
-        if cache_file and cache_file.exists():
+        # Don't cache the last 2 days to disk — games finish throughout the day
+        stale_enough = (date.today() - d).days >= 2
+        if cache_file and cache_file.exists() and stale_enough:
             games = json.loads(cache_file.read_text())
         else:
             games = fetch_day(d, division=division)
-            if cache_file:
+            if cache_file and stale_enough:
                 cache_file.write_text(json.dumps(games))
             time.sleep(0.08)  # be polite to the API
 

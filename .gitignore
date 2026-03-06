@@ -16,3 +16,4 @@ data/raw/
 streamlit.log
 notebooks/
 toy-madness/
+.env

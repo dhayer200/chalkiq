@@ -22,7 +22,6 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from src.bracket.simulator import round_advancement_odds
-from src.players.espn import fetch_player_leaders, STAT_CONFIG as PLAYER_STAT_CONFIG
 from src.bracket.structure import (
     BRACKET_SLOT_ORDER,
     REGIONS,
@@ -31,9 +30,7 @@ from src.bracket.structure import (
     final_four_order,
     region_bracket_order,
 )
-from src.live.feed import fetch_live_games, fetch_other_games
 from src.live.model import live_win_prob, upset_alert, prob_swing
-from src.predictions.pregame import matchup_prob
 from src.ratings.elo import EloEngine
 from src.utils.data import fetch_season
 from src.utils.metrics import evaluate
@@ -70,7 +67,7 @@ DIVISION_CONFIG = {
         "color":        NORD["frost1"],
         "light":        NORD["bg1"],
         "season_start": date(2025, 11, 4),
-        "season_end":   date(2026, 2, 23),
+        "season_end":   date.today(),
         "is_nba":       False,
         "avg_total":    140.0,   # avg combined points per game
     },
@@ -81,7 +78,7 @@ DIVISION_CONFIG = {
         "color":        NORD["purple"],
         "light":        NORD["bg1"],
         "season_start": date(2025, 11, 4),
-        "season_end":   date(2026, 2, 23),
+        "season_end":   date.today(),
         "is_nba":       False,
         "avg_total":    130.0,
     },
@@ -129,7 +126,7 @@ def _fmt_ml(ml: int) -> str:
 
 # ── Data loading (cached per division) ────────────────────────────────────────
 
-@st.cache_resource(show_spinner="Loading game data…")
+@st.cache_resource(ttl=3600, show_spinner="Loading game data…")
 def load_engine(division: str) -> EloEngine:
     cfg = DIVISION_CONFIG[division]
     games = fetch_season(
@@ -167,25 +164,10 @@ def load_bracket_data(division: str):
     return regions, adv_odds, champ_odds
 
 
-@st.cache_data(ttl=120, show_spinner=False)
-def load_live_games(division: str) -> list[dict]:
-    """Fetch live games, cached for 2 minutes."""
-    return fetch_live_games(division=division)
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def load_past_games(division: str, for_date: date) -> list[dict]:
-    """Fetch completed games for a date, cached 1 hr (results don't change)."""
-    return fetch_other_games(
-        division=division,
-        for_date=for_date,
-        status_filter={"STATUS_FINAL", "STATUS_FINAL_OT", "STATUS_FINAL_OVERTIME"},
-    )
-
-
 @st.cache_data(ttl=300, show_spinner=False)
 def load_future_games(division: str, for_date: date) -> list[dict]:
     """Fetch scheduled games for a date, cached 5 min."""
+    from src.live.feed import fetch_other_games
     return fetch_other_games(
         division=division,
         for_date=for_date,
@@ -193,14 +175,6 @@ def load_future_games(division: str, for_date: date) -> list[dict]:
     )
 
 
-
-@st.cache_data(ttl=3600, show_spinner="Loading player stats…")
-def load_players(division: str) -> list[dict]:
-    try:
-        return fetch_player_leaders(division=division, limit=10_000,
-                                    days_back=60, max_games=500, min_games=1)
-    except Exception:
-        return []
 
 
 @st.cache_data(ttl=120, show_spinner=False)
@@ -939,7 +913,7 @@ with hcol2:
     )
 
 cfg   = DIVISION_CONFIG[division]
-st.caption(f"Elo power ratings · Monte Carlo simulation · 2025–26 season through {cfg['season_end']}")
+st.caption(f"Elo power ratings · Monte Carlo simulation · 2025–26 season through {date.today().strftime('%b %d, %Y')}")
 color = cfg["color"]
 light = cfg["light"]
 
@@ -954,15 +928,14 @@ metrics                    = evaluate(engine.history)
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 
-tab_rank, tab_bracket, tab_live, tab_eval, tab_matchup, tab_efficiency, tab_players, tab_math, tab_sources = st.tabs([
+tab_rank, tab_bracket, tab_eval, tab_math, tab_ncaa361, tab_signals, tab_backtest, tab_sources = st.tabs([
     "📊  Power Rankings",
     "🏆  Bracket",
-    "🔴  Live",
     "📈  Model Evaluation",
-    "⚔️  Matchup",
-    "⚡  Efficiency",
-    "👤  Players",
     "📐  Math",
+    "📈  NCAA 361",
+    "🔍  Signals",
+    "📉  Backtest",
     "📚  Sources",
 ])
 
@@ -972,133 +945,136 @@ tab_rank, tab_bracket, tab_live, tab_eval, tab_matchup, tab_efficiency, tab_play
 # ════════════════════════════════════════════════════════════════════════════ #
 
 with tab_rank:
-    st.subheader(f"Top 64 | {cfg['label']} Division")
-    st.caption("The 64 teams most likely to receive an at-large or automatic bid on Selection Sunday, ranked by Elo.")
+    st.subheader(f"Power Rankings | {cfg['label']} Division")
+    st.caption(f"All Division I teams ranked by Elo. {len(rankings)} teams tracked through {date.today().strftime('%b %d, %Y')}.")
 
-    _rank_sub_rankings, _rank_sub_games = st.tabs(["📊 Rankings", "📅 Games Played"])
-
-    # Build per-team efficiency from game history (shared between sub-tabs)
-    _rank_eff: dict[str, dict] = {}
+    # Build per-team GP, Win%, and SoS from game history
+    # SoS = average Elo of all opponents faced
+    _rating_map = {tid: rating for tid, _, rating in rankings}
+    _rank_rec: dict[str, dict] = {}
     for _rg in engine.history:
-        for _rtid, _rfor, _ragainst in [
-            (_rg["home_id"], _rg["home_score"], _rg["away_score"]),
-            (_rg["away_id"], _rg["away_score"], _rg["home_score"]),
+        for _rtid, _ropp_id, _rfor, _ragainst in [
+            (_rg["home_id"], _rg["away_id"], _rg["home_score"], _rg["away_score"]),
+            (_rg["away_id"], _rg["home_id"], _rg["away_score"], _rg["home_score"]),
         ]:
-            if _rtid not in _rank_eff:
-                _rank_eff[_rtid] = {"pts_for": [], "pts_against": [], "wins": 0}
-            _rank_eff[_rtid]["pts_for"].append(_rfor)
-            _rank_eff[_rtid]["pts_against"].append(_ragainst)
+            if _rtid not in _rank_rec:
+                _rank_rec[_rtid] = {"gp": 0, "wins": 0, "opp_elos": []}
+            _rank_rec[_rtid]["gp"] += 1
             if _rfor > _ragainst:
-                _rank_eff[_rtid]["wins"] += 1
+                _rank_rec[_rtid]["wins"] += 1
+            if _ropp_id in _rating_map:
+                _rank_rec[_rtid]["opp_elos"].append(_rating_map[_ropp_id])
 
-    # ── Rankings sub-tab ──────────────────────────────────────────────────────
-    with _rank_sub_rankings:
-        all_rows = []
-        for rank, (tid, name, rating) in enumerate(rankings[:64], 1):
-            _ed = _rank_eff.get(tid, {})
-            _pf = _ed.get("pts_for", [])
-            _pa = _ed.get("pts_against", [])
-            _off = round(sum(_pf) / len(_pf), 1) if _pf else 0.0
-            _def = round(sum(_pa) / len(_pa), 1) if _pa else 0.0
-            _net = round(_off - _def, 1)
-            _gp  = len(_pf)
-            _wp  = _ed.get("wins", 0) / _gp if _gp else 0.0
-            all_rows.append({
-                "Rank":  rank,
-                "Team":  name,
-                "Elo":   round(rating, 1),
-                "Off":   _off,
-                "Def":   _def,
-                "Net":   _net,
-                "Win%":  _wp,
-                "R32":   adv_odds.get(tid, {}).get(2, 0),
-                "S16":   adv_odds.get(tid, {}).get(3, 0),
-                "E8":    adv_odds.get(tid, {}).get(4, 0),
-                "FF":    adv_odds.get(tid, {}).get(5, 0),
-                "Title": champ_odds.get(tid, 0),
-            })
+    # Compute adjusted efficiency (KenPom-style iterative adjustment)
+    from src.utils.efficiency import compute_efficiency
+    _eff = compute_efficiency(engine.history)
 
-        df_all   = pd.DataFrame(all_rows).set_index("Rank")
-        pct_cols = ["R32", "S16", "E8", "FF", "Title"]
+    all_rows = []
+    for rank, (tid, name, rating) in enumerate(rankings, 1):
+        _rec  = _rank_rec.get(tid, {"gp": 0, "wins": 0, "opp_elos": []})
+        _gp   = _rec["gp"]
+        _wp   = _rec["wins"] / _gp if _gp else 0.0
+        _elos = _rec["opp_elos"]
+        _sos  = round(sum(_elos) / len(_elos), 1) if _elos else 0.0
+        _e    = _eff.get(tid, {})
+        all_rows.append({
+            "Rank":    rank,
+            "Team":    name,
+            "Elo":     round(rating, 1),
+            "GP":      _gp,
+            "Win%":    _wp,
+            "SoS":     _sos,
+            "Adj Off": _e.get("adj_off"),
+            "Adj Def": _e.get("adj_def"),
+            "Net":     _e.get("net_adj"),
+            "R32":     adv_odds.get(tid, {}).get(2, 0),
+            "S16":     adv_odds.get(tid, {}).get(3, 0),
+            "E8":      adv_odds.get(tid, {}).get(4, 0),
+            "FF":      adv_odds.get(tid, {}).get(5, 0),
+            "Title":   champ_odds.get(tid, 0),
+        })
 
-        def _fmt_pct(v):
-            if isinstance(v, float) and v > 0:
-                return f"{v:.3%}"
-            return "-"
+    df_all   = pd.DataFrame(all_rows).set_index("Rank")
+    pct_cols = ["R32", "S16", "E8", "FF", "Title"]
 
-        styled_all = (
-            df_all.style
-            .format({c: _fmt_pct for c in pct_cols})
-            .format({"Win%": "{:.3%}"})
-            .format({"Elo": "{:.1f}", "Off": "{:.1f}", "Def": "{:.1f}", "Net": "{:+.1f}"})
-            .background_gradient(subset=pct_cols, cmap="Blues", vmin=0, vmax=0.5)
-            .background_gradient(subset=["Off"], cmap="Greens", vmin=60, vmax=90)
-            .background_gradient(subset=["Def"], cmap="Reds_r", vmin=55, vmax=85)
-            .background_gradient(subset=["Net"], cmap="RdYlGn", vmin=-15, vmax=15)
-            .bar(subset=["Elo"], color=[light, color])
-            .set_properties(**{"font-size": "13px"})
-        )
+    def _fmt_pct(v):
+        if isinstance(v, float) and v > 0:
+            return f"{v:.3%}"
+        return "-"
 
-        col_tbl, col_chart = st.columns([3, 2])
-        with col_tbl:
-            st.dataframe(styled_all, height=1800, width="stretch")
+    def _fmt_eff(v):
+        return f"{v:.1f}" if v is not None else "-"
 
-        with col_chart:
-            top20_names = [name for _, name, _ in rankings[:20]]
-            top20_odds  = [champ_odds.get(tid, 0) for tid, _, _ in rankings[:20]]
-            fig_bar = plotly_odds_bar(top20_names[::-1], top20_odds[::-1], color)
-            st.plotly_chart(fig_bar, width="stretch")
-            st.caption(f"Top 20 championship odds from {N_SIMS:,} Monte Carlo bracket simulations.")
+    styled_all = (
+        df_all.style
+        .format({c: _fmt_pct for c in pct_cols})
+        .format({"Win%": "{:.1%}", "Elo": "{:.1f}", "GP": "{:.0f}", "SoS": "{:.1f}"})
+        .format({"Adj Off": _fmt_eff, "Adj Def": _fmt_eff, "Net": _fmt_eff})
+        .background_gradient(subset=pct_cols, cmap="Blues", vmin=0, vmax=0.5)
+        .background_gradient(subset=["SoS"], cmap="Oranges", vmin=1450, vmax=1600)
+        .background_gradient(subset=["Adj Off"], cmap="Greens", vmin=60, vmax=95)
+        .background_gradient(subset=["Adj Def"], cmap="Reds_r", vmin=60, vmax=95)
+        .bar(subset=["Elo"], color=[light, color])
+        .set_properties(**{"font-size": "13px"})
+    )
 
-    # ── Games Played sub-tab ──────────────────────────────────────────────────
-    with _rank_sub_games:
-        st.markdown(f"**All {len(engine.history):,} games processed by the Elo engine this season**")
-        st.caption("Results are sorted most-recent first. Scores shown as Home vs Away.")
+    col_tbl, col_chart = st.columns([3, 2])
+    with col_tbl:
+        st.dataframe(styled_all, height=1800, width="stretch")
 
-        _game_rows = []
-        for _g in reversed(engine.history):
-            _h_win = _g["home_score"] > _g["away_score"]
-            _game_rows.append({
-                "Date":       _g["date"],
-                "Home":       _g["home_name"],
-                "H Pts":      _g["home_score"],
-                "A Pts":      _g["away_score"],
-                "Away":       _g["away_name"],
-                "Result":     "H Win" if _h_win else "A Win",
-                "Margin":     abs(_g["home_score"] - _g["away_score"]),
-                "Neutral":    "N" if _g.get("neutral") else "",
-            })
+    with col_chart:
+        top20_names = [name for _, name, _ in rankings[:20]]
+        top20_odds  = [champ_odds.get(tid, 0) for tid, _, _ in rankings[:20]]
+        fig_bar = plotly_odds_bar(top20_names[::-1], top20_odds[::-1], color)
+        st.plotly_chart(fig_bar, width="stretch")
+        st.caption(f"Top 20 championship odds from {N_SIMS:,} Monte Carlo bracket simulations.")
 
-        _games_df = pd.DataFrame(_game_rows)
+        # Efficiency scatter: Adj Def (x) vs Adj Off (y)
+        _eff_teams   = [(tid, name, _eff[tid]) for tid, name, _ in rankings if tid in _eff]
+        _scatter_top = _eff_teams[:120]  # top 120 by Elo for readability
+        if _scatter_top:
+            _sx   = [e["adj_def"] for _, _, e in _scatter_top]
+            _sy   = [e["adj_off"] for _, _, e in _scatter_top]
+            _slbl = [n for _, n, _ in _scatter_top]
+            _snet = [e["net_adj"] for _, _, e in _scatter_top]
 
-        # Team filter
-        _all_teams = sorted(set(
-            [r["Home"] for r in _game_rows] + [r["Away"] for r in _game_rows]
-        ))
-        _team_filter = st.selectbox(
-            "Filter by team (optional)", ["— All teams —"] + _all_teams,
-            key="games_team_filter",
-        )
-        if _team_filter != "— All teams —":
-            _games_df = _games_df[
-                (_games_df["Home"] == _team_filter) | (_games_df["Away"] == _team_filter)
-            ]
-
-        st.caption(f"Showing {len(_games_df):,} games.")
-        st.dataframe(
-            _games_df.style
-            .apply(
-                lambda row: [
-                    f"background-color: {NORD['bg2']}; color: {color}" if row["Result"] == "H Win"
-                    else f"background-color: {NORD['bg2']}; color: {NORD['red']}"
-                    for _ in row
-                ],
-                axis=1,
+            _fig_eff = go.Figure(go.Scatter(
+                x=_sx, y=_sy,
+                mode="markers+text",
+                text=_slbl,
+                textposition="top center",
+                textfont=dict(size=7),
+                marker=dict(
+                    size=8,
+                    color=_snet,
+                    colorscale="RdYlGn",
+                    showscale=True,
+                    colorbar=dict(title="Net Adj"),
+                    line=dict(width=0.5, color=NORD["bg3"]),
+                ),
+                hovertemplate=(
+                    "<b>%{text}</b><br>"
+                    "Adj Off: %{y:.1f}<br>"
+                    "Adj Def: %{x:.1f}<br>"
+                    "<extra></extra>"
+                ),
+            ))
+            # Quadrant lines at league medians
+            _med_def = sorted(_sx)[len(_sx) // 2]
+            _med_off = sorted(_sy)[len(_sy) // 2]
+            _fig_eff.add_vline(x=_med_def, line_color=NORD["bg3"], line_dash="dot")
+            _fig_eff.add_hline(y=_med_off, line_color=NORD["bg3"], line_dash="dot")
+            _fig_eff.update_layout(
+                xaxis=dict(title="Adj Def (lower = better defense)", autorange="reversed"),
+                yaxis=dict(title="Adj Off (higher = better offense)"),
+                height=480,
+                margin=dict(l=60, r=20, t=30, b=50),
+                plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)",
             )
-            .set_properties(**{"font-size": "13px"}),
-            height=700,
-            width="stretch",
-        )
+            st.markdown("**Offense vs Defense (Top 120)**")
+            st.caption("X-axis reversed: farther right = better defense.")
+            st.plotly_chart(_fig_eff, use_container_width=True)
 
 
 # ════════════════════════════════════════════════════════════════════════════ #
@@ -1145,455 +1121,6 @@ with tab_bracket:
         )
 
 
-# ════════════════════════════════════════════════════════════════════════════ #
-# TAB 3 — Live Games
-# ════════════════════════════════════════════════════════════════════════════ #
-
-with tab_live:
-    # Persist which game card is selected across reruns
-    if "live_selected_gid" not in st.session_state:
-        st.session_state.live_selected_gid = None
-
-    st.subheader(f"Live Games | {cfg['label']} Division")
-
-    # ── Refresh controls ──────────────────────────────────────────────────────
-    ctrl_col, ts_col = st.columns([1, 3])
-    with ctrl_col:
-        if st.button("🔄 Refresh", key="live_refresh"):
-            st.cache_data.clear()
-            st.rerun()
-    with ts_col:
-        import datetime as _dt
-        st.caption(f"Last checked: {_dt.datetime.now().strftime('%I:%M:%S %p')}")
-
-    # ── Pre-compute ranked IDs and date helpers ───────────────────────────────
-    ranked_ids = {tid for tid, _, _ in rankings}
-
-    _today       = _dt.date.today()
-    _past_days   = [_today - _dt.timedelta(days=d) for d in range(1, 8)]
-    _future_days = [_today + _dt.timedelta(days=d) for d in range(0, 8)]
-
-    past_all = []
-    for _d in _past_days:
-        past_all.extend(load_past_games(division, _d))
-    past_all.sort(key=lambda g: g["game_date"], reverse=True)
-
-    future_all = []
-    for _d in _future_days:
-        future_all.extend(load_future_games(division, _d))
-    future_all.sort(key=lambda g: g.get("game_datetime") or g.get("game_date", ""))
-
-    # ── Timezone selector ──────────────────────────────────────────────────────
-    _tz_col, _ = st.columns([2, 3])
-    with _tz_col:
-        _tz_label = st.selectbox(
-            "Timezone", list(_TZ_OPTIONS.keys()), index=0, key="live_tz",
-            label_visibility="collapsed",
-        )
-    _tz = ZoneInfo(_TZ_OPTIONS[_tz_label])
-
-    def _game_time(iso: str) -> str:
-        """Convert ESPN ISO UTC datetime to local time string."""
-        try:
-            dt_utc   = _datetime.fromisoformat(iso.replace("Z", "+00:00"))
-            dt_local = dt_utc.astimezone(_tz)
-            return dt_local.strftime("%-I:%M %p")
-        except (ValueError, AttributeError):
-            return "TBD"
-
-    def _fmt_date_short(iso: str) -> str:
-        try:
-            return _dt.date.fromisoformat(iso).strftime("%a %-d")
-        except ValueError:
-            return iso
-
-    # ── Upcoming Games (next 7 days, all games) ────────────────────────────────
-    _n_fu = len(future_all)
-    _fu_label = (
-        f"Upcoming Games | today + next 7 days | {_n_fu} game{'s' if _n_fu != 1 else ''} "
-        f"| all {cfg['label']} teams | times in {_tz_label}"
-    )
-    with st.expander(_fu_label, expanded=True):
-        if not future_all:
-            st.caption("No games scheduled in the next 7 days.")
-        else:
-            st.caption(
-                f"Showing all {_n_fu} scheduled {cfg['label']} games. "
-                "Win probabilities come from our Elo model — teams not in our "
-                "season dataset default to 50/50."
-            )
-            _frows = []
-            for _g in future_all:
-                _p_h = engine.win_prob(_g["home_id"], _g["away_id"], neutral=_g["neutral"])
-                _frows.append({
-                    "Date":      _fmt_date_short(_g["game_date"]),
-                    "Time":      _game_time(_g.get("game_datetime", "")),
-                    "Away":      _g["away_name"],
-                    "Home":      _g["home_name"],
-                    "Home win%": f"{_p_h:.0%}",
-                    "Away win%": f"{1 - _p_h:.0%}",
-                })
-            st.dataframe(pd.DataFrame(_frows), use_container_width=True, hide_index=True)
-
-    live_games = load_live_games(division)
-
-    if not live_games:
-        st.info(
-            "No games are live right now.\n\n"
-            "During the tournament (March), this tab shows real-time "
-            "win probabilities, upset alerts, and bracket impact for every "
-            "game in progress."
-        )
-    else:
-        # Annotate each game with live win probability and pregame baseline
-        for g in live_games:
-            p_pre = engine.win_prob(g["home_id"], g["away_id"], neutral=g["neutral"])
-            score_diff = g["home_score"] - g["away_score"]
-            p_live = live_win_prob(score_diff, g["minutes_remaining"], p_pre)
-            g["pregame_prob_home"] = p_pre
-            g["live_prob_home"]    = p_live
-            g["swing"]             = prob_swing(p_live, p_pre)
-            g["upset"]             = upset_alert(p_live, p_pre)
-            g["home_ranked"]       = g["home_id"] in ranked_ids
-            g["away_ranked"]       = g["away_id"] in ranked_ids
-
-        # Sort: upsets first, then by swing magnitude
-        live_games.sort(key=lambda g: (not g["upset"], -abs(g["swing"])))
-
-        games_by_id = {g["game_id"]: g for g in live_games}
-
-        # Clear stale selection if that game is no longer live
-        if st.session_state.live_selected_gid not in games_by_id:
-            st.session_state.live_selected_gid = None
-
-        def _fmt_clock(g):
-            if g["status"] == "halftime":
-                return "HALFTIME"
-            h = int(g["clock_mins"])
-            s = int((g["clock_mins"] - h) * 60)
-            half_lbl = (
-                "1st Half" if g["period"] == 1 else
-                "2nd Half" if g["period"] == 2 else
-                f"OT{g['period'] - 2}"
-            )
-            return f"{h}:{s:02d}  {half_lbl}"
-
-        # ── Game cards ────────────────────────────────────────────────────────
-        cols = st.columns(2)
-        for i, g in enumerate(live_games):
-            col = cols[i % 2]
-            with col:
-                p_h  = g["live_prob_home"]
-                p_a  = 1.0 - p_h
-                pp_h = g["pregame_prob_home"]
-                sw   = g["swing"]
-                is_sel = st.session_state.live_selected_gid == g["game_id"]
-
-                border = (
-                    NORD["orange"] if g["upset"] else
-                    NORD["frost1"] if is_sel else
-                    NORD["bg3"]
-                )
-                badge = (
-                    f'<span style="background:{NORD["orange"]};color:{NORD["bg"]};'
-                    f'font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;'
-                    f'letter-spacing:.05em">UPSET ALERT</span>'
-                    if g["upset"] else ""
-                )
-
-                h_swing_color = NORD["green"] if sw > 0 else NORD["red"]
-                a_swing_color = NORD["red"]   if sw > 0 else NORD["green"]
-                swing_color   = NORD["green"] if sw > 0 else NORD["red"]
-                clock_str = _fmt_clock(g)
-
-                card_html = f"""
-<div style="border:2px solid {border};border-radius:8px;padding:14px 16px;
-            margin-bottom:8px;background:{NORD["bg1"]}">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-    <span style="font-size:11px;color:{NORD["snow0"]};font-family:ui-sans-serif,sans-serif;
-                 font-weight:600;letter-spacing:.04em">
-      {_html.escape(clock_str)}
-    </span>
-    {badge}
-  </div>
-
-  <table style="width:100%;border-collapse:collapse;font-family:ui-sans-serif,sans-serif;
-                margin-bottom:12px">
-    <tr>
-      <td style="font-size:14px;font-weight:700;color:{NORD["snow2"]};padding:3px 0">
-        {_html.escape(g["home_name"][:26])}
-      </td>
-      <td style="font-size:22px;font-weight:800;color:{NORD["snow2"]};text-align:right;
-                 padding:3px 0;min-width:44px">
-        {g["home_score"]}
-      </td>
-    </tr>
-    <tr>
-      <td style="font-size:14px;font-weight:700;color:{NORD["snow2"]};padding:3px 0">
-        {_html.escape(g["away_name"][:26])}
-      </td>
-      <td style="font-size:22px;font-weight:800;color:{NORD["snow2"]};text-align:right;
-                 padding:3px 0">
-        {g["away_score"]}
-      </td>
-    </tr>
-  </table>
-
-  <div style="font-size:10px;color:{NORD["bg3"]};font-family:ui-sans-serif,sans-serif;
-              margin-bottom:4px;letter-spacing:.06em;text-transform:uppercase">
-    Chance of winning right now
-  </div>
-  <div style="background:{NORD["bg3"]};border-radius:4px;height:10px;overflow:hidden;
-              margin-bottom:5px">
-    <div style="background:{color};height:100%;width:{p_h * 100:.1f}%;
-                border-radius:4px"></div>
-  </div>
-  <div style="display:flex;justify-content:space-between;
-              font-family:ui-sans-serif,sans-serif;margin-bottom:8px">
-    <div>
-      <div style="font-size:18px;font-weight:800;color:{color}">{p_h:.0%}</div>
-      <div style="font-size:10px;color:{NORD["bg3"]}">{_html.escape(g["home_name"][:16])}</div>
-      <div style="font-size:10px;color:{h_swing_color}">{sw:+.0%} vs before game</div>
-    </div>
-    <div style="text-align:center;font-size:10px;color:{NORD["bg3"]};align-self:center;
-                line-height:1.5">
-      Before game:<br>
-      {pp_h:.0%} vs {1 - pp_h:.0%}
-    </div>
-    <div style="text-align:right">
-      <div style="font-size:18px;font-weight:800;color:{color}">{p_a:.0%}</div>
-      <div style="font-size:10px;color:{NORD["bg3"]}">{_html.escape(g["away_name"][:16])}</div>
-      <div style="font-size:10px;color:{a_swing_color}">{-sw:+.0%} vs before game</div>
-    </div>
-  </div>
-  <div style="font-size:10px;color:{swing_color};font-family:ui-sans-serif,sans-serif">
-    Home swing since tip-off: <strong>{sw:+.0%}</strong>
-  </div>
-</div>
-"""
-                st.markdown(card_html, unsafe_allow_html=True)
-                btn_label = "Hide details" if is_sel else "Analyze this game"
-                if st.button(btn_label, key=f"analyze_{g['game_id']}",
-                             use_container_width=True):
-                    st.session_state.live_selected_gid = (
-                        None if is_sel else g["game_id"]
-                    )
-                    st.rerun()
-
-        # ── Detail panel for selected game ────────────────────────────────────
-        if st.session_state.live_selected_gid and \
-                st.session_state.live_selected_gid in games_by_id:
-            g    = games_by_id[st.session_state.live_selected_gid]
-            p_h  = g["live_prob_home"]
-            p_a  = 1.0 - p_h
-            pp_h = g["pregame_prob_home"]
-            sw   = g["swing"]
-
-            st.markdown("---")
-            st.markdown(
-                f"### {_html.escape(g['home_name'])} vs {_html.escape(g['away_name'])}"
-            )
-            st.caption(_fmt_clock(g))
-
-            # ── Probability breakdown ──────────────────────────────────────────
-            pb_col, pe_col = st.columns(2)
-            with pb_col:
-                st.markdown("**Win probability breakdown**")
-                hname_s = g["home_name"][:18]
-                aname_s = g["away_name"][:18]
-                prob_df = pd.DataFrame([
-                    {
-                        "Metric":          "Before game started",
-                        hname_s:           f"{pp_h:.1%}",
-                        aname_s:           f"{1 - pp_h:.1%}",
-                    },
-                    {
-                        "Metric":          "Right now (live)",
-                        hname_s:           f"{p_h:.1%}",
-                        aname_s:           f"{p_a:.1%}",
-                    },
-                    {
-                        "Metric":          "Change since tip-off",
-                        hname_s:           f"{sw:+.1%}",
-                        aname_s:           f"{-sw:+.1%}",
-                    },
-                ])
-                st.dataframe(prob_df, use_container_width=True, hide_index=True)
-
-            with pe_col:
-                st.markdown("**What these numbers mean**")
-                leader      = g["home_name"] if p_h >= 0.5 else g["away_name"]
-                leader_prob = max(p_h, p_a)
-                if g["status"] == "halftime":
-                    time_ctx = "at halftime"
-                else:
-                    time_ctx = f"with {_fmt_clock(g)} remaining"
-                momentum_team = g["home_name"] if sw > 0 else g["away_name"]
-                momentum_dir  = abs(sw)
-                st.markdown(
-                    f"**{leader}** has a **{leader_prob:.0%} chance of winning** "
-                    f"{time_ctx}, based on the current score and time left.\n\n"
-                    f"The percentages update continuously using a random-walk model "
-                    f"anchored to each team's Elo rating. As the lead grows or time "
-                    f"runs out, one team's odds climb toward 100%.\n\n"
-                    f"**{momentum_team}** has gained {momentum_dir:.0%} since tip-off."
-                )
-                if g["upset"]:
-                    st.warning(
-                        "**Upset in progress.** The pregame underdog now has the "
-                        "higher win probability."
-                    )
-
-            # ── Bracket odds impact ────────────────────────────────────────────
-            # Initialise defaults so they are always defined for "Who to pick"
-            base_h      = champ_odds.get(g["home_id"], 0.0)
-            base_a      = champ_odds.get(g["away_id"], 0.0)
-            new_h_if_h  = new_h_if_a = new_a_if_h = new_a_if_a = 0.0
-            has_bracket = g["home_ranked"] or g["away_ranked"]
-
-            if has_bracket:
-                st.markdown("**Bracket odds impact**")
-                st.caption(
-                    "How each outcome shifts each team's projected championship odds, "
-                    "based on 5,000 bracket simulations."
-                )
-                with st.spinner("Running bracket simulations..."):
-                    odds_h_wins = live_bracket_impact(
-                        division, g["home_id"], g["away_id"], True
-                    )
-                    odds_a_wins = live_bracket_impact(
-                        division, g["home_id"], g["away_id"], False
-                    )
-
-                new_h_if_h = odds_h_wins.get(g["home_id"], 0.0)
-                new_h_if_a = odds_a_wins.get(g["home_id"], 0.0)
-                new_a_if_h = odds_h_wins.get(g["away_id"], 0.0)
-                new_a_if_a = odds_a_wins.get(g["away_id"], 0.0)
-
-                bi1, bi2 = st.columns(2)
-                with bi1:
-                    st.markdown(f"If **{g['home_name'][:24]}** wins:")
-                    st.metric(
-                        f"{g['home_name'][:22]} title odds",
-                        f"{new_h_if_h:.2%}",
-                        delta=f"{new_h_if_h - base_h:+.2%}",
-                    )
-                    st.metric(
-                        f"{g['away_name'][:22]} title odds",
-                        f"{new_a_if_h:.2%}",
-                        delta=f"{new_a_if_h - base_a:+.2%}",
-                    )
-                with bi2:
-                    st.markdown(f"If **{g['away_name'][:24]}** wins:")
-                    st.metric(
-                        f"{g['home_name'][:22]} title odds",
-                        f"{new_h_if_a:.2%}",
-                        delta=f"{new_h_if_a - base_h:+.2%}",
-                    )
-                    st.metric(
-                        f"{g['away_name'][:22]} title odds",
-                        f"{new_a_if_a:.2%}",
-                        delta=f"{new_a_if_a - base_a:+.2%}",
-                    )
-                st.caption(
-                    f"Current baseline title odds: "
-                    f"{g['home_name'][:18]} {base_h:.2%} | "
-                    f"{g['away_name'][:18]} {base_a:.2%}"
-                )
-
-            # ── Who to pick ───────────────────────────────────────────────────
-            st.markdown("**Who to pick**")
-
-            if p_h >= 0.5:
-                pick_team      = g["home_name"]
-                pick_prob      = p_h
-                other_team     = g["away_name"]
-                bracket_gain   = (new_h_if_h - base_h) if has_bracket else None
-            else:
-                pick_team      = g["away_name"]
-                pick_prob      = p_a
-                other_team     = g["home_name"]
-                bracket_gain   = (new_a_if_a - base_a) if has_bracket else None
-
-            if pick_prob >= 0.80:
-                conf_label = "STRONG PICK"
-                conf_color = NORD["green"]
-            elif pick_prob >= 0.65:
-                conf_label = "SOLID PICK"
-                conf_color = NORD["green"]
-            elif pick_prob >= 0.55:
-                conf_label = "LEAN"
-                conf_color = NORD["yellow"]
-            else:
-                conf_label = "TOO CLOSE TO CALL"
-                conf_color = NORD["bg3"]
-
-            reasons = []
-            if pick_prob >= 0.55:
-                reasons.append(
-                    f"{pick_team} currently has a {pick_prob:.0%} chance of winning"
-                )
-                momentum_toward_pick = (
-                    (sw > 0.05 and pick_team == g["home_name"]) or
-                    (sw < -0.05 and pick_team == g["away_name"])
-                )
-                if momentum_toward_pick:
-                    swing_mag = abs(sw)
-                    reasons.append(
-                        f"they have gained {swing_mag:.0%} since tip-off"
-                    )
-                if bracket_gain and bracket_gain > 0.005:
-                    reasons.append(
-                        f"a win boosts their title odds by {bracket_gain:+.1%}"
-                    )
-            else:
-                reasons.append("both teams have nearly equal chances right now")
-                reasons.append("the model has no strong lean either way")
-
-            reasoning = ". ".join(r.capitalize() for r in reasons) + "."
-
-            pick_html = f"""
-<div style="border:2px solid {conf_color};border-radius:8px;padding:18px;
-            background:{NORD["bg1"]};margin-top:4px">
-  <div style="font-size:11px;color:{conf_color};font-weight:700;
-              letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px">
-    {conf_label}
-  </div>
-  <div style="font-size:26px;font-weight:800;color:{NORD["snow2"]};margin-bottom:6px">
-    {_html.escape(pick_team)}
-  </div>
-  <div style="font-size:13px;color:{NORD["snow0"]};line-height:1.6">
-    {_html.escape(reasoning)}
-  </div>
-</div>
-"""
-            st.markdown(pick_html, unsafe_allow_html=True)
-
-    # ── Recent Results ─────────────────────────────────────────────────────────
-    _pa_label = f"Recent Results | last 7 days | {len(past_all)} game{'s' if len(past_all) != 1 else ''}"
-    with st.expander(_pa_label, expanded=False):
-        if not past_all:
-            st.caption("No completed games in the last 7 days.")
-        else:
-            _prows = []
-            for _g in past_all:
-                _home_won = _g["home_score"] > _g["away_score"]
-                _p_h      = engine.win_prob(_g["home_id"], _g["away_id"], neutral=_g["neutral"])
-                _prows.append({
-                    "Date":         _dt.date.fromisoformat(_g["game_date"]),
-                    "Away":         _g["away_name"],
-                    "Score":        f"{_g['away_score']}-{_g['home_score']}",
-                    "Home":         _g["home_name"],
-                    "Proj home%":   f"{_p_h:.0%}",
-                    "Proj away%":   f"{1 - _p_h:.0%}",
-                    "Winner":       _g["home_name"] if _home_won else _g["away_name"],
-                })
-            _past_df = pd.DataFrame(_prows)
-            _past_df = _past_df.sort_values("Date", ascending=False)
-            st.dataframe(_past_df, use_container_width=True, hide_index=True)
-
-
-# ════════════════════════════════════════════════════════════════════════════ #
 # TAB 4 — Model Evaluation
 # ════════════════════════════════════════════════════════════════════════════ #
 
@@ -1657,687 +1184,7 @@ with tab_eval:
 
     st.markdown("---")
 
-    # ── Build analytics data from engine history ─────────────────────────────
-    _hist        = engine.history
-    _hist_sorted = sorted(_hist, key=lambda g: g.get("date") or "")
-    _SIGMA_GAME  = _math.sqrt(40.0) * 2.0   # ≈ 12.65 pts
 
-    def _pred_margin(p: float) -> float:
-        p = max(1e-7, min(1 - 1e-7, p))
-        return _math.log(p / (1 - p)) * _math.sqrt(3) / _math.pi * _SIGMA_GAME
-
-    # ── Graph 1: Predicted vs Actual Margin Distribution ─────────────────────
-    g1_chart, g1_text = st.columns([2, 1])
-    with g1_chart:
-        st.markdown("**Predicted margin distribution vs actual**")
-        _actual_m    = [g["home_score"] - g["away_score"] for g in _hist]
-        _predicted_m = [_pred_margin(g["pregame_prob_home"]) for g in _hist]
-        fig_margin = go.Figure()
-        fig_margin.add_trace(go.Histogram(
-            x=_actual_m, name="Actual margin",
-            opacity=0.65, nbinsx=40, marker_color=NORD["frost1"],
-        ))
-        fig_margin.add_trace(go.Histogram(
-            x=_predicted_m, name="Predicted margin",
-            opacity=0.65, nbinsx=40, marker_color=NORD["orange"],
-        ))
-        fig_margin.add_vline(x=0, line_dash="dash", line_color=NORD["bg3"], line_width=1)
-        fig_margin.update_layout(
-            barmode="overlay",
-            xaxis_title="Home margin (pts)",
-            yaxis_title="Games",
-            legend=dict(orientation="h", y=1.08),
-            height=300,
-            margin=dict(l=40, r=10, t=30, b=40),
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            font=dict(color=NORD["snow0"]),
-        )
-        st.plotly_chart(fig_margin, width="stretch")
-    with g1_text:
-        st.markdown("**What this shows**")
-        st.markdown(
-            "Every game in our dataset is plotted twice: once as the **actual** "
-            "final score margin (blue), and once as the **predicted** margin "
-            "our model implied before tip-off (orange).\n\n"
-            "The dashed line at 0 separates home wins (right) from away wins (left). "
-            "Both distributions should be roughly bell-shaped and centred near 0 "
-            "for a balanced schedule.\n\n"
-            "**What good looks like:** the two histograms overlap well — same centre, "
-            "similar spread. That means our margin estimates are in the right ballpark "
-            "on average.\n\n"
-            "**What to watch for:** if the orange (predicted) is much narrower than "
-            "blue (actual), the model is underestimating how much games can vary — "
-            "it thinks every game is close when some blow out. If the peaks are "
-            "offset, the model is systematically favouring home or away teams."
-        )
-
-    # ── Graph 2: PnL by Edge Bucket ──────────────────────────────────────────
-    g2_chart, g2_text = st.columns([2, 1])
-    with g2_chart:
-        st.markdown("**Returns by model confidence (flat \\$1 bets at even money)**")
-        _edge_map: dict[float, list[float]] = {}
-        for g in _hist:
-            p       = g["pregame_prob_home"]
-            outcome = g["outcome"]
-            edge    = abs(p - 0.5)
-            bucket  = round(int(edge * 10) / 10, 1)
-            correct = (p > 0.5 and outcome == 1) or (p < 0.5 and outcome == 0)
-            _edge_map.setdefault(bucket, []).append(1.0 if correct else -1.0)
-        _eb_x      = sorted(_edge_map.keys())
-        _eb_y      = [sum(_edge_map[b]) / len(_edge_map[b]) for b in _eb_x]
-        _eb_n      = [len(_edge_map[b]) for b in _eb_x]
-        _eb_colors = [NORD["green"] if y >= 0 else NORD["red"] for y in _eb_y]
-        fig_pnl = go.Figure(go.Bar(
-            x=[f"{int(b*100)}-{int(b*100)+10}%" for b in _eb_x],
-            y=_eb_y,
-            marker_color=_eb_colors,
-            text=[f"n={n}" for n in _eb_n],
-            textposition="outside",
-            textfont=dict(size=10, color=NORD["snow0"]),
-        ))
-        fig_pnl.add_hline(y=0, line_color=NORD["bg3"], line_width=1)
-        fig_pnl.update_layout(
-            xaxis_title="Model edge over 50/50",
-            yaxis_title="Avg profit per $1 bet",
-            height=300,
-            margin=dict(l=40, r=10, t=30, b=60),
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            font=dict(color=NORD["snow0"]),
-        )
-        st.plotly_chart(fig_pnl, width="stretch")
-    with g2_text:
-        st.markdown("**What this shows**")
-        st.markdown(
-            "Each bar groups games where our model deviated from 50/50 by a certain "
-            "amount — that deviation is the **edge**. For every game in that group "
-            "we simulate betting \\$1 on whoever our model favoured, at even-money "
-            "payout (+\\$1 win, -\\$1 loss), then average the results.\n\n"
-            "**0-10% edge:** the model barely has a lean — these are essentially "
-            "coin flips, so returns cluster near zero.\n\n"
-            "**20%+ edge:** the model is confident. If those predictions are correct "
-            "more than 50% of the time, the bar goes green and shows a real "
-            "profit margin per dollar wagered.\n\n"
-            "**What good looks like:** bars trending upward from left to right — "
-            "higher confidence predicts winners more reliably, earning more per bet.\n\n"
-            "**n= labels** show sample size. Small n means wide uncertainty; "
-            "don't read too much into a single bar with 20 games."
-        )
-
-    # ── Graph 3: Edge vs Market Line ─────────────────────────────────────────
-    g3_chart, g3_text = st.columns([2, 1])
-    with g3_chart:
-        st.markdown("**Edge vs market line: actual win rate minus predicted**")
-        _cal_data = metrics.get("calibration", [])
-        if _cal_data:
-            _cx      = [b["predicted_avg"] for b in _cal_data]
-            _cy      = [b["observed"]      for b in _cal_data]
-            _csz     = [b["n"]             for b in _cal_data]
-            _edge_vs = [o - p for o, p in zip(_cy, _cx)]
-            fig_edge = go.Figure()
-            fig_edge.add_trace(go.Scatter(
-                x=_cx, y=_edge_vs,
-                mode="markers+lines",
-                marker=dict(
-                    size=[max(8, n / 40) for n in _csz],
-                    color=_edge_vs,
-                    colorscale=[[0, NORD["red"]], [0.5, NORD["bg3"]], [1, NORD["green"]]],
-                    showscale=False,
-                ),
-                line=dict(color=NORD["frost1"], width=1),
-                name="Actual − Predicted",
-            ))
-            fig_edge.add_hline(y=0, line_dash="dash", line_color=NORD["bg3"],
-                               line_width=1, annotation_text="Perfect calibration")
-            fig_edge.update_layout(
-                xaxis=dict(tickformat=".0%", title="Our predicted win probability"),
-                yaxis=dict(tickformat="+.0%", title="Actual win rate minus predicted"),
-                height=300,
-                margin=dict(l=55, r=10, t=30, b=40),
-                plot_bgcolor="rgba(0,0,0,0)",
-                paper_bgcolor="rgba(0,0,0,0)",
-                font=dict(color=NORD["snow0"]),
-            )
-            st.plotly_chart(fig_edge, width="stretch")
-        else:
-            st.info("Not enough data for this chart.")
-    with g3_text:
-        st.markdown("**What this shows**")
-        st.markdown(
-            "This is a **residual plot** for our probability forecasts. "
-            "We take every probability bin (e.g. games where we said 60-70%) "
-            "and ask: how often did the team we favoured actually win? "
-            "The difference — actual rate minus predicted rate — is plotted on "
-            "the y-axis.\n\n"
-            "The dashed line at **y = 0** is the market line: where a perfectly "
-            "calibrated model would sit. Every point on that line means we said X% "
-            "and teams won exactly X% of the time.\n\n"
-            "**Points above 0** (green): we underestimated. Teams we called 65% "
-            "favourites actually won 72% of the time — we were too conservative.\n\n"
-            "**Points below 0** (red): we overestimated. We were overconfident "
-            "in those matchups.\n\n"
-            "**Dot size** = number of games in that bin. Larger dots are more "
-            "trustworthy; small dots can swing wildly with just a handful of "
-            "unexpected results."
-        )
-
-    # ── Graph 4: Cumulative PnL (Closing Line Value proxy) ───────────────────
-    g4_chart, g4_text = st.columns([2, 1])
-    with g4_chart:
-        st.markdown("**Cumulative returns over the season — closing line value proxy**")
-        _cum_pnl   = []
-        _running   = 0.0
-        _game_nums = []
-        for _i, g in enumerate(_hist_sorted):
-            p       = g["pregame_prob_home"]
-            outcome = g["outcome"]
-            correct = (p > 0.5 and outcome == 1) or (p < 0.5 and outcome == 0)
-            _running += 1.0 if correct else -1.0
-            _cum_pnl.append(_running)
-            _game_nums.append(_i + 1)
-        _final_pnl = _cum_pnl[-1] if _cum_pnl else 0
-        fig_clv = go.Figure()
-        fig_clv.add_trace(go.Scatter(
-            x=_game_nums, y=_cum_pnl,
-            mode="lines",
-            fill="tozeroy",
-            line=dict(color=NORD["green"] if _final_pnl >= 0 else NORD["red"], width=2),
-            fillcolor="rgba(163,190,140,0.15)",
-            name="Cumulative PnL",
-        ))
-        fig_clv.add_hline(y=0, line_color=NORD["bg3"], line_width=1)
-        fig_clv.update_layout(
-            xaxis_title="Game number (chronological)",
-            yaxis_title="Cumulative profit ($)",
-            height=300,
-            margin=dict(l=55, r=10, t=30, b=40),
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            font=dict(color=NORD["snow0"]),
-            showlegend=False,
-        )
-        st.plotly_chart(fig_clv, width="stretch")
-    with g4_text:
-        st.markdown("**What this shows**")
-        st.markdown(
-            "Imagine betting \\$1 on every single game in our dataset — always "
-            "on whoever our model liked — at fair 50/50 payout (+\\$1 win, -\\$1 loss). "
-            "This chart shows how your bankroll would have moved game-by-game "
-            "through the entire season.\n\n"
-            "**A rising line** means the model is picking winners more than 50% "
-            "of the time, generating real edge over random guessing.\n\n"
-            "**A falling line** means the model lost money on that stretch — "
-            "its picks were no better than a coin flip during that period.\n\n"
-            "**Early volatility is normal.** At the start of the season all "
-            "teams have the same Elo rating, so predictions are near 50/50 and "
-            "swings are large. As ratings converge, the model gains confidence "
-            "and the line stabilises.\n\n"
-            "This is a proxy for **closing line value (CLV)** — the idea in "
-            "sports betting that a sharp model consistently predicts which side "
-            "the market will eventually agree with."
-        )
-
-
-# ════════════════════════════════════════════════════════════════════════════ #
-# TAB 5 — Matchup Calculator
-# ════════════════════════════════════════════════════════════════════════════ #
-
-with tab_matchup:
-    st.subheader(f"Head-to-Head Matchup | {cfg['label']} Division")
-
-    all_teams = [(tid, name) for tid, name, _ in rankings]
-    team_options = {name: tid for tid, name in all_teams}
-    names_list   = [name for _, name in all_teams]
-
-    col_a, col_b = st.columns(2)
-    with col_a:
-        name_a = st.selectbox(
-            "Team A",
-            names_list,
-            index=0,
-            help="First team (neutral court assumed).",
-        )
-    with col_b:
-        remaining = [n for n in names_list if n != name_a]
-        name_b = st.selectbox(
-            "Team B",
-            remaining,
-            index=min(4, len(remaining) - 1),
-            help="Second team. Win probability = 1 - P(Team A).",
-        )
-
-    tid_a = team_options[name_a]
-    tid_b = team_options[name_b]
-    m = matchup_prob(engine, tid_a, tid_b)
-
-    st.markdown("---")
-
-    res_col, chart_col = st.columns([1, 2])
-
-    with res_col:
-        st.markdown(f"### {name_a} vs {name_b}")
-        st.markdown(
-            f"| | {name_a[:22]} | {name_b[:22]} |\n"
-            f"|---|---|---|\n"
-            f"| **Elo** | {m['rating_a']} | {m['rating_b']} |\n"
-            f"| **Win prob** | **{m['prob_a']:.1%}** | **{m['prob_b']:.1%}** |\n"
-            f"| **Rating diff** | {m['rating_diff']:+.1f} | - |"
-        )
-        st.markdown(
-            f"**Favorite:** {m['favorite']}  \n"
-            f"Formula: $p = \\dfrac{{1}}{{1 + 10^{{(R_B - R_A)/400}}}}$"
-        )
-
-    with chart_col:
-        fig_mu = go.Figure(go.Bar(
-            x=[m["prob_a"], m["prob_b"]],
-            y=[name_a[:30], name_b[:30]],
-            orientation="h",
-            marker_color=[color, NORD["bg3"]],
-            text=[f"{m['prob_a']:.1%}", f"{m['prob_b']:.1%}"],
-            textposition="inside",
-            insidetextanchor="middle",
-            textfont=dict(color="white", size=15),
-        ))
-        fig_mu.add_vline(x=0.5, line_dash="dash", line_color=NORD["bg3"], line_width=1)
-        fig_mu.update_layout(
-            xaxis=dict(tickformat=".0%", range=[0, 1], title="Win probability"),
-            yaxis=dict(autorange="reversed"),
-            margin=dict(l=160, r=20, t=10, b=40),
-            height=160,
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            showlegend=False,
-        )
-        st.plotly_chart(fig_mu, width="stretch")
-        st.caption("Neutral court assumption. Elo home-court adjustment not applied here.")
-
-    st.markdown("---")
-    st.markdown("**Predicted score**")
-    _h_pts, _a_pts = _predicted_score(m["prob_a"], avg_total=cfg["avg_total"])
-    sc1, sc2, sc3 = st.columns(3)
-    sc1.metric(name_a[:22], str(_h_pts))
-    sc2.metric(name_b[:22], str(_a_pts))
-    sc3.metric("Predicted margin", f"{_h_pts - _a_pts:+d} ({name_a[:14]})" if _h_pts != _a_pts else "Pick 'em")
-    st.caption(
-        "Predicted score uses the Elo win probability and a random-walk scoring model "
-        f"(SIGMA = 2.0 pts/sqrt(min), average total = {int(cfg['avg_total'])} pts). "
-        "Treat as a rough estimate, not a precise forecast."
-    )
-
-
-# ════════════════════════════════════════════════════════════════════════════ #
-# TAB 7 — Efficiency
-# ════════════════════════════════════════════════════════════════════════════ #
-
-with tab_efficiency:
-    st.subheader(f"Offensive and Defensive Efficiency | {cfg['label']} Division")
-    st.markdown(
-        "Points scored and allowed per game, derived from all regular-season "
-        "games in the Elo engine history. Think of **offensive efficiency** as "
-        "revenue and **defensive efficiency** as costs — net efficiency is "
-        "the profit margin that predicts tournament success."
-    )
-    st.markdown("---")
-
-    # ── Compute per-team efficiency from game history ─────────────────────────
-    _eff_map: dict[str, dict] = {}
-    for _g in engine.history:
-        for _tid, _name, _for, _against in [
-            (_g["home_id"], _g["home_name"], _g["home_score"], _g["away_score"]),
-            (_g["away_id"], _g["away_name"], _g["away_score"], _g["home_score"]),
-        ]:
-            if _tid not in _eff_map:
-                _eff_map[_tid] = {"name": _name, "pts_for": [], "pts_against": [], "wins": 0}
-            _eff_map[_tid]["pts_for"].append(_for)
-            _eff_map[_tid]["pts_against"].append(_against)
-            if _for > _against:
-                _eff_map[_tid]["wins"] += 1
-
-    _eff_rows = []
-    for _tid, _d in _eff_map.items():
-        if not _d["pts_for"]:
-            continue
-        _gp   = len(_d["pts_for"])
-        _off  = sum(_d["pts_for"])  / _gp
-        _def  = sum(_d["pts_against"]) / _gp
-        _net  = _off - _def
-        _wpct = _d["wins"] / _gp
-        _elo  = engine.rating(_tid)
-        _eff_rows.append({
-            "team_id": _tid,
-            "Team":    _d["name"],
-            "GP":      _gp,
-            "Off":     round(_off, 1),
-            "Def":     round(_def, 1),
-            "Net":     round(_net, 1),
-            "Win%":    _wpct,
-            "Elo":     round(_elo, 1),
-        })
-
-    _eff_df = (
-        pd.DataFrame(_eff_rows)
-        .sort_values("Net", ascending=False)
-        .reset_index(drop=True)
-    )
-    _eff_df.index += 1
-
-    # ── Efficiency summary metrics ────────────────────────────────────────────
-    _avg_off = _eff_df["Off"].mean()
-    _avg_def = _eff_df["Def"].mean()
-    _avg_net = _eff_df["Net"].mean()
-    _ea, _eb, _ec, _ed = st.columns(4)
-    _ea.metric("Teams tracked", f"{len(_eff_df):,}")
-    _eb.metric("Avg offensive eff", f"{_avg_off:.1f} PPG")
-    _ec.metric("Avg defensive eff", f"{_avg_def:.1f} PPG allowed")
-    _ed.metric("Avg net rating", f"{_avg_net:+.1f}")
-
-    st.markdown("---")
-
-    # ── Scatter plot: Off Eff vs Def Eff ──────────────────────────────────────
-    _scat_col, _scat_txt = st.columns([2, 1])
-    with _scat_col:
-        st.markdown("**Offensive vs Defensive Efficiency — all teams**")
-        _top_n = 40  # label top teams to avoid clutter
-        _top_ids = set(_eff_df.head(_top_n)["team_id"])
-        _scat_fig = go.Figure()
-        _scat_fig.add_trace(go.Scatter(
-            x=_eff_df["Def"],
-            y=_eff_df["Off"],
-            mode="markers+text",
-            marker=dict(
-                color=[NORD["frost1"] if t in _top_ids else NORD["bg3"]
-                       for t in _eff_df["team_id"]],
-                size=7,
-                opacity=0.85,
-            ),
-            text=[
-                row["Team"].split()[-1] if row["team_id"] in _top_ids else ""
-                for _, row in _eff_df.iterrows()
-            ],
-            textposition="top center",
-            textfont=dict(size=8, color=NORD["snow0"]),
-            hovertext=[
-                f"{row['Team']}<br>Off: {row['Off']} | Def: {row['Def']} | Net: {row['Net']:+.1f}"
-                for _, row in _eff_df.iterrows()
-            ],
-            hoverinfo="text",
-            name="Teams",
-        ))
-        # Net=0 diagonal: where Off=Def  → y = x line
-        _x_range = [_eff_df["Def"].min() - 1, _eff_df["Def"].max() + 1]
-        _scat_fig.add_trace(go.Scatter(
-            x=_x_range, y=_x_range,
-            mode="lines",
-            line=dict(color=NORD["bg3"], dash="dash", width=1),
-            name="Net = 0",
-            showlegend=False,
-        ))
-        # Vertical and horizontal lines at averages
-        _scat_fig.add_vline(x=_avg_def, line_dash="dot", line_color=NORD["orange"],
-                            line_width=1, annotation_text="Avg Def",
-                            annotation_font=dict(color=NORD["orange"], size=10))
-        _scat_fig.add_hline(y=_avg_off, line_dash="dot", line_color=NORD["green"],
-                            line_width=1, annotation_text="Avg Off",
-                            annotation_font=dict(color=NORD["green"], size=10))
-        _scat_fig.update_layout(
-            xaxis=dict(
-                title="Points allowed per game (defensive efficiency — lower is better)",
-                autorange="reversed",
-            ),
-            yaxis_title="Points scored per game (offensive efficiency — higher is better)",
-            height=420,
-            margin=dict(l=55, r=10, t=30, b=50),
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            font=dict(color=NORD["snow0"]),
-            legend=dict(orientation="h", y=1.05),
-        )
-        st.plotly_chart(_scat_fig, width="stretch")
-    with _scat_txt:
-        st.markdown("**How to read this chart**")
-        st.markdown(
-            "Every dot is a team. Y-axis = points scored per game (offense), "
-            "X-axis = points allowed per game (defense — axis reversed, right = better).\n\n"
-            "**Top-right** (high offense, good defense): most efficient teams. "
-            "Score a lot and hold opponents down — tournament favorites.\n\n"
-            "**Top-left** (high offense, poor defense): prolific scorers "
-            "that give up a lot — fun to watch, risky to trust in March.\n\n"
-            "**Bottom-right** (low offense, good defense): grinders. "
-            "Win ugly with defense but struggle to score at tournament pace.\n\n"
-            "**Bottom-left** (low offense, poor defense): rebuilding teams — "
-            "neither scoring nor stopping the other team.\n\n"
-            "**Dashed diagonal**: net rating = 0. Above the line = positive net, "
-            "below = negative. "
-            "**Cross-hairs** mark league averages — top-right of both = elite."
-        )
-
-    st.markdown("---")
-
-    # ── Efficiency rankings table ─────────────────────────────────────────────
-    with st.expander("Full efficiency rankings (click to expand)", expanded=True):
-        _show_df = _eff_df[["Team", "GP", "Off", "Def", "Net", "Win%", "Elo"]].copy()
-        _show_df["Win%"] = _show_df["Win%"].map(lambda v: f"{v:.1%}")
-        st.dataframe(
-            _show_df.style
-            .background_gradient(subset=["Off"], cmap="Greens",    vmin=60,  vmax=90)
-            .background_gradient(subset=["Def"], cmap="Reds_r",   vmin=55,  vmax=85)
-            .background_gradient(subset=["Net"], cmap="RdYlGn",   vmin=-15, vmax=15)
-            .background_gradient(subset=["Elo"], cmap="Blues",    vmin=1400, vmax=1650)
-            .format({"Off": "{:.1f}", "Def": "{:.1f}", "Net": "{:+.1f}", "Elo": "{:.1f}"}),
-            height=480,
-        )
-
-
-# ════════════════════════════════════════════════════════════════════════════ #
-# TAB 7 — Players
-# ════════════════════════════════════════════════════════════════════════════ #
-
-with tab_players:
-    st.subheader(f"Player Dashboard | {cfg['label']} Division")
-    st.caption(
-        "Recent performance leaders aggregated from ESPN game box scores. "
-        "**Player Rating (PR)** = PPG + 0.4×RPG + 0.7×APG + SPG + 0.7×BPG − 0.7×TPG "
-        "(Hollinger Game Score)."
-    )
-    st.markdown("---")
-
-    _players = load_players(division)
-
-    if not _players:
-        st.warning("Could not fetch player data from ESPN. Check network connection or try refreshing.")
-    else:
-        _pl_sub_rank, _pl_sub_eval, _pl_sub_matchup = st.tabs([
-            "📊 Rankings", "📈 Evaluation", "⚔️ Matchup",
-        ])
-
-        # Build DataFrame once
-        _pl_rows = []
-        for _pr_rank, _p in enumerate(_players, 1):
-            _s = _p["stats"]
-            _pl_rows.append({
-                "#":    _pr_rank,
-                "Player": _p["name"],
-                "Team":   _p["team_name"],
-                "PR":     _p["player_rating"],
-                "PPG":    _s.get("pointsPerGame",    0),
-                "RPG":    _s.get("reboundsPerGame",  0),
-                "APG":    _s.get("assistsPerGame",   0),
-                "SPG":    _s.get("stealsPerGame",    0),
-                "BPG":    _s.get("blocksPerGame",    0),
-                "TPG":    _s.get("turnoversPerGame", 0),
-                "FG%":    _s.get("fieldGoalPct",     0),
-                "3P%":    _s.get("threePointFieldGoalPct", 0),
-                "FT%":    _s.get("freeThrowPct",     0),
-                "GP":     _s.get("gamesPlayed",      1),
-            })
-        _pl_df = pd.DataFrame(_pl_rows).set_index("#")
-        _avg_pr = _pl_df["PR"].mean()
-
-        # ── Rankings sub-tab ──────────────────────────────────────────────
-        with _pl_sub_rank:
-            st.markdown(f"**Top {len(_pl_df)} players by Player Rating (last 7 days of box scores)**")
-
-            _pl_styled = (
-                _pl_df.style
-                .format({"PR": "{:.2f}", "PPG": "{:.1f}", "RPG": "{:.1f}",
-                         "APG": "{:.1f}", "SPG": "{:.1f}", "BPG": "{:.1f}",
-                         "TPG": "{:.1f}", "FG%": "{:.1f}", "3P%": "{:.1f}",
-                         "FT%": "{:.1f}", "GP": "{:.0f}"})
-                .background_gradient(subset=["PR"],  cmap="Blues",  vmin=0,  vmax=40)
-                .background_gradient(subset=["PPG"], cmap="Greens", vmin=0,  vmax=35)
-                .background_gradient(subset=["TPG"], cmap="Reds",   vmin=0,  vmax=6)
-                .set_properties(**{"font-size": "13px"})
-            )
-
-            _r1, _r2 = st.columns([3, 2])
-            with _r1:
-                st.dataframe(_pl_styled, height=700, width="stretch")
-            with _r2:
-                _top15 = _pl_df.head(15)
-                _pr_bar = go.Figure(go.Bar(
-                    x=_top15["PR"],
-                    y=_top15["Player"],
-                    orientation="h",
-                    marker_color=color,
-                    text=[f"{v:.2f}" for v in _top15["PR"]],
-                    textposition="outside",
-                    textfont=dict(size=10, color=NORD["snow0"]),
-                ))
-                _pr_bar.update_layout(
-                    title="Top 15 by Player Rating",
-                    xaxis_title="PR",
-                    yaxis=dict(autorange="reversed"),
-                    height=500,
-                    margin=dict(l=10, r=60, t=40, b=30),
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color=NORD["snow0"]),
-                )
-                st.plotly_chart(_pr_bar, width="stretch")
-                st.caption(
-                    f"Avg PR: {_avg_pr:.2f}  ·  "
-                    "Based on Hollinger Game Score formula"
-                )
-
-        # ── Evaluation sub-tab ────────────────────────────────────────────
-        with _pl_sub_eval:
-            st.markdown("**Player Rating distribution and stat correlations**")
-            _e1, _e2 = st.columns(2)
-            with _e1:
-                _hist = go.Figure(go.Histogram(
-                    x=_pl_df["PR"].tolist(), nbinsx=30,
-                    marker_color=color, opacity=0.8,
-                ))
-                _hist.add_vline(x=_avg_pr, line_dash="dash", line_color=NORD["yellow"],
-                                annotation_text=f"Avg {_avg_pr:.2f}",
-                                annotation_font=dict(color=NORD["yellow"], size=10))
-                _hist.update_layout(
-                    title="PR Distribution",
-                    xaxis_title="Player Rating", yaxis_title="Players",
-                    height=300, margin=dict(l=40, r=10, t=40, b=40),
-                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color=NORD["snow0"]),
-                )
-                st.plotly_chart(_hist, width="stretch")
-            with _e2:
-                _scat = go.Figure(go.Scatter(
-                    x=_pl_df["PPG"].tolist(), y=_pl_df["PR"].tolist(),
-                    mode="markers",
-                    marker=dict(color=color, size=6, opacity=0.7),
-                    hovertext=[f"{r['Player']} ({r['Team']})<br>PPG: {r['PPG']} | PR: {r['PR']:.2f}"
-                               for _, r in _pl_df.iterrows()],
-                    hoverinfo="text",
-                ))
-                _scat.update_layout(
-                    title="PPG vs PR",
-                    xaxis_title="Points per game", yaxis_title="Player Rating",
-                    height=300, margin=dict(l=50, r=10, t=40, b=40),
-                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color=NORD["snow0"]),
-                )
-                st.plotly_chart(_scat, width="stretch")
-
-            # Stat contribution bars
-            st.markdown("**Average stat contribution to PR across all players**")
-            _contrib_labels, _contrib_vals = [], []
-            for _, (_slabel, _wt) in PLAYER_STAT_CONFIG.items():
-                if _wt != 0.0:
-                    _contrib_labels.append(_slabel)
-                    _contrib_vals.append(round(_wt * _pl_df[_slabel[:3]].mean()
-                                               if _slabel[:3] in _pl_df.columns else 0, 2))
-            _contrib_fig = go.Figure(go.Bar(
-                x=_contrib_labels, y=_contrib_vals,
-                marker_color=[color if v >= 0 else NORD["red"] for v in _contrib_vals],
-                text=[f"{v:+.2f}" for v in _contrib_vals],
-                textposition="outside",
-            ))
-            _contrib_fig.update_layout(
-                title="Avg stat contribution to PR",
-                yaxis_title="PR points contributed",
-                height=280, margin=dict(l=40, r=10, t=40, b=40),
-                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                font=dict(color=NORD["snow0"]),
-            )
-            st.plotly_chart(_contrib_fig, width="stretch")
-
-        # ── Matchup sub-tab ───────────────────────────────────────────────
-        with _pl_sub_matchup:
-            st.markdown("**Head-to-head player comparison**")
-            _player_names = _pl_df["Player"].tolist()
-            _mc1, _mc2 = st.columns(2)
-            with _mc1:
-                _pa_name = st.selectbox("Player A", _player_names,
-                                        index=0, key="pl_matchup_a")
-            with _mc2:
-                _pb_name = st.selectbox("Player B", _player_names,
-                                        index=min(1, len(_player_names)-1), key="pl_matchup_b")
-
-            _stat_cols = ["PPG", "RPG", "APG", "SPG", "BPG", "TPG", "FG%", "3P%", "FT%"]
-            _pa_row = _pl_df[_pl_df["Player"] == _pa_name].iloc[0]
-            _pb_row = _pl_df[_pl_df["Player"] == _pb_name].iloc[0]
-
-            _mu_fig = go.Figure()
-            _mu_fig.add_trace(go.Bar(
-                name=_pa_name[:20], x=_stat_cols,
-                y=[_pa_row[s] for s in _stat_cols],
-                marker_color=color,
-                text=[f"{_pa_row[s]:.1f}" for s in _stat_cols],
-                textposition="outside",
-            ))
-            _mu_fig.add_trace(go.Bar(
-                name=_pb_name[:20], x=_stat_cols,
-                y=[_pb_row[s] for s in _stat_cols],
-                marker_color=NORD["orange"],
-                text=[f"{_pb_row[s]:.1f}" for s in _stat_cols],
-                textposition="outside",
-            ))
-            _mu_fig.update_layout(
-                barmode="group",
-                height=380, margin=dict(l=40, r=10, t=20, b=40),
-                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                font=dict(color=NORD["snow0"]),
-                legend=dict(orientation="h", y=1.08),
-            )
-            st.plotly_chart(_mu_fig, width="stretch")
-
-            # Summary metrics
-            _sm1, _sm2 = st.columns(2)
-            with _sm1:
-                st.metric(f"{_pa_name[:22]} PR", f"{_pa_row['PR']:.2f}")
-                st.metric("PPG", f"{_pa_row['PPG']:.1f}")
-                st.metric("APG", f"{_pa_row['APG']:.1f}")
-            with _sm2:
-                st.metric(f"{_pb_name[:22]} PR", f"{_pb_row['PR']:.2f}",
-                          delta=f"{_pb_row['PR'] - _pa_row['PR']:+.2f}")
-                st.metric("PPG", f"{_pb_row['PPG']:.1f}",
-                          delta=f"{_pb_row['PPG'] - _pa_row['PPG']:+.1f}")
-                st.metric("APG", f"{_pb_row['APG']:.1f}",
-                          delta=f"{_pb_row['APG'] - _pa_row['APG']:+.1f}")
-
-
-# ════════════════════════════════════════════════════════════════════════════ #
 # TAB 9 — Math
 # ════════════════════════════════════════════════════════════════════════════ #
 
@@ -3072,3 +1919,634 @@ with tab_sources:
         "Hunter, J.D. (2007). Matplotlib: A 2D graphics environment. "
         "*Computing in Science and Engineering*, 9(3), 90–95."
     )
+
+
+# ════════════════════════════════════════════════════════════════════════════ #
+# CSV EXPORT UTILITIES
+# ════════════════════════════════════════════════════════════════════════════ #
+
+_SHEETS_ROOT = ROOT / "spreadsheets"
+
+
+def _ensure_dirs():
+    (_SHEETS_ROOT / "analysis").mkdir(parents=True, exist_ok=True)
+    (_SHEETS_ROOT / "backtests").mkdir(parents=True, exist_ok=True)
+    (_SHEETS_ROOT / "players").mkdir(parents=True, exist_ok=True)
+    (_SHEETS_ROOT / "injuries").mkdir(parents=True, exist_ok=True)
+
+
+def export_analysis_csvs(snapshots: list[dict], clv_recs: list[dict], alerts: list[dict]) -> list[str]:
+    """Export odds/CLV/alert data to spreadsheets/analysis/. Returns list of paths written."""
+    _ensure_dirs()
+    written = []
+
+    if snapshots:
+        p = _SHEETS_ROOT / "analysis" / "odds_snapshots.csv"
+        pd.DataFrame(snapshots).to_csv(p, index=False)
+        written.append(str(p))
+
+    if clv_recs:
+        p = _SHEETS_ROOT / "analysis" / "clv_records.csv"
+        pd.DataFrame(clv_recs).to_csv(p, index=False)
+        written.append(str(p))
+
+    lma = [a for a in alerts if a.get("type") == "line_move"]
+    if lma:
+        p = _SHEETS_ROOT / "analysis" / "line_movement.csv"
+        pd.DataFrame(lma).to_csv(p, index=False)
+        written.append(str(p))
+
+    inj = [a for a in alerts if a.get("type") == "injury"]
+    if inj:
+        p = _SHEETS_ROOT / "injuries" / "injuries.csv"
+        pd.DataFrame(inj).to_csv(p, index=False)
+        written.append(str(p))
+
+    return written
+
+
+def export_backtest_csvs(
+    bets_df: pd.DataFrame,
+    monthly_df: pd.DataFrame,
+    buckets_df: pd.DataFrame,
+    label: str,
+) -> list[str]:
+    """Export backtest results to spreadsheets/backtests/. Returns list of paths written."""
+    _ensure_dirs()
+    written = []
+    safe = label.replace(" ", "_").replace("/", "-")
+
+    for df, suffix in [(bets_df, "bets"), (monthly_df, "monthly"), (buckets_df, "edge_buckets")]:
+        if not df.empty:
+            p = _SHEETS_ROOT / "backtests" / f"{safe}_{suffix}.csv"
+            df.to_csv(p, index=False)
+            written.append(str(p))
+
+    return written
+
+
+# ════════════════════════════════════════════════════════════════════════════ #
+# TAB — NCAA 361 Exchange
+# ════════════════════════════════════════════════════════════════════════════ #
+
+with tab_ncaa361:
+    from src.utils.rating_history import build_rating_histories, market_movers, ncaa361_spread
+
+    st.subheader("NCAA 361 Exchange")
+    st.caption(
+        "Elo rating charted as a stock price. "
+        "Every win is a price increase, every loss a drop. "
+        "Upsets move the line more than expected results. "
+        "All 361 D-I teams tracked from opening day."
+    )
+    st.markdown("---")
+
+    @st.cache_data(show_spinner=False)
+    def _load_histories(division: str):
+        _eng = load_engine(division)
+        _hists = build_rating_histories(_eng.history)
+        _movers_g, _movers_l = market_movers(_hists, _eng.names, window_days=30)
+        _spread = ncaa361_spread(_hists)
+        return _hists, _eng.names, _movers_g, _movers_l, _spread
+
+    _hists, _enames, _gainers, _losers, _spread = _load_histories(division)
+
+    # ── Market summary metrics ────────────────────────────────────────────────
+    _all_current = {tid: pts[-1][1] for tid, pts in _hists.items() if pts}
+    _avg_elo  = sum(_all_current.values()) / len(_all_current) if _all_current else 1500
+    _spread_now = _spread[-1][1] if _spread else 0
+    _top_team_id = max(_all_current, key=_all_current.get) if _all_current else None
+    _top_team_nm = _enames.get(_top_team_id, "") if _top_team_id else ""
+    _top_team_el = _all_current.get(_top_team_id, 0) if _top_team_id else 0
+
+    _mc1, _mc2, _mc3, _mc4 = st.columns(4)
+    _mc1.metric("Teams tracked", f"{len(_all_current):,}")
+    _mc2.metric("Index avg (Elo)", f"{_avg_elo:.0f}")
+    _mc3.metric("Rating spread (stdev)", f"{_spread_now:.1f}",
+                help="Higher spread = more separation between elite and bottom teams.")
+    _mc4.metric("Top rated", f"{_top_team_nm}", delta=f"{_top_team_el:.0f} Elo")
+
+    st.markdown("---")
+
+    # ── Team chart ────────────────────────────────────────────────────────────
+    _all_team_names = sorted(_enames.values())
+    _name_to_id = {v: k for k, v in _enames.items()}
+
+    _ch_col, _ctrl_col = st.columns([3, 1])
+    with _ctrl_col:
+        _selected_name = st.selectbox(
+            "Select team", _all_team_names,
+            index=_all_team_names.index("Duke Blue Devils") if "Duke Blue Devils" in _all_team_names else 0,
+            key="ncaa361_team",
+        )
+        _normalize = st.toggle("Normalize to 100", value=False, key="ncaa361_norm",
+                               help="Index all teams to 100 at season start for % comparison.")
+        _compare_names = st.multiselect(
+            "Compare with (up to 4)", [n for n in _all_team_names if n != _selected_name],
+            max_selections=4,
+            key="ncaa361_compare",
+        )
+
+    _selected_id = _name_to_id.get(_selected_name)
+
+    def _team_series(tid: str):
+        pts = _hists.get(tid, [])
+        if not pts:
+            return [], []
+        dates = [p[0] for p in pts]
+        ratings = [p[1] for p in pts]
+        if _normalize and ratings:
+            base = ratings[0]
+            ratings = [r / base * 100 for r in ratings]
+        return dates, ratings
+
+    with _ch_col:
+        if _selected_id:
+            _fig_price = go.Figure()
+
+            # Main team
+            _dx, _dy = _team_series(_selected_id)
+            _line_color = NORD["green"] if (len(_dy) > 1 and _dy[-1] >= _dy[0]) else NORD["red"]
+            _fig_price.add_trace(go.Scatter(
+                x=_dx, y=_dy,
+                mode="lines",
+                name=_selected_name,
+                line=dict(color=_line_color, width=2.5),
+                hovertemplate="%{x}<br>Elo: %{y:.1f}<extra>" + _selected_name + "</extra>",
+            ))
+
+            # Comparison teams
+            _comp_colors = [NORD["frost1"], NORD["yellow"], NORD["purple"], NORD["orange"]]
+            for _ci, _cn in enumerate(_compare_names):
+                _cid = _name_to_id.get(_cn)
+                if _cid:
+                    _cx, _cy = _team_series(_cid)
+                    _fig_price.add_trace(go.Scatter(
+                        x=_cx, y=_cy,
+                        mode="lines",
+                        name=_cn,
+                        line=dict(color=_comp_colors[_ci % len(_comp_colors)], width=1.5, dash="dot"),
+                        hovertemplate="%{x}<br>Elo: %{y:.1f}<extra>" + _cn + "</extra>",
+                    ))
+
+            _y_label = "Indexed (base 100)" if _normalize else "Elo Rating"
+            _fig_price.add_hline(
+                y=100 if _normalize else 1500,
+                line_color=NORD["bg3"], line_dash="dash", line_width=1,
+            )
+            _fig_price.update_layout(
+                xaxis_title="Date",
+                yaxis_title=_y_label,
+                height=380,
+                margin=dict(l=60, r=20, t=20, b=50),
+                plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)",
+                legend=dict(x=0.01, y=0.99),
+                hovermode="x unified",
+            )
+            st.plotly_chart(_fig_price, use_container_width=True)
+
+            # Stats row for selected team
+            _s_pts = _hists.get(_selected_id, [])
+            if len(_s_pts) > 1:
+                _s_start = _s_pts[0][1]
+                _s_end   = _s_pts[-1][1]
+                _s_chg   = _s_end - _s_start
+                _s_peak  = max(p[1] for p in _s_pts)
+                _s_trough = min(p[1] for p in _s_pts)
+                _s1, _s2, _s3, _s4 = st.columns(4)
+                _s1.metric("Season open",  f"{_s_start:.0f}")
+                _s2.metric("Current",      f"{_s_end:.0f}", delta=f"{_s_chg:+.1f}")
+                _s3.metric("Season high",  f"{_s_peak:.0f}")
+                _s4.metric("Season low",   f"{_s_trough:.0f}")
+
+    st.markdown("---")
+
+    # ── Rating spread (volatility index) ─────────────────────────────────────
+    if _spread:
+        with st.expander("NCAA 361 Spread Index (field separation over time)"):
+            st.caption(
+                "Standard deviation of all team Elo ratings over the season. "
+                "Rises as elite teams pull away from the bottom. "
+                "Analogous to a market volatility index."
+            )
+            _sp_dates = [s[0] for s in _spread]
+            _sp_vals  = [s[1] for s in _spread]
+            _fig_spread = go.Figure(go.Scatter(
+                x=_sp_dates, y=_sp_vals,
+                mode="lines",
+                fill="tozeroy",
+                line=dict(color=NORD["frost1"], width=2),
+                fillcolor="rgba(136,192,208,0.15)",
+                hovertemplate="%{x}<br>Spread: %{y:.1f}<extra></extra>",
+            ))
+            _fig_spread.update_layout(
+                xaxis_title="Date",
+                yaxis_title="Rating std dev",
+                height=260,
+                margin=dict(l=60, r=20, t=10, b=50),
+                plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)",
+            )
+            st.plotly_chart(_fig_spread, use_container_width=True)
+
+    # ── Market movers ─────────────────────────────────────────────────────────
+    st.markdown("### Market Movers (last 30 days)")
+    _mv1, _mv2 = st.columns(2)
+
+    with _mv1:
+        st.markdown(f"**Top Gainers**")
+        _g_rows = [{"Team": r["name"], "Current": r["current"], "+/- Elo": f"+{r['change']:.1f}"} for r in _gainers]
+        _df_g = pd.DataFrame(_g_rows)
+        st.dataframe(_df_g.style.map(lambda _: f"color: {NORD['green']}", subset=["+/- Elo"]),
+                     hide_index=True, use_container_width=True)
+
+    with _mv2:
+        st.markdown(f"**Top Losers**")
+        _l_rows = [{"Team": r["name"], "Current": r["current"], "+/- Elo": f"{r['change']:.1f}"} for r in _losers]
+        _df_l = pd.DataFrame(_l_rows)
+        st.dataframe(_df_l.style.map(lambda _: f"color: {NORD['red']}", subset=["+/- Elo"]),
+                     hide_index=True, use_container_width=True)
+
+
+# ════════════════════════════════════════════════════════════════════════════ #
+# TAB — Signals
+# ════════════════════════════════════════════════════════════════════════════ #
+
+with tab_signals:
+    st.subheader("Signals | Odds, Line Movement, CLV, Injuries")
+    st.caption(
+        "Data is written by `scripts/poll_odds.py` and `scripts/poll_injuries.py`. "
+        "Run those scripts to populate this tab."
+    )
+
+    # Load all data upfront
+    _odds_dir = ROOT / "data" / "odds"
+    try:
+        from src.odds.store import load_snapshots, load_clv_records, load_alerts
+        _snapshots = load_snapshots(_odds_dir)
+        _clv_recs  = load_clv_records(_odds_dir)
+        _alerts    = load_alerts(_odds_dir)
+    except Exception as _e:
+        st.warning(f"Could not load odds data: {_e}")
+        _snapshots, _clv_recs, _alerts = [], [], []
+
+    _lma_alerts = [a for a in _alerts if a.get("type") == "line_move"]
+    _inj_alerts = [a for a in _alerts if a.get("type") == "injury"]
+
+    # Export button (top level)
+    if st.button("Export all Signals to CSV", key="export_signals"):
+        _paths = export_analysis_csvs(_snapshots, _clv_recs, _alerts)
+        if _paths:
+            st.success(f"Exported {len(_paths)} files to spreadsheets/analysis/")
+            for _p in _paths:
+                st.caption(_p)
+        else:
+            st.info("No data to export yet.")
+
+    st.markdown("---")
+
+    sig_tab_odds, sig_tab_lma, sig_tab_clv, sig_tab_inj = st.tabs([
+        f"Odds / Edge ({len(set((s.get('game_id','') for s in _snapshots))):,} games)",
+        f"Line Movement ({len(_lma_alerts):,} moves)",
+        f"CLV ({len(_clv_recs):,} records)",
+        f"Injuries ({len(_inj_alerts):,} alerts)",
+    ])
+
+    # ── Odds / Edge ──────────────────────────────────────────────────────────
+    with sig_tab_odds:
+        if not _snapshots:
+            st.info("No odds data. Run: `python scripts/poll_odds.py --once`")
+        else:
+            # Latest snapshot per game+bookmaker
+            _latest: dict[tuple, dict] = {}
+            for _s in _snapshots:
+                _k = (_s.get("game_id"), _s.get("bookmaker"))
+                _latest[_k] = _s
+
+            _rows = []
+            for _s in _latest.values():
+                _gap = (_s.get("model_prob_home", 0.5) - _s.get("home_prob", 0.5))
+                _rows.append({
+                    "Matchup":       f"{_s.get('away_team','?')} @ {_s.get('home_team','?')}",
+                    "Book":          _s.get("bookmaker", ""),
+                    "Home ML":       _fmt_ml(int(_s["home_ml"])) if _s.get("home_ml") else "-",
+                    "Away ML":       _fmt_ml(int(_s["away_ml"])) if _s.get("away_ml") else "-",
+                    "Line Prob":     f"{_s.get('home_prob', 0):.1%}",
+                    "Model Prob":    f"{_s.get('model_prob_home', 0):.1%}",
+                    "Edge (home)":   f"{_gap:+.1%}",
+                    "Signal":        "EDGE HOME" if _gap >= 0.05 else ("EDGE AWAY" if _gap <= -0.05 else "-"),
+                    "Fetched":       str(_s.get("fetched_at", _s.get("timestamp", "")))[:16],
+                })
+
+            _df_odds = pd.DataFrame(_rows).sort_values("Signal", ascending=False)
+
+            def _color_signal(val):
+                if "EDGE" in str(val):
+                    return f"color: {NORD['green']}; font-weight: bold"
+                return ""
+
+            st.dataframe(
+                _df_odds.style.map(_color_signal, subset=["Signal"]),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+    # ── Line Movement ─────────────────────────────────────────────────────────
+    with sig_tab_lma:
+        if not _lma_alerts:
+            st.info("No line movement detected yet. Populate by running poll_odds.py over multiple polls.")
+        else:
+            _lma_rows = []
+            for _a in reversed(_lma_alerts):
+                _lma_rows.append({
+                    "Matchup":    f"{_a.get('away_team','?')} @ {_a.get('home_team','?')}",
+                    "Book":       _a.get("bookmaker", ""),
+                    "From ML":    _fmt_ml(int(_a["from_ml"])) if _a.get("from_ml") else "-",
+                    "To ML":      _fmt_ml(int(_a["to_ml"])) if _a.get("to_ml") else "-",
+                    "Move":       f"{_a.get('move_size', 0):+.1%}",
+                    "Sharp":      "YES" if _a.get("sharp") else "no",
+                    "Detected":   str(_a.get("detected_at", ""))[:16],
+                })
+            _df_lma = pd.DataFrame(_lma_rows)
+
+            def _color_sharp(val):
+                if val == "YES":
+                    return f"color: {NORD['yellow']}; font-weight: bold"
+                return ""
+
+            st.dataframe(
+                _df_lma.style.map(_color_sharp, subset=["Sharp"]),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+    # ── CLV ───────────────────────────────────────────────────────────────────
+    with sig_tab_clv:
+        if not _clv_recs:
+            st.info("No CLV records yet. CLV is computed when a game closes (poll_odds.py checks completed games).")
+        else:
+            _clv_rows = []
+            for _r in reversed(_clv_recs):
+                _beat = (_r.get("clv_vs_closing", 0) or 0) > 0
+                _clv_rows.append({
+                    "Matchup":       f"{_r.get('away_team','?')} @ {_r.get('home_team','?')}",
+                    "Book":          _r.get("bookmaker", ""),
+                    "Model Prob":    f"{_r.get('model_prob_home', 0):.1%}",
+                    "Open ML":       _fmt_ml(int(_r["opening_home_ml"])) if _r.get("opening_home_ml") else "-",
+                    "Close ML":      _fmt_ml(int(_r["closing_home_ml"])) if _r.get("closing_home_ml") else "-",
+                    "CLV vs Open":   f"{(_r.get('clv_vs_opening') or 0):+.2%}",
+                    "CLV vs Close":  f"{(_r.get('clv_vs_closing') or 0):+.2%}",
+                    "Beat Close":    "YES" if _beat else "no",
+                    "Home Won":      "W" if _r.get("home_won") else ("L" if _r.get("home_won") is False else "?"),
+                })
+            _df_clv = pd.DataFrame(_clv_rows)
+
+            # Summary row
+            _n_clv = len(_clv_recs)
+            _beat_n = sum(1 for _r in _clv_recs if (_r.get("clv_vs_closing") or 0) > 0)
+            _avg_clv = sum(_r.get("clv_vs_closing") or 0 for _r in _clv_recs) / _n_clv if _n_clv else 0
+
+            _c1, _c2, _c3 = st.columns(3)
+            _c1.metric("Games tracked", _n_clv)
+            _c2.metric("Beat closing line", f"{_beat_n}/{_n_clv} ({_beat_n/_n_clv:.0%})" if _n_clv else "-")
+            _c3.metric("Avg CLV vs close", f"{_avg_clv:+.2%}")
+            st.markdown("---")
+
+            def _color_beat(val):
+                if val == "YES":
+                    return f"color: {NORD['green']}; font-weight: bold"
+                return ""
+
+            st.dataframe(
+                _df_clv.style.map(_color_beat, subset=["Beat Close"]),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+    # ── Injuries ──────────────────────────────────────────────────────────────
+    with sig_tab_inj:
+        if not _inj_alerts:
+            st.info("No injury alerts. Run: `python scripts/poll_injuries.py --once`")
+        else:
+            _inj_rows = []
+            for _a in reversed(_inj_alerts):
+                _inj_rows.append({
+                    "Player":    _a.get("player", "?"),
+                    "Team":      _a.get("team", "?"),
+                    "Status":    _a.get("status", "?"),
+                    "Position":  _a.get("position", "?"),
+                    "Est. Impact": f"{_a.get('elo_impact', 0):+.0f} Elo pts",
+                    "Detected":  str(_a.get("detected_at", ""))[:16],
+                })
+            st.dataframe(pd.DataFrame(_inj_rows), use_container_width=True, hide_index=True)
+
+
+# ════════════════════════════════════════════════════════════════════════════ #
+# TAB — Backtest
+# ════════════════════════════════════════════════════════════════════════════ #
+
+with tab_backtest:
+    st.subheader("Backtest | Historical Model Performance")
+    st.markdown(
+        "Walk-forward simulation: ratings build from scratch each season, "
+        "then flat-stake bets at -110 juice wherever the model has edge. "
+        "Breakeven win rate at -110 is **52.4%**."
+    )
+
+    st.info(
+        "**How to read P&L:** Each bet is a flat **$100** stake. "
+        "A win at -110 returns +$90.91. A loss is -$100.\n\n"
+        "**Accuracy disclaimer:** This backtest assumes every game is available at exactly "
+        "-110 on both sides, which is not realistic. Real book lines move — a game our model "
+        "likes at 60% might have already closed at -150 (63%), making it a losing bet. "
+        "The backtest does not compare against actual historical closing lines because we "
+        "don't have them. It answers: *does the model find signal above random?* "
+        "It does **not** answer: *would this make money on a real book?* "
+        "The CLV records in the Signals tab (built from live poll_odds.py data) are a "
+        "forward-test against real closing lines and are more meaningful for that question."
+    )
+    st.markdown("---")
+
+    _bt_col1, _bt_col2, _bt_col3, _bt_col4 = st.columns([2, 2, 2, 2])
+    with _bt_col1:
+        _bt_div = st.selectbox("Division", ["mens", "womens"], key="bt_div")
+    with _bt_col2:
+        _bt_seasons = st.multiselect(
+            "Seasons", [2023, 2024, 2025, 2026],
+            default=[2026],
+            key="bt_seasons",
+        )
+    with _bt_col3:
+        _bt_edge = st.slider("Min edge (%)", 1, 20, 3, key="bt_edge")
+    with _bt_col4:
+        _bt_warmup = st.number_input("Warmup games", 10, 300, 50, step=10, key="bt_warmup")
+
+    _run_bt = st.button("Run Backtest", type="primary", key="run_bt")
+
+    _SEASON_RANGES = {
+        2023: (date(2022, 11, 7),  date(2023, 4, 3)),
+        2024: (date(2023, 11, 6),  date(2024, 4, 8)),
+        2025: (date(2024, 11, 4),  date(2025, 4, 7)),
+        2026: (date(2025, 11, 4),  date.today()),
+    }
+
+    @st.cache_data(show_spinner="Running backtest…")
+    def _run_backtest(division: str, seasons: tuple[int, ...], min_edge: float, warmup: int):
+        from src.backtest.engine import Backtester
+        from src.utils.data import fetch_season
+
+        _cache_dirs = {
+            "mens":   {2023: "data/raw/mens/2023", 2024: "data/raw/mens/2024",
+                       2025: "data/raw/mens/2025", 2026: "data/raw/mens"},
+            "womens": {2023: "data/raw/womens/2023", 2024: "data/raw/womens/2024",
+                       2025: "data/raw/womens/2025", 2026: "data/raw/womens"},
+        }
+
+        all_games: list[dict] = []
+        for _s in sorted(seasons):
+            _start, _end = _SEASON_RANGES[_s]
+            _cache = _cache_dirs.get(division, _cache_dirs["mens"]).get(_s, f"data/raw/{division}/{_s}")
+            _games = fetch_season(_start, _end, cache_dir=_cache, division=division, verbose=False)
+            all_games.extend(_games)
+
+        bt = Backtester(k=24.0, home_advantage=100.0)
+        return bt.run(all_games, min_edge=min_edge, stake=100.0, warmup_games=warmup)
+
+    if _run_bt and _bt_seasons:
+        with st.spinner("Running backtest…"):
+            _results = _run_backtest(
+                _bt_div,
+                tuple(sorted(_bt_seasons)),
+                _bt_edge / 100,
+                _bt_warmup,
+            )
+
+        if not _results.bets_placed:
+            st.warning("No bets placed — try lowering the min edge or adding more seasons.")
+        else:
+            # ── Summary metrics ───────────────────────────────────────────────
+            _m1, _m2, _m3, _m4, _m5, _m6 = st.columns(6)
+            _m1.metric("Bets placed",  f"{_results.bets_placed:,}")
+            _m2.metric("Win rate",     f"{_results.win_rate:.1%}",
+                       delta=f"{_results.win_rate - 0.524:+.1%} vs breakeven",
+                       delta_color="normal")
+            _m3.metric("Total P&L",    f"${_results.total_pnl:,.0f}")
+            _m4.metric("ROI",          f"{_results.roi:+.1%}")
+            _m5.metric("Avg edge",     f"{_results.avg_edge:+.1%}")
+            _m6.metric("Log loss",     f"{_results.log_loss:.4f}")
+
+            st.markdown("---")
+
+            # ── Cumulative P&L chart ──────────────────────────────────────────
+            from src.backtest.engine import Backtester as _BT
+            _curve = _BT.cumulative_pnl(_results)
+            if _curve:
+                _dates  = [c[0] for c in _curve]
+                _cumPnl = [c[1] for c in _curve]
+                _color_line = NORD["green"] if _cumPnl[-1] >= 0 else NORD["red"]
+                _fill_rgba = "rgba(163,190,140,0.15)" if _cumPnl[-1] >= 0 else "rgba(191,97,106,0.15)"
+
+                _fig_bt = go.Figure()
+                _fig_bt.add_trace(go.Scatter(
+                    x=_dates, y=_cumPnl,
+                    mode="lines",
+                    fill="tozeroy",
+                    line=dict(color=_color_line, width=2),
+                    fillcolor=_fill_rgba,
+                    name="Cumulative P&L",
+                    hovertemplate="%{x}<br>P&L: $%{y:,.0f}<extra></extra>",
+                ))
+                _fig_bt.add_hline(y=0, line_color=NORD["bg3"], line_dash="dash")
+                _fig_bt.update_layout(
+                    xaxis_title="Date",
+                    yaxis_title="Cumulative P&L ($)",
+                    height=320,
+                    margin=dict(l=60, r=20, t=20, b=50),
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                )
+                st.plotly_chart(_fig_bt, use_container_width=True)
+
+            st.markdown("---")
+
+            _bt_tab_month, _bt_tab_buckets, _bt_tab_bets = st.tabs([
+                "Monthly Breakdown", "Edge Buckets", "All Bets"
+            ])
+
+            # ── Monthly breakdown ─────────────────────────────────────────────
+            with _bt_tab_month:
+                _monthly_rows = []
+                for _mo, _md in sorted(_results.monthly.items()):
+                    _wr  = _md["wins"] / _md["bets"] if _md["bets"] else 0
+                    _roi = _md["pnl"] / (100 * _md["bets"]) if _md["bets"] else 0
+                    _monthly_rows.append({
+                        "Month":  _mo,
+                        "Bets":   _md["bets"],
+                        "Wins":   _md["wins"],
+                        "Win%":   f"{_wr:.1%}",
+                        "P&L":    f"${_md['pnl']:+,.0f}",
+                        "ROI":    f"{_roi:+.1%}",
+                    })
+                _df_monthly = pd.DataFrame(_monthly_rows)
+                st.dataframe(_df_monthly, use_container_width=True, hide_index=True)
+
+            # ── Edge buckets ──────────────────────────────────────────────────
+            with _bt_tab_buckets:
+                st.caption(
+                    "Edge bucket = how far above 52.4% breakeven the model was at bet time. "
+                    "Higher edge should mean higher win rate if the model is calibrated."
+                )
+                _buckets = _BT.edge_buckets(_results)
+                _bk_rows = []
+                for _bk, _bv in _buckets.items():
+                    _bk_rows.append({
+                        "Edge bucket": _bk,
+                        "N bets":      _bv["n"],
+                        "Win%":        f"{_bv['win_rate']:.1%}",
+                        "Avg edge":    f"{_bv['avg_edge']:+.1%}",
+                        "P&L":         f"${_bv['pnl']:+,.0f}",
+                    })
+                _df_buckets = pd.DataFrame(_bk_rows)
+                st.dataframe(_df_buckets, use_container_width=True, hide_index=True)
+
+            # ── All bets log ──────────────────────────────────────────────────
+            with _bt_tab_bets:
+                _bet_rows = [{
+                    "Date":       b.game_date,
+                    "Matchup":    f"{b.away_name} @ {b.home_name}",
+                    "Bet":        "HOME" if b.bet_on_home else "AWAY",
+                    "Model Prob": f"{b.model_prob:.1%}",
+                    "Edge":       f"{b.edge:+.1%}",
+                    "Result":     "W" if b.won else "L",
+                    "P&L":        f"${b.pnl:+,.0f}",
+                } for b in _results.bets]
+                _df_bets = pd.DataFrame(_bet_rows)
+
+                def _color_result(val):
+                    if val == "W": return f"color: {NORD['green']}"
+                    if val == "L": return f"color: {NORD['red']}"
+                    return ""
+
+                st.dataframe(
+                    _df_bets.style.map(_color_result, subset=["Result"]),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+            # ── Export ────────────────────────────────────────────────────────
+            _bt_label = f"{_bt_div}_{'-'.join(str(s) for s in sorted(_bt_seasons))}_edge{_bt_edge}pct"
+            if st.button("Export Backtest to CSV", key="export_bt"):
+                _paths_bt = export_backtest_csvs(
+                    _df_bets,
+                    _df_monthly,
+                    _df_buckets,
+                    _bt_label,
+                )
+                if _paths_bt:
+                    st.success(f"Exported {len(_paths_bt)} files to spreadsheets/backtests/")
+                    for _p in _paths_bt:
+                        st.caption(_p)
+
+    elif _run_bt and not _bt_seasons:
+        st.warning("Select at least one season.")
