@@ -38,6 +38,7 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 from src.signals.injuries import scan_injuries, load_alerts, estimate_impact, _OUT_STATUSES
 from src.live.feed        import fetch_other_games
+from src.odds.store       import save_alert as save_odds_alert
 from src.ratings.elo      import EloEngine
 from src.utils.data        import fetch_season
 
@@ -98,6 +99,17 @@ def scan_once(engine: EloEngine, division: str) -> None:
             team_elo=team_elo,
             status=a["new_status"],
         )
+
+        # Write enriched alert to the odds store so the Signals tab can display it.
+        save_odds_alert({
+            **a,
+            "type":       "injury",
+            "player":     a.get("player_name", ""),
+            "team":       a.get("team_id", ""),
+            "status":     a["new_status"],
+            "elo_impact": impact,
+        })
+
         if a["new_status"] in _OUT_STATUSES:
             print(
                 f"\n  *** {a['severity']} ALERT ***\n"

@@ -72,6 +72,7 @@ class Backtester:
         stake: float = 100.0,
         juice: float = -110,
         warmup_games: int = 50,
+        injury_timeline: "dict[str, dict[str, float]] | None" = None,
     ) -> BacktestResults:
         """
         Backtest the Elo model over a list of games.
@@ -100,8 +101,15 @@ class Backtester:
             neutral   = g.get("neutral", False)
             home_won  = g["home_score"] > g["away_score"]
 
-            # Get model's pregame probability BEFORE updating ratings
-            p_home = engine.win_prob(home_id, away_id, neutral=neutral)
+            # Get model's pregame probability BEFORE updating ratings.
+            # Apply injury Elo adjustments for this date if available.
+            if injury_timeline and g["date"] in injury_timeline:
+                _day_adj = injury_timeline[g["date"]]
+                _r_home = engine.rating(home_id) + _day_adj.get(home_id, 0.0)
+                _r_away = engine.rating(away_id) + _day_adj.get(away_id, 0.0)
+                p_home = engine.win_prob_from_ratings(_r_home, _r_away, neutral=neutral)
+            else:
+                p_home = engine.win_prob(home_id, away_id, neutral=neutral)
 
             # Update engine with result
             engine.names[home_id] = g.get("home_name", home_id)

@@ -177,9 +177,19 @@ def load_engine(division: str) -> EloEngine:
 
 
 @st.cache_data(show_spinner="Simulating bracket…")
-def load_bracket_data(division: str):
-    engine = load_engine(division)
-    rankings = engine.rankings()
+def load_bracket_data(division: str, _injury_override_key: tuple = ()):
+    """
+    _injury_override_key: tuple of (team_id, delta) pairs used only to bust
+    the Streamlit cache when injury adjustments change. The actual overrides
+    are reconstructed inside the function from the key.
+    """
+    base_engine = load_engine(division)
+    if _injury_override_key:
+        sim_engine = base_engine.adjusted_copy(dict(_injury_override_key))
+    else:
+        sim_engine = base_engine
+
+    rankings = sim_engine.rankings()
     regions  = assign_seeds(rankings)
 
     # Build bracket in proper seed order: East slots 0-15, West 16-31,
@@ -190,7 +200,7 @@ def load_bracket_data(division: str):
 
     adv_odds = round_advancement_odds(
         seeded_teams=bracket_order,
-        win_prob_fn=engine.win_prob,
+        win_prob_fn=sim_engine.win_prob,
         n_sims=N_SIMS,
         seed=42,
     )
@@ -956,10 +966,74 @@ st.markdown("---")
 
 # ── Load data ─────────────────────────────────────────────────────────────────
 
-engine                     = load_engine(division)
-rankings                   = engine.rankings()
-regions, adv_odds, champ_odds = load_bracket_data(division)
-metrics                    = evaluate(engine.history)
+engine  = load_engine(division)
+metrics = evaluate(engine.history)
+
+# ── Injury adjustments ───────────────────────────────────────────────────────
+# Load alerts from the signals store and build Elo overrides for currently-OUT
+# players. These adjustments ripple through rankings, bracket, odds edge, and
+# NCAA 361. The base engine is never mutated.
+
+def _build_injury_overrides(eng: "EloEngine") -> dict[str, float]:
+    """
+    Read injury alerts, collapse to latest status per player, and return
+    {team_id: total_elo_delta} for players currently Out / Doubtful / IR.
+    """
+    from src.signals.injuries import load_alerts as _load_inj, estimate_impact, _OUT_STATUSES
+    _raw = _load_inj()
+    if not _raw:
+        return {}
+    # Latest alert per player (last entry wins)
+    _latest: dict[str, dict] = {}
+    for _a in _raw:
+        _pid = _a.get("player_id", "")
+        if _pid:
+            _latest[_pid] = _a
+    overrides: dict[str, float] = {}
+    for _a in _latest.values():
+        if _a.get("new_status") not in _OUT_STATUSES:
+            continue
+        _tid = _a.get("team_id", "")
+        if not _tid:
+            continue
+        _delta = estimate_impact(
+            player_name=_a.get("player_name", ""),
+            position=_a.get("position", ""),
+            team_elo=eng.rating(_tid),
+            status=_a.get("new_status", ""),
+        )
+        if _delta != 0.0:
+            overrides[_tid] = overrides.get(_tid, 0.0) + _delta
+    return overrides
+
+_raw_inj_overrides = _build_injury_overrides(engine)
+
+# Sidebar toggle — only shown when there are active injury adjustments
+_apply_injuries = True
+if _raw_inj_overrides:
+    with st.sidebar:
+        st.markdown("---")
+        _n_teams = len(_raw_inj_overrides)
+        _apply_injuries = st.toggle(
+            f"Injury adjustments ({_n_teams} team{'s' if _n_teams > 1 else ''})",
+            value=True,
+            key="apply_injuries",
+            help="Applies Elo penalties for currently-out star players to rankings, "
+                 "bracket odds, and edge calculations. Turn off to see unadjusted model.",
+        )
+        if _apply_injuries:
+            for _tid, _delta in sorted(_raw_inj_overrides.items(), key=lambda x: x[1]):
+                _tname = engine.names.get(_tid, _tid)
+                st.caption(f"⚠ {_tname}: {_delta:+.0f} Elo pts")
+
+_inj_overrides = _raw_inj_overrides if _apply_injuries else {}
+_inj_override_key = tuple(sorted(_inj_overrides.items()))
+
+# adj_engine: ratings-adjusted copy used for all win-probability computations
+adj_engine = engine.adjusted_copy(_inj_overrides) if _inj_overrides else engine
+
+rankings                   = adj_engine.rankings()
+regions, adv_odds, champ_odds = load_bracket_data(division, _inj_override_key)
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 
@@ -2386,18 +2460,26 @@ with tab_ncaa361:
 
     # ── Market summary metrics ────────────────────────────────────────────────
     _all_current = {tid: pts[-1][1] for tid, pts in _hists.items() if pts}
-    _avg_elo  = sum(_all_current.values()) / len(_all_current) if _all_current else 1500
+    # Apply injury adjustments to current ratings (same as adj_engine)
+    _all_current_adj = {
+        tid: elo + _inj_overrides.get(tid, 0.0)
+        for tid, elo in _all_current.items()
+    }
+    _avg_elo  = sum(_all_current_adj.values()) / len(_all_current_adj) if _all_current_adj else 1500
     _spread_now = _spread[-1][1] if _spread else 0
-    _top_team_id = max(_all_current, key=_all_current.get) if _all_current else None
+    _top_team_id = max(_all_current_adj, key=_all_current_adj.get) if _all_current_adj else None
     _top_team_nm = _enames.get(_top_team_id, "") if _top_team_id else ""
-    _top_team_el = _all_current.get(_top_team_id, 0) if _top_team_id else 0
+    _top_team_el = _all_current_adj.get(_top_team_id, 0) if _top_team_id else 0
 
     _mc1, _mc2, _mc3, _mc4 = st.columns(4)
-    _mc1.metric("Teams tracked", f"{len(_all_current):,}")
-    _mc2.metric("Index avg (Elo)", f"{_avg_elo:.0f}")
+    _mc1.metric("Teams tracked", f"{len(_all_current_adj):,}")
+    _mc2.metric("Index avg (Elo)", f"{_avg_elo:.0f}",
+                help="Injury-adjusted" if _inj_overrides else None)
     _mc3.metric("Rating spread (stdev)", f"{_spread_now:.1f}",
                 help="Higher spread = more separation between elite and bottom teams.")
-    _mc4.metric("Top rated", f"{_top_team_nm}", delta=f"{_top_team_el:.0f} Elo")
+    _top_inj_delta = _inj_overrides.get(_top_team_id, 0.0) if _top_team_id else 0.0
+    _mc4.metric("Top rated", f"{_top_team_nm}",
+                delta=f"{_top_team_el:.0f} Elo" + (" ⚠inj adj" if _top_inj_delta else ""))
 
     st.markdown("---")
 
@@ -2621,14 +2703,26 @@ with tab_signals:
 
             _rows = []
             for _s in _latest.values():
-                _gap = (_s.get("model_prob_home", 0.5) - _s.get("home_prob", 0.5))
+                _home_espn = _s.get("home_espn_id", "")
+                _away_espn = _s.get("away_espn_id", "")
+                # Recompute model prob live using injury-adjusted engine when IDs available
+                if _home_espn and _away_espn and _inj_overrides:
+                    _adj_prob = adj_engine.win_prob(_home_espn, _away_espn, neutral=False)
+                else:
+                    _adj_prob = _s.get("model_prob_home", 0.5)
+                _gap = (_adj_prob - _s.get("home_prob", 0.5))
+                _inj_flag = "⚠" if (
+                    _inj_overrides and (
+                        _home_espn in _inj_overrides or _away_espn in _inj_overrides
+                    )
+                ) else ""
                 _rows.append({
                     "Matchup":       f"{_s.get('away_team','?')} @ {_s.get('home_team','?')}",
                     "Book":          _s.get("bookmaker", ""),
                     "Home ML":       _fmt_ml(int(_s["home_ml"])) if _s.get("home_ml") else "-",
                     "Away ML":       _fmt_ml(int(_s["away_ml"])) if _s.get("away_ml") else "-",
                     "Line Prob":     f"{_s.get('home_prob', 0):.1%}",
-                    "Model Prob":    f"{_s.get('model_prob_home', 0):.1%}",
+                    "Model Prob":    f"{_adj_prob:.1%}{_inj_flag}",
                     "Edge (home)":   f"{_gap:+.1%}",
                     "Signal":        "EDGE HOME" if _gap >= 0.05 else ("EDGE AWAY" if _gap <= -0.05 else "-"),
                     "Fetched":       str(_s.get("fetched_at", _s.get("timestamp", "")))[:16],
@@ -2666,7 +2760,13 @@ with tab_signals:
             _snap_lookup: dict[tuple, float] = {}
             for _s in _snapshots:
                 _sk = (_s.get("game_id"), _s.get("bookmaker"))
-                _snap_lookup[_sk] = _s.get("model_prob_home", 0.5) - _s.get("home_prob", 0.5)
+                _h_id = _s.get("home_espn_id", "")
+                _a_id = _s.get("away_espn_id", "")
+                if _h_id and _a_id and _inj_overrides:
+                    _mp = adj_engine.win_prob(_h_id, _a_id, neutral=False)
+                else:
+                    _mp = _s.get("model_prob_home", 0.5)
+                _snap_lookup[_sk] = _mp - _s.get("home_prob", 0.5)
 
             _lma_rows = []
             for _a in reversed(_lma_alerts):
@@ -2877,6 +2977,14 @@ with tab_backtest:
                  "Shorter half-life = ratings reflect recent form more than season-long history.",
         )
 
+    _bt_use_injuries = st.toggle(
+        "Apply injury adjustments to backtest",
+        value=False,
+        key="bt_injuries",
+        help="Uses timestamped injury alerts from data/signals/injury_alerts.jsonl "
+             "to apply Elo penalties on dates when players were known to be out. "
+             "Only affects games in the current season (2025-26) where alerts have been collected.",
+    )
     _run_bt = st.button("Run Backtest", type="primary", key="run_bt")
 
     _SEASON_RANGES = {
@@ -2886,8 +2994,60 @@ with tab_backtest:
         2026: (date(2025, 11, 4),  date.today()),
     }
 
+    # ── Injury timeline for backtest (current season only) ──────────────────
+    def _build_bt_injury_timeline() -> dict:
+        """
+        Build {game_date: {team_id: elo_delta}} from injury alerts.
+
+        For each OUT/Doubtful alert, apply the Elo penalty to that team for
+        every date from detection until a return-to-active alert is recorded.
+        Only works for dates covered by collected injury alerts.
+        """
+        from src.signals.injuries import load_alerts as _load_inj, estimate_impact, _OUT_STATUSES
+        _raw = _load_inj()
+        if not _raw:
+            return {}
+
+        from datetime import date as _d, timedelta
+        _player_events: dict = {}
+        for _a in _raw:
+            _pid = _a.get("player_id", "")
+            if not _pid:
+                continue
+            _dt = _a.get("detected_at", "")[:10]
+            _tid = _a.get("team_id", "")
+            _status = _a.get("new_status", "")
+            _imp = estimate_impact(
+                player_name=_a.get("player_name", ""),
+                position=_a.get("position", ""),
+                team_elo=engine.rating(_tid),
+                status=_status,
+            )
+            _player_events.setdefault(_pid, []).append((_dt, _status, _tid, _imp))
+
+        today_str = str(_d.today())
+        timeline: dict = {}
+
+        for _pid, _events in _player_events.items():
+            _events.sort(key=lambda x: x[0])
+            for _i, (_dt, _status, _tid, _imp) in enumerate(_events):
+                if _status not in _OUT_STATUSES:
+                    continue
+                _end = _events[_i + 1][0] if _i + 1 < len(_events) else today_str
+                _cur = _d.fromisoformat(_dt)
+                _end_d = _d.fromisoformat(_end)
+                from datetime import timedelta as _td
+                while _cur <= _end_d:
+                    _ds = str(_cur)
+                    if _ds not in timeline:
+                        timeline[_ds] = {}
+                    timeline[_ds][_tid] = timeline[_ds].get(_tid, 0.0) + _imp
+                    _cur += _td(days=1)
+
+        return timeline
+
     @st.cache_data(show_spinner="Running backtest…")
-    def _run_backtest(division: str, seasons: tuple[int, ...], min_edge: float, warmup: int, decay: float):
+    def _run_backtest(division: str, seasons: tuple[int, ...], min_edge: float, warmup: int, decay: float, use_injuries: bool = False):
         from src.backtest.engine import Backtester
         from src.utils.data import fetch_season
 
@@ -2905,18 +3065,49 @@ with tab_backtest:
             _games = fetch_season(_start, _end, cache_dir=_cache, division=division, verbose=False)
             all_games.extend(_games)
 
+        # injury_timeline is computed outside the cache boundary and passed in
+        # via use_injuries flag (busts cache when toggled)
         bt = Backtester(k=24.0, home_advantage=100.0, decay_half_life=float(decay))
         return bt.run(all_games, min_edge=min_edge, stake=100.0, warmup_games=warmup)
 
     if _run_bt and _bt_seasons:
         with st.spinner("Running backtest…"):
-            _results = _run_backtest(
-                _bt_div,
-                tuple(sorted(_bt_seasons)),
-                _bt_edge / 100,
-                _bt_warmup,
-                _bt_decay,
-            )
+            if _bt_use_injuries:
+                # Injury-adjusted: build timeline fresh (not cached — data changes)
+                from src.backtest.engine import Backtester as _BTAdj
+                from src.utils.data import fetch_season as _fs
+                _cache_dirs_adj = {
+                    "mens":   {2026: "data/raw/mens"},
+                    "womens": {2026: "data/raw/womens"},
+                }
+                _adj_games: list[dict] = []
+                for _s in sorted(_bt_seasons):
+                    _st, _en = _SEASON_RANGES[_s]
+                    _cd = _cache_dirs_adj.get(_bt_div, {}).get(_s, f"data/raw/{_bt_div}/{_s}")
+                    _adj_games.extend(_fs(_st, _en, cache_dir=_cd, division=_bt_div, verbose=False))
+                _timeline = _build_bt_injury_timeline()
+                _bt_adj = _BTAdj(k=24.0, home_advantage=100.0, decay_half_life=float(_bt_decay))
+                _results = _bt_adj.run(
+                    _adj_games, min_edge=_bt_edge / 100, stake=100.0,
+                    warmup_games=_bt_warmup, injury_timeline=_timeline,
+                )
+                if _timeline:
+                    _n_dates = len(_timeline)
+                    st.caption(
+                        f"Injury adjustments applied across {_n_dates} game dates. "
+                        "Note: only current-season (2025-26) injury alerts are available."
+                    )
+                else:
+                    st.warning("No injury alerts found in data/signals/injury_alerts.jsonl. "
+                               "Run `python scripts/poll_injuries.py --once` to collect data.")
+            else:
+                _results = _run_backtest(
+                    _bt_div,
+                    tuple(sorted(_bt_seasons)),
+                    _bt_edge / 100,
+                    _bt_warmup,
+                    _bt_decay,
+                )
 
         if not _results.bets_placed:
             st.warning("No bets placed — try lowering the min edge or adding more seasons.")

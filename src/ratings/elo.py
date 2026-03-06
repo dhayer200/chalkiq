@@ -158,6 +158,29 @@ class EloEngine:
                 k_override=k_override,
             )
 
+    def win_prob_from_ratings(self, r_a: float, r_b: float, neutral: bool = True) -> float:
+        """
+        P(team_a beats team_b) given explicit ratings.
+        Used when injury adjustments are applied ad-hoc without mutating state.
+        """
+        adj = 0.0 if neutral else self.home_advantage
+        return 1.0 / (1.0 + 10.0 ** ((r_b - r_a - adj) / SCALE))
+
+    def adjusted_copy(self, overrides: dict[str, float]) -> "EloEngine":
+        """
+        Return a shallow copy with Elo adjustments applied.
+
+        overrides: {team_id: delta} where delta is typically negative (injury penalty).
+        Only teams present in self.ratings are adjusted — new teams are ignored.
+        """
+        import copy
+        clone = copy.copy(self)
+        clone.ratings = dict(self.ratings)
+        for team_id, delta in overrides.items():
+            if team_id in clone.ratings:
+                clone.ratings[team_id] += delta
+        return clone
+
     def rankings(self) -> list[tuple[str, str, float]]:
         """
         Return [(team_id, team_name, rating)] sorted by rating descending.
