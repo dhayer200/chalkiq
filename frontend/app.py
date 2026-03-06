@@ -1112,7 +1112,7 @@ with tab_rank:
             )
             st.markdown("**Offense vs Defense (Top 120)**")
             st.caption("X-axis reversed: farther right = better defense.")
-            st.plotly_chart(_fig_eff, use_container_width=True)
+            st.plotly_chart(_fig_eff, width="stretch")
 
 
 # ════════════════════════════════════════════════════════════════════════════ #
@@ -2132,7 +2132,7 @@ with tab_ncaa361:
                 legend=dict(x=0.01, y=0.99),
                 hovermode="x unified",
             )
-            st.plotly_chart(_fig_price, use_container_width=True)
+            st.plotly_chart(_fig_price, width="stretch")
 
             # Stats row for selected team
             _s_pts = _hists.get(_selected_id, [])
@@ -2176,7 +2176,7 @@ with tab_ncaa361:
                 plot_bgcolor="rgba(0,0,0,0)",
                 paper_bgcolor="rgba(0,0,0,0)",
             )
-            st.plotly_chart(_fig_spread, use_container_width=True)
+            st.plotly_chart(_fig_spread, width="stretch")
 
     # ── Market movers ─────────────────────────────────────────────────────────
     st.markdown("### Market Movers (last 30 days)")
@@ -2187,14 +2187,14 @@ with tab_ncaa361:
         _g_rows = [{"Team": r["name"], "Current": r["current"], "+/- Elo": f"+{r['change']:.1f}"} for r in _gainers]
         _df_g = pd.DataFrame(_g_rows)
         st.dataframe(_df_g.style.map(lambda _: f"color: {NORD['green']}", subset=["+/- Elo"]),
-                     hide_index=True, use_container_width=True)
+                     hide_index=True, width="stretch")
 
     with _mv2:
         st.markdown(f"**Top Losers**")
         _l_rows = [{"Team": r["name"], "Current": r["current"], "+/- Elo": f"{r['change']:.1f}"} for r in _losers]
         _df_l = pd.DataFrame(_l_rows)
         st.dataframe(_df_l.style.map(lambda _: f"color: {NORD['red']}", subset=["+/- Elo"]),
-                     hide_index=True, use_container_width=True)
+                     hide_index=True, width="stretch")
 
 
 # ════════════════════════════════════════════════════════════════════════════ #
@@ -2285,7 +2285,7 @@ with tab_signals:
 
             st.dataframe(
                 _df_odds.style.map(_color_signal, subset=["Signal"]),
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
 
@@ -2351,7 +2351,7 @@ with tab_signals:
                 _df_lma.style
                     .map(_color_sharp, subset=["Sharp"])
                     .map(_color_agree, subset=["Sharp + Edge"]),
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
 
@@ -2424,7 +2424,7 @@ with tab_signals:
             if _clv_rows:
                 st.dataframe(
                     _df_clv.style.map(_color_beat, subset=["Beat Close"]),
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                 )
             else:
@@ -2453,7 +2453,7 @@ with tab_signals:
                     "Est. Impact": f"{_a.get('elo_impact', 0):+.0f} Elo pts",
                     "Detected":  str(_a.get("detected_at", ""))[:16],
                 })
-            st.dataframe(pd.DataFrame(_inj_rows), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(_inj_rows), width="stretch", hide_index=True)
 
 
 # ════════════════════════════════════════════════════════════════════════════ #
@@ -2599,7 +2599,7 @@ with tab_backtest:
                     plot_bgcolor="rgba(0,0,0,0)",
                     paper_bgcolor="rgba(0,0,0,0)",
                 )
-                st.plotly_chart(_fig_bt, use_container_width=True)
+                st.plotly_chart(_fig_bt, width="stretch")
 
             st.markdown("---")
 
@@ -2622,7 +2622,7 @@ with tab_backtest:
                         "ROI":    f"{_roi:+.1%}",
                     })
                 _df_monthly = pd.DataFrame(_monthly_rows)
-                st.dataframe(_df_monthly, use_container_width=True, hide_index=True)
+                st.dataframe(_df_monthly, width="stretch", hide_index=True)
 
             # ── Edge buckets ──────────────────────────────────────────────────
             with _bt_tab_buckets:
@@ -2641,7 +2641,7 @@ with tab_backtest:
                         "P&L":         f"${_bv['pnl']:+,.0f}",
                     })
                 _df_buckets = pd.DataFrame(_bk_rows)
-                st.dataframe(_df_buckets, use_container_width=True, hide_index=True)
+                st.dataframe(_df_buckets, width="stretch", hide_index=True)
 
             # ── All bets log ──────────────────────────────────────────────────
             with _bt_tab_bets:
@@ -2677,7 +2677,7 @@ with tab_backtest:
 
                 st.dataframe(
                     _df_bets.style.map(_color_result, subset=["Result"]),
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                 )
 
@@ -2736,7 +2736,7 @@ with tab_backtest:
 
                     st.dataframe(
                         _df_clv_bt.style.map(_color_clv_beat, subset=["Bet beat close"]),
-                        use_container_width=True,
+                        width="stretch",
                         hide_index=True,
                     )
 

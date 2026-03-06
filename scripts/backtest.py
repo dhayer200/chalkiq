@@ -72,17 +72,25 @@ def load_season(season: int, division: str) -> list[dict]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Backtest the Elo model")
-    parser.add_argument("--division",   default="mens",   choices=["mens", "womens"])
-    parser.add_argument("--seasons",    nargs="+", type=int, default=[2026], help="Season year(s)")
-    parser.add_argument("--min-edge",   type=float, default=0.03, help="Min edge to bet (default 0.03 = 3%%)")
-    parser.add_argument("--warmup",     type=int, default=50, help="Games to skip before betting")
-    parser.add_argument("--stake",      type=float, default=100.0, help="Flat stake per bet")
+    parser = argparse.ArgumentParser(
+        description="Backtest the Elo model",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument("--division",   default="mens",   choices=["mens", "womens"],
+                        help="Division to backtest")
+    parser.add_argument("--seasons",    nargs="+", type=int, default=[2026],
+                        help="Season year(s) to include")
+    parser.add_argument("--min-edge",   type=float, default=0.03,
+                        help="Min model edge to place a bet (0.03 = model must say 55.4%%+ at -110)")
+    parser.add_argument("--warmup",     type=int, default=50,
+                        help="Skip betting for the first N games while Elo ratings stabilize")
+    parser.add_argument("--stake",      type=float, default=100.0,
+                        help="Flat dollar stake per bet")
     parser.add_argument("--decay",      type=float, default=0.0,
-                        help="Recency decay half-life in days (default 0 = off). "
-                             "Games N days old get K scaled by 0.5^(N/decay). "
-                             "Try 60-90 to weight recent form more heavily.")
-    parser.add_argument("--combined",   action="store_true", help="Combine all seasons into one run")
+                        help="Recency decay half-life in days. 0 = off. "
+                             "Games N days old get K scaled by 0.5^(N/decay). Try 60-90.")
+    parser.add_argument("--combined",   action="store_true",
+                        help="Merge all seasons into one continuous run instead of season-by-season")
     args = parser.parse_args()
 
     if args.decay > 0:
