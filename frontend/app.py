@@ -2990,7 +2990,7 @@ with tab_signals:
             "| **CLV vs Close** — our model prob minus the closing implied prob. "
             "Closing line is the most important: the market is sharpest right before tip-off. "
             "Positive CLV vs close means our model had an edge over the final market price. "
-            "| **Beat Close (home)** — YES if model was above closing line for the home team. "
+            "| **Sharp?** — YES if the model's probability on its favored side exceeded the closing implied probability. "
             "Consistently beating the closing line is the strongest evidence of real model edge."
         )
         if not _clv_recs:
@@ -3015,31 +3015,46 @@ with tab_signals:
 
             _clv_rows = []
             for _r in reversed(_clv_filtered):
-                _beat = (_r.get("clv_vs_closing", 0) or 0) > 0
-                _open_prob  = _r.get("opening_home_prob") or 0
-                _close_prob = _r.get("closing_home_prob") or 0
-                _line_moved = abs(_close_prob - _open_prob) >= 0.005  # ≥0.5% shift
-                _line_dir   = "" if not _line_moved else ("toward home" if _close_prob > _open_prob else "toward away")
+                _model_home  = _r.get("model_prob_home", 0.5) or 0.5
+                _raw_clv_vs_open  = _r.get("clv_vs_opening") or 0
+                _raw_clv_vs_close = _r.get("clv_vs_closing") or 0
+                # Always show CLV from the model's favored side — that's the side you'd bet
+                _model_side  = "HOME" if _model_home >= 0.5 else "AWAY"
+                _sign        = 1 if _model_home >= 0.5 else -1
+                _clv_open    = _raw_clv_vs_open  * _sign
+                _clv_close   = _raw_clv_vs_close * _sign
+                _beat        = _clv_close > 0
+                _open_prob   = _r.get("opening_home_prob") or 0
+                _close_prob  = _r.get("closing_home_prob") or 0
+                _line_moved  = abs(_close_prob - _open_prob) >= 0.005
+                _line_dir    = "stable" if not _line_moved else ("toward home" if _close_prob > _open_prob else "toward away")
+                # Model prob on the favored side
+                _model_side_prob = _model_home if _model_home >= 0.5 else (1 - _model_home)
+                _close_side_prob = _close_prob if _model_home >= 0.5 else (1 - _close_prob)
                 _clv_rows.append({
-                    "Matchup":            f"{_r.get('away_team','?')} @ {_r.get('home_team','?')}",
-                    "Date":               _r.get("game_date", _r.get("recorded_at", ""))[:10],
-                    "Book":               _r.get("bookmaker", ""),
-                    "Source":             _r.get("source", "live"),
-                    "Model (home)":       f"{_r.get('model_prob_home', 0):.1%}",
-                    "Open ML":            _fmt_ml(int(_r["opening_home_ml"])) if _r.get("opening_home_ml") else "-",
-                    "Close ML":           _fmt_ml(int(_r["closing_home_ml"])) if _r.get("closing_home_ml") else "-",
-                    "Line moved":         _line_dir if _line_moved else "stable",
-                    "CLV vs Open":        f"{(_r.get('clv_vs_opening') or 0):+.2%}",
-                    "CLV vs Close":       f"{(_r.get('clv_vs_closing') or 0):+.2%}",
-                    "Beat Close (home)":  "YES" if _beat else "no",
-                    "Home Won":           "W" if _r.get("home_won") else ("L" if _r.get("home_won") is False else "?"),
+                    "Matchup":       f"{_r.get('away_team','?')} @ {_r.get('home_team','?')}",
+                    "Date":          _r.get("game_date", _r.get("recorded_at", ""))[:10],
+                    "Book":          _r.get("bookmaker", ""),
+                    "Model side":    _model_side,
+                    "Model prob":    f"{_model_side_prob:.1%}",
+                    "Close prob":    f"{_close_side_prob:.1%}",
+                    "Line moved":    _line_dir,
+                    "CLV vs Open":   f"{_clv_open:+.2%}",
+                    "CLV vs Close":  f"{_clv_close:+.2%}",
+                    "Sharp?":        "YES" if _beat else "no",
+                    "Result":        "W" if _r.get("home_won") is True and _model_home >= 0.5
+                                     else ("W" if _r.get("home_won") is False and _model_home < 0.5
+                                     else ("L" if _r.get("home_won") is not None else "?")),
                 })
             _df_clv = pd.DataFrame(_clv_rows)
 
-            # Summary metrics for filtered set
+            # Summary metrics — all from model-favored side
             _n_clv   = len(_clv_filtered)
-            _beat_n  = sum(1 for _r in _clv_filtered if (_r.get("clv_vs_closing") or 0) > 0)
-            _avg_clv = sum(_r.get("clv_vs_closing") or 0 for _r in _clv_filtered) / _n_clv if _n_clv else 0
+            _beat_n  = sum(1 for r in _clv_rows if r["Sharp?"] == "YES")
+            _avg_clv = sum(
+                ((_r.get("clv_vs_closing") or 0) * (1 if (_r.get("model_prob_home", 0.5) or 0.5) >= 0.5 else -1))
+                for _r in _clv_filtered
+            ) / _n_clv if _n_clv else 0
             _n_hist  = sum(1 for _r in _clv_filtered if _r.get("source") == "historical")
             _n_live  = _n_clv - _n_hist
             _n_total = len(_clv_recs)
@@ -3047,8 +3062,9 @@ with tab_signals:
             _c1, _c2, _c3, _c4 = st.columns(4)
             _c1.metric("Games shown", f"{_n_clv} / {_n_total}",
                        help=f"{_n_hist} historical  |  {_n_live} live")
-            _c2.metric("Beat close (home side)", f"{_beat_n}/{_n_clv} ({_beat_n/_n_clv:.0%})" if _n_clv else "-")
-            _c3.metric("Avg CLV vs close", f"{_avg_clv:+.2%}")
+            _c2.metric("Model beat close", f"{_beat_n}/{_n_clv} ({_beat_n/_n_clv:.0%})" if _n_clv else "-",
+                       help="On the model's favored side")
+            _c3.metric("Avg CLV (model side)", f"{_avg_clv:+.2%}")
             _c4.metric("Target", "> 55% beat rate")
             st.markdown("---")
 
@@ -3059,7 +3075,7 @@ with tab_signals:
 
             if _clv_rows:
                 st.dataframe(
-                    _df_clv.style.map(_color_beat, subset=["Beat Close (home)"]),
+                    _df_clv.style.map(_color_beat, subset=["Sharp?"]),
                     width="stretch",
                     hide_index=True,
                 )
