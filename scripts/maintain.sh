@@ -47,19 +47,19 @@ $VENV scripts/fetch_boxscores.py --seasons 2026 \
 
 # ── 4. Start poll_odds.py daemon ─────────────────────────────────────────────
 echo "[4/6] starting poll_odds.py (every 30 min)..."
-nohup $VENV scripts/poll_odds.py --interval 30 \
+nohup $VENV -u scripts/poll_odds.py --interval 30 \
   >> "$LOGS/poll_odds.log" 2>&1 &
 echo "  PID $!  ->  logs/poll_odds.log"
 
 # ── 5. Start poll_props.py daemon ────────────────────────────────────────────
 echo "[5/6] starting poll_props.py (every 10 min)..."
-nohup $VENV scripts/poll_props.py --interval 10 --hours 4 \
+nohup $VENV -u scripts/poll_props.py --interval 10 --hours 4 \
   >> "$LOGS/poll_props.log" 2>&1 &
 echo "  PID $!  ->  logs/poll_props.log"
 
 # ── 6. Start poll_injuries.py daemon ─────────────────────────────────────────
 echo "[6/6] starting poll_injuries.py (every 10 min)..."
-nohup $VENV scripts/poll_injuries.py --interval 10 \
+nohup $VENV -u scripts/poll_injuries.py --interval 10 \
   >> "$LOGS/poll_injuries.log" 2>&1 &
 echo "  PID $!  ->  logs/poll_injuries.log"
 
