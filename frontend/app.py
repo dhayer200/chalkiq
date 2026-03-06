@@ -2144,7 +2144,7 @@ with tab_players:
                 _fig_peff.add_hline(y=_pmed_def, line_color=NORD["bg3"], line_dash="dot", line_width=1)
                 _fig_peff.update_layout(
                     xaxis=dict(
-                        title="Offensive Efficiency  (TS% × 100 + AST/36 − 1.5 × TO/36)",
+                        title="Defensive Impact  (3×STL + 2×BLK + 0.3×DREB − PF, per 36)",
                         gridcolor=NORD["bg2"],
                     ),
                     yaxis=dict(
