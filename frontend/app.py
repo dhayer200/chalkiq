@@ -2663,6 +2663,29 @@ with tab_signals:
     _lma_alerts = [a for a in _alerts if a.get("type") == "line_move"]
     _inj_alerts = [a for a in _alerts if a.get("type") == "injury"]
 
+    # Also load from the signals store (written by poll_injuries.py)
+    # and merge so the tab is populated regardless of which path wrote them.
+    try:
+        from src.signals.injuries import load_alerts as _load_sig_inj
+        _sig_inj_raw = _load_sig_inj()
+        _sig_inj_ids = {
+            (a.get("player_id",""), a.get("detected_at",""))
+            for a in _inj_alerts
+        }
+        for _sa in _sig_inj_raw:
+            _key = (_sa.get("player_id",""), _sa.get("detected_at",""))
+            if _key not in _sig_inj_ids:
+                _inj_alerts.append({
+                    **_sa,
+                    "type":    "injury",
+                    "player":  _sa.get("player_name", ""),
+                    "team":    _sa.get("team_id", ""),
+                    "status":  _sa.get("new_status", ""),
+                    "elo_impact": _sa.get("elo_impact", 0),
+                })
+    except Exception:
+        pass
+
     # Export button (top level)
     if st.button("Export all Signals to CSV", key="export_signals"):
         _paths = export_analysis_csvs(_snapshots, _clv_recs, _alerts)
@@ -3071,31 +3094,37 @@ with tab_backtest:
         bt = Backtester(k=24.0, home_advantage=100.0, decay_half_life=float(decay))
         return bt.run(all_games, min_edge=min_edge, stake=100.0, warmup_games=warmup)
 
+    @st.cache_data(show_spinner="Loading game data for backtest…")
+    def _fetch_bt_games(division: str, seasons: tuple[int, ...]) -> list[dict]:
+        """Load and cache game data for all selected seasons. Shared by both backtest paths."""
+        from src.utils.data import fetch_season as _fs
+        _cache_dirs = {
+            "mens":   {2023: "data/raw/mens/2023", 2024: "data/raw/mens/2024",
+                       2025: "data/raw/mens/2025", 2026: "data/raw/mens"},
+            "womens": {2023: "data/raw/womens/2023", 2024: "data/raw/womens/2024",
+                       2025: "data/raw/womens/2025", 2026: "data/raw/womens"},
+        }
+        _games: list[dict] = []
+        for _s in sorted(seasons):
+            _st, _en = _SEASON_RANGES[_s]
+            _cd = _cache_dirs.get(division, _cache_dirs["mens"]).get(_s, f"data/raw/{division}/{_s}")
+            _games.extend(_fs(_st, _en, cache_dir=_cd, division=division, verbose=False))
+        return _games
+
     if _run_bt and _bt_seasons:
         with st.spinner("Running backtest…"):
             if _bt_use_injuries:
-                # Injury-adjusted: build timeline fresh (not cached — data changes)
-                from src.backtest.engine import Backtester as _BTAdj
-                from src.utils.data import fetch_season as _fs
-                _cache_dirs_adj = {
-                    "mens":   {2026: "data/raw/mens"},
-                    "womens": {2026: "data/raw/womens"},
-                }
-                _adj_games: list[dict] = []
-                for _s in sorted(_bt_seasons):
-                    _st, _en = _SEASON_RANGES[_s]
-                    _cd = _cache_dirs_adj.get(_bt_div, {}).get(_s, f"data/raw/{_bt_div}/{_s}")
-                    _adj_games.extend(_fs(_st, _en, cache_dir=_cd, division=_bt_div, verbose=False))
+                _bt_games = _fetch_bt_games(_bt_div, tuple(sorted(_bt_seasons)))
                 _timeline = _build_bt_injury_timeline()
+                from src.backtest.engine import Backtester as _BTAdj
                 _bt_adj = _BTAdj(k=24.0, home_advantage=100.0, decay_half_life=float(_bt_decay))
                 _results = _bt_adj.run(
-                    _adj_games, min_edge=_bt_edge / 100, stake=100.0,
-                    warmup_games=_bt_warmup, injury_timeline=_timeline,
+                    _bt_games, min_edge=_bt_edge / 100, stake=100.0,
+                    warmup_games=_bt_warmup, injury_timeline=_timeline or None,
                 )
                 if _timeline:
-                    _n_dates = len(_timeline)
                     st.caption(
-                        f"Injury adjustments applied across {_n_dates} game dates. "
+                        f"Injury adjustments applied across {len(_timeline)} game dates. "
                         "Note: only current-season (2025-26) injury alerts are available."
                     )
                 else:
