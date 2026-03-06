@@ -204,30 +204,42 @@ class PlayerEloEngine:
 
     def injury_elo_impact(self, player_id: str) -> float:
         """
-        Estimate Elo points the player contributes to their team's strength.
+        Estimate Elo points the team loses if this player misses a game.
 
-        impact = (player_rating - 1500) * minutes_share * position_weight
+        Formula:
+            impact = excess_rating * court_time_fraction * position_weight * 0.5
 
-        A player rated 1700 who plays 35/200 team minutes contributes:
-        (1700 - 1500) * (35/200) * pos_weight = 200 * 0.175 * 1.0 = 35 Elo pts
+        Where:
+            excess_rating      = player_rating - 1500 (how far above average)
+            court_time_fraction = avg_min / 40  (fraction of the game they play)
+            0.5 scaling factor  = calibrated so a star (1700 rated, 35 min)
+                                  costs ~87 Elo pts, a solid starter (1620, 28 min)
+                                  costs ~43 pts, a role player (1540, 15 min) ~7 pts
+
+        Examples:
+            Star:        (1700-1500) * (35/40) * 1.0 * 0.5 = 87.5 Elo
+            Starter:     (1620-1500) * (28/40) * 1.0 * 0.5 = 42.0 Elo
+            Role player: (1540-1500) * (15/40) * 0.95 * 0.5 = 7.1 Elo
         """
         if player_id not in self.ratings:
             return 0.0
 
         player_r = self.rating(player_id)
         excess   = player_r - INITIAL_RATING
+        if excess <= 0:
+            return 0.0  # below-average players don't contribute positive impact
 
         hist = self.player_history(player_id)
         if not hist:
             return 0.0
 
-        avg_min   = sum(r["min"] for r in hist) / len(hist)
-        min_share = avg_min / 200.0
+        avg_min     = sum(r["min"] for r in hist) / len(hist)
+        court_frac  = min(avg_min / 40.0, 1.0)  # cap at 100% of game
 
         pos = self.positions.get(player_id, "")
         pos_weight = {"C": 1.1, "F": 1.0, "G": 0.95}.get(pos, 1.0)
 
-        return round(excess * min_share * pos_weight, 1)
+        return round(excess * court_frac * pos_weight * 0.5, 1)
 
     def team_injury_report(
         self, team_id: str, team_elo: float, min_games: int = 3

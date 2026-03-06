@@ -2314,10 +2314,13 @@ with tab_players:
         # ── Prop Edge ─────────────────────────────────────────────────────
         with _p_tab_prop:
             st.caption(
-                "Model projects a player's stat distribution from recent games (normal approximation). "
-                "**Edge** = P(exceeds line) - 52.38% breakeven at -110. "
-                "Positive edge = model thinks the over has value. "
-                "Use as a signal, not a guarantee — small samples have high variance."
+                "Pick a player, a stat, and the sportsbook's line. "
+                "The model looks at their last N games and fits a normal distribution to their results "
+                "(mean = recent average, std dev = how consistent they've been). "
+                "**P(over)** is the probability the player beats the line based on that distribution. "
+                "**Edge** = P(over) minus 52.4% — the break-even win rate you need to profit at standard −110 juice. "
+                "Positive edge → model says bet the OVER. Negative edge → model says bet the UNDER (or pass). "
+                "Rule of thumb: only bet when |edge| > 5% and N ≥ 8 games. Small samples are noisy."
             )
             _prop_all = _p_engine.top_players(n=500, min_games=3)
             _prop_options = {f"{name} ({_p_engine.teams.get(pid,'')})": pid
@@ -2852,13 +2855,13 @@ with tab_signals:
     # ── Odds / Edge ──────────────────────────────────────────────────────────
     with sig_tab_odds:
         st.caption(
-            "**Home ML / Away ML** — current moneyline from the book. "
-            "+150 means bet $100 to win $150. -110 means bet $110 to win $100. "
-            "| **Line Prob** — the book's implied win probability for the home team (vig removed). "
-            "| **Model Prob** — our Elo model's win probability for the home team. "
-            "| **Edge (home)** — Model Prob minus Line Prob. Positive = our model likes the home team "
-            "more than the book does. Negative = our model likes the away team. "
-            "| **Signal** — flagged EDGE HOME or EDGE AWAY when the gap is 5%+ (meaningful disagreement)."
+            "**Home ML / Away ML** — moneyline for each side at the latest poll. "
+            "+150 means risk $100 to win $150. −110 means risk $110 to win $100. "
+            "| **Line Prob** — the book's vig-removed implied probability for the home team. "
+            "| **Model Prob** — Elo model's estimated win probability for the home team. "
+            "| **Edge** — the gap between model and market on the *model's preferred side*. "
+            "Positive always means the model sees value — on whichever team it prefers, home or away. "
+            "| **Signal** — EDGE when gap ≥ 5%. Shows the specific team the model prefers, not a home/away label."
         )
         if not _snapshots:
             st.info("No odds data. Run: `python scripts/poll_odds.py --once`")
@@ -2873,27 +2876,36 @@ with tab_signals:
             for _s in _latest.values():
                 _home_espn = _s.get("home_espn_id", "")
                 _away_espn = _s.get("away_espn_id", "")
-                # Recompute model prob live using injury-adjusted engine when IDs available
+                _home_name = _s.get("home_team", "Home")
+                _away_name = _s.get("away_team", "Away")
                 if _home_espn and _away_espn and _inj_overrides:
                     _adj_prob = adj_engine.win_prob(_home_espn, _away_espn, neutral=False)
                 else:
                     _adj_prob = _s.get("model_prob_home", 0.5)
-                _gap = (_adj_prob - _s.get("home_prob", 0.5))
-                _inj_flag = "⚠" if (
+                # Edge always from model's preferred side (no home bias)
+                _mkt_prob  = _s.get("home_prob", 0.5)
+                _raw_gap   = _adj_prob - _mkt_prob
+                _model_team = _home_name if _adj_prob >= 0.5 else _away_name
+                _model_prob_side = _adj_prob if _adj_prob >= 0.5 else (1 - _adj_prob)
+                _mkt_prob_side   = _mkt_prob  if _adj_prob >= 0.5 else (1 - _mkt_prob)
+                _edge_side = _model_prob_side - _mkt_prob_side
+                _inj_flag = " ⚠" if (
                     _inj_overrides and (
                         _home_espn in _inj_overrides or _away_espn in _inj_overrides
                     )
                 ) else ""
+                _signal = f"EDGE {_model_team}" if abs(_edge_side) >= 0.05 else "-"
                 _rows.append({
-                    "Matchup":       f"{_s.get('away_team','?')} @ {_s.get('home_team','?')}",
-                    "Book":          _s.get("bookmaker", ""),
-                    "Home ML":       _fmt_ml(int(_s["home_ml"])) if _s.get("home_ml") else "-",
-                    "Away ML":       _fmt_ml(int(_s["away_ml"])) if _s.get("away_ml") else "-",
-                    "Line Prob":     f"{_s.get('home_prob', 0):.1%}",
-                    "Model Prob":    f"{_adj_prob:.1%}{_inj_flag}",
-                    "Edge (home)":   f"{_gap:+.1%}",
-                    "Signal":        "EDGE HOME" if _gap >= 0.05 else ("EDGE AWAY" if _gap <= -0.05 else "-"),
-                    "Fetched":       str(_s.get("fetched_at", _s.get("timestamp", "")))[:16],
+                    "Matchup":    f"{_away_name} @ {_home_name}",
+                    "Book":       _s.get("bookmaker", ""),
+                    "Home ML":    _fmt_ml(int(_s["home_ml"])) if _s.get("home_ml") else "-",
+                    "Away ML":    _fmt_ml(int(_s["away_ml"])) if _s.get("away_ml") else "-",
+                    "Model pick": f"{_model_team}{_inj_flag}",
+                    "Model prob": f"{_model_prob_side:.1%}",
+                    "Mkt prob":   f"{_mkt_prob_side:.1%}",
+                    "Edge":       f"{_edge_side:+.1%}",
+                    "Signal":     _signal,
+                    "Fetched":    str(_s.get("fetched_at", _s.get("timestamp", "")))[:16],
                 })
 
             _df_odds = pd.DataFrame(_rows).sort_values("Signal", ascending=False)
@@ -2912,14 +2924,13 @@ with tab_signals:
     # ── Line Movement ─────────────────────────────────────────────────────────
     with sig_tab_lma:
         st.caption(
-            "**From ML / To ML** — the moneyline before and after the move was detected. "
-            "| **Move** — change in implied probability. Positive = line moved toward home team. "
-            "Negative = line moved toward away team. "
-            "| **Sharp** — YES if the move was 4%+ in implied probability. "
-            "A move that large is unlikely to be casual public money — it suggests a professional "
-            "bettor (sharp) forced the book to reprice. "
-            "| **Sharp + Edge** — YES (green) when the sharp move direction matches our model's edge signal. "
-            "This is the highest-confidence signal: sharps and our model independently agree on the same side."
+            "**From ML / To ML** — the line before and after the move. The direction tells you which team the market is repricing. "
+            "| **Move** — shift in implied probability. A negative number means the market lengthened the home price (money went to away), "
+            "a positive number means money went to home. Always read the direction relative to the team, not the sign. "
+            "| **Sharp** — YES if the move was 4%+ in implied probability in a single poll window. "
+            "Public money drifts lines slowly; a sudden 4%+ move almost always means a large professional bet forced a reprice. "
+            "| **Sharp + Edge** — YES when the sharp move is toward the same team our model prefers. "
+            "This is the strongest signal: sharp bettors and the model independently landed on the same side."
         )
         if not _lma_alerts:
             st.info("No line movement detected yet. Populate by running poll_odds.py over multiple polls.")
@@ -2984,14 +2995,14 @@ with tab_signals:
     # ── CLV ───────────────────────────────────────────────────────────────────
     with sig_tab_clv:
         st.caption(
-            "**CLV (Closing Line Value)** — measures whether our model was smarter than the market. "
-            "| **Open ML / Close ML** — the line when we first saw it vs. when the game started. "
-            "| **CLV vs Open** — our model prob minus the opening implied prob. "
-            "| **CLV vs Close** — our model prob minus the closing implied prob. "
-            "Closing line is the most important: the market is sharpest right before tip-off. "
-            "Positive CLV vs close means our model had an edge over the final market price. "
-            "| **Sharp?** — YES if the model's probability on its favored side exceeded the closing implied probability. "
-            "Consistently beating the closing line is the strongest evidence of real model edge."
+            "**CLV (Closing Line Value)** — did the model find the right side before the market fully priced it in? "
+            "All figures here are from the *model's preferred side* — whichever team the model favored, home or away. "
+            "| **Model side** — HOME or AWAY, the team the model assigned a higher probability than the market. "
+            "| **CLV vs Open** — model probability minus the opening market implied probability on that side. "
+            "| **CLV vs Close** — same comparison against the closing line. This is the important one: "
+            "the market is sharpest at close, so beating it means the model genuinely found edge. "
+            "| **Sharp?** — YES = the model was above the closing price on its preferred pick. "
+            "A model that beats closing lines consistently over many games has demonstrated real predictive value."
         )
         if not _clv_recs:
             st.info("No CLV records yet. CLV is computed when a game closes (poll_odds.py checks completed games).")
