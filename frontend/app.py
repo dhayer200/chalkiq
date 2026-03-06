@@ -2259,22 +2259,43 @@ with tab_signals:
             "Negative = line moved toward away team. "
             "| **Sharp** — YES if the move was 4%+ in implied probability. "
             "A move that large is unlikely to be casual public money — it suggests a professional "
-            "bettor (sharp) forced the book to reprice. Watch for sharp moves that agree with "
-            "our model's Edge signal."
+            "bettor (sharp) forced the book to reprice. "
+            "| **Sharp + Edge** — YES (green) when the sharp move direction matches our model's edge signal. "
+            "This is the highest-confidence signal: sharps and our model independently agree on the same side."
         )
         if not _lma_alerts:
             st.info("No line movement detected yet. Populate by running poll_odds.py over multiple polls.")
         else:
+            # Build latest snapshot lookup: (game_id, bookmaker) -> model edge
+            _snap_lookup: dict[tuple, float] = {}
+            for _s in _snapshots:
+                _sk = (_s.get("game_id"), _s.get("bookmaker"))
+                _snap_lookup[_sk] = _s.get("model_prob_home", 0.5) - _s.get("home_prob", 0.5)
+
             _lma_rows = []
             for _a in reversed(_lma_alerts):
+                _move = _a.get("move_size", 0)
+                _sharp = _a.get("sharp", False)
+                # Sharp direction: positive move = toward home, negative = toward away
+                _sharp_dir = "HOME" if _move > 0 else "AWAY"
+                # Our edge direction from latest snapshot
+                _edge_gap = _snap_lookup.get((_a.get("game_id"), _a.get("bookmaker")))
+                if _edge_gap is not None and abs(_edge_gap) >= 0.05:
+                    _edge_dir = "HOME" if _edge_gap > 0 else "AWAY"
+                    _agrees = _sharp and (_sharp_dir == _edge_dir)
+                    _agree_str = "YES" if _agrees else ("no" if _sharp else "-")
+                else:
+                    _agree_str = "-"  # no edge signal on this game
+
                 _lma_rows.append({
-                    "Matchup":    f"{_a.get('away_team','?')} @ {_a.get('home_team','?')}",
-                    "Book":       _a.get("bookmaker", ""),
-                    "From ML":    _fmt_ml(int(_a["from_ml"])) if _a.get("from_ml") else "-",
-                    "To ML":      _fmt_ml(int(_a["to_ml"])) if _a.get("to_ml") else "-",
-                    "Move":       f"{_a.get('move_size', 0):+.1%}",
-                    "Sharp":      "YES" if _a.get("sharp") else "no",
-                    "Detected":   str(_a.get("detected_at", ""))[:16],
+                    "Matchup":       f"{_a.get('away_team','?')} @ {_a.get('home_team','?')}",
+                    "Book":          _a.get("bookmaker", ""),
+                    "From ML":       _fmt_ml(int(_a["from_ml"])) if _a.get("from_ml") else "-",
+                    "To ML":        _fmt_ml(int(_a["to_ml"])) if _a.get("to_ml") else "-",
+                    "Move":          f"{_move:+.1%}",
+                    "Sharp":         "YES" if _sharp else "no",
+                    "Sharp + Edge":  _agree_str,
+                    "Detected":      str(_a.get("detected_at", ""))[:16],
                 })
             _df_lma = pd.DataFrame(_lma_rows)
 
@@ -2283,8 +2304,15 @@ with tab_signals:
                     return f"color: {NORD['yellow']}; font-weight: bold"
                 return ""
 
+            def _color_agree(val):
+                if val == "YES":
+                    return f"color: {NORD['green']}; font-weight: bold"
+                return ""
+
             st.dataframe(
-                _df_lma.style.map(_color_sharp, subset=["Sharp"]),
+                _df_lma.style
+                    .map(_color_sharp, subset=["Sharp"])
+                    .map(_color_agree, subset=["Sharp + Edge"]),
                 use_container_width=True,
                 hide_index=True,
             )
