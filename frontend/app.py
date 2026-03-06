@@ -2205,6 +2205,15 @@ with tab_signals:
 
     # ── Odds / Edge ──────────────────────────────────────────────────────────
     with sig_tab_odds:
+        st.caption(
+            "**Home ML / Away ML** — current moneyline from the book. "
+            "+150 means bet $100 to win $150. -110 means bet $110 to win $100. "
+            "| **Line Prob** — the book's implied win probability for the home team (vig removed). "
+            "| **Model Prob** — our Elo model's win probability for the home team. "
+            "| **Edge (home)** — Model Prob minus Line Prob. Positive = our model likes the home team "
+            "more than the book does. Negative = our model likes the away team. "
+            "| **Signal** — flagged EDGE HOME or EDGE AWAY when the gap is 5%+ (meaningful disagreement)."
+        )
         if not _snapshots:
             st.info("No odds data. Run: `python scripts/poll_odds.py --once`")
         else:
@@ -2244,6 +2253,15 @@ with tab_signals:
 
     # ── Line Movement ─────────────────────────────────────────────────────────
     with sig_tab_lma:
+        st.caption(
+            "**From ML / To ML** — the moneyline before and after the move was detected. "
+            "| **Move** — change in implied probability. Positive = line moved toward home team. "
+            "Negative = line moved toward away team. "
+            "| **Sharp** — YES if the move was 4%+ in implied probability. "
+            "A move that large is unlikely to be casual public money — it suggests a professional "
+            "bettor (sharp) forced the book to reprice. Watch for sharp moves that agree with "
+            "our model's Edge signal."
+        )
         if not _lma_alerts:
             st.info("No line movement detected yet. Populate by running poll_odds.py over multiple polls.")
         else:
@@ -2273,6 +2291,16 @@ with tab_signals:
 
     # ── CLV ───────────────────────────────────────────────────────────────────
     with sig_tab_clv:
+        st.caption(
+            "**CLV (Closing Line Value)** — measures whether our model was smarter than the market. "
+            "| **Open ML / Close ML** — the line when we first saw it vs. when the game started. "
+            "| **CLV vs Open** — our model prob minus the opening implied prob. "
+            "| **CLV vs Close** — our model prob minus the closing implied prob. "
+            "Closing line is the most important: the market is sharpest right before tip-off. "
+            "Positive CLV vs close means our model had an edge over the final market price. "
+            "| **Beat Close** — YES if CLV vs close is positive. "
+            "Consistently beating the closing line is the strongest evidence of real model edge."
+        )
         if not _clv_recs:
             st.info("No CLV records yet. CLV is computed when a game closes (poll_odds.py checks completed games).")
         else:
@@ -2316,6 +2344,14 @@ with tab_signals:
 
     # ── Injuries ──────────────────────────────────────────────────────────────
     with sig_tab_inj:
+        st.caption(
+            "**Status** — the injury designation from ESPN (Out, Questionable, Doubtful, etc.). "
+            "| **Est. Impact** — estimated Elo point penalty to the team if this player misses the game. "
+            "Calculated from position and team strength: a star PG on a top-10 team "
+            "has more impact than a backup on a mid-major. "
+            "Use this to spot games where the book may not have fully priced in an injury yet — "
+            "that's where the edge window is."
+        )
         if not _inj_alerts:
             st.info("No injury alerts. Run: `python scripts/poll_injuries.py --once`")
         else:
@@ -2368,9 +2404,19 @@ with tab_backtest:
             key="bt_seasons",
         )
     with _bt_col3:
-        _bt_edge = st.slider("Min edge (%)", 1, 20, 3, key="bt_edge")
+        _bt_edge = st.slider(
+            "Min edge (%)", 1, 20, 3, key="bt_edge",
+            help="Only bet when the model's win probability exceeds the 52.4% breakeven by at least this much. "
+                 "3% = model must say 55.4%+ to bet. Higher = fewer bets, theoretically higher quality.",
+        )
     with _bt_col4:
-        _bt_warmup = st.number_input("Warmup games", 10, 300, 50, step=10, key="bt_warmup")
+        _bt_warmup = st.number_input(
+            "Warmup games", 10, 300, 50, step=10, key="bt_warmup",
+            help="Skip betting for the first N games of the season. "
+                 "Early in the season all teams start at 1500 Elo so ratings are unreliable — "
+                 "the model needs games to separate good teams from bad ones before its "
+                 "predictions are trustworthy enough to bet on.",
+        )
 
     _run_bt = st.button("Run Backtest", type="primary", key="run_bt")
 
