@@ -25,6 +25,7 @@ Options:
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone, date
@@ -112,6 +113,12 @@ def scan_once(engine: EloEngine, division: str) -> None:
                 f"{a['prev_status']} -> {a['new_status']}"
             )
 
+    # Injury detected — immediately retrigger odds + props recalculation
+    root = Path(__file__).resolve().parents[1]
+    print("\n  [injury trigger] re-polling odds + props now...")
+    subprocess.Popen([sys.executable, "scripts/poll_odds.py",  "--once"], cwd=root)
+    subprocess.Popen([sys.executable, "scripts/poll_props.py", "--once"], cwd=root)
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Poll ESPN injury reports")
@@ -132,7 +139,7 @@ def main() -> None:
         scan_once(engine, args.division)
         return
 
-    print("Scanning all 360 teams. Interval: 10 min on game days, 60 min otherwise.")
+    print(f"Scanning all 360 teams. Interval: {args.interval} min.")
     print("Ctrl+C to stop.")
     while True:
         try:
@@ -140,12 +147,7 @@ def main() -> None:
         except Exception as e:
             print(f"  [error] {e}")
 
-        # Game days: scan every 10 min (lines are moving, news breaks fast)
-        # Non-game days: scan every 60 min (practice injuries, slower news cycle)
-        if has_games_today(args.division):
-            interval = 10
-        else:
-            interval = 60
+        interval = args.interval
 
         print(f"  sleeping {interval} min ({'game day' if interval == 10 else 'no games today'})...")
         time.sleep(interval * 60)

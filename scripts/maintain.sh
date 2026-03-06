@@ -9,7 +9,7 @@
 
 set -e
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 VENV="$PROJECT_DIR/.venv/bin/python3"
 LOGS="$PROJECT_DIR/logs"
 NO_PULL=false
@@ -25,40 +25,47 @@ echo "=== ChalkIQ Maintenance  $(date) ==="
 
 # ── 1. Pull latest code ───────────────────────────────────────────────────────
 if [ "$NO_PULL" = false ]; then
-  echo "[1/5] git pull..."
+  echo "[1/6] git pull..."
   git pull --ff-only
 else
-  echo "[1/5] skipping git pull"
+  echo "[1/6] skipping git pull"
 fi
 
 # ── 2. Kill stale polling daemons ─────────────────────────────────────────────
-echo "[2/5] killing old poll processes..."
-pkill -f "poll_odds.py"   2>/dev/null && echo "  killed poll_odds.py"   || echo "  poll_odds.py not running"
-pkill -f "poll_props.py"  2>/dev/null && echo "  killed poll_props.py"  || echo "  poll_props.py not running"
+echo "[2/6] killing old poll processes..."
+pkill -f "poll_odds.py"      2>/dev/null && echo "  killed poll_odds.py"      || echo "  poll_odds.py not running"
+pkill -f "poll_props.py"     2>/dev/null && echo "  killed poll_props.py"     || echo "  poll_props.py not running"
+pkill -f "poll_injuries.py"  2>/dev/null && echo "  killed poll_injuries.py"  || echo "  poll_injuries.py not running"
 sleep 1
 
 # ── 3. Fetch new box scores (incremental — skips already-cached games) ────────
-echo "[3/5] fetching box scores..."
+echo "[3/6] fetching box scores..."
 $VENV scripts/fetch_boxscores.py --seasons 2026 \
   >> "$LOGS/boxscores.log" 2>&1 \
   && echo "  done (see logs/boxscores.log)" \
   || echo "  fetch_boxscores failed — check logs/boxscores.log"
 
 # ── 4. Start poll_odds.py daemon ─────────────────────────────────────────────
-echo "[4/5] starting poll_odds.py (every 30 min)..."
+echo "[4/6] starting poll_odds.py (every 30 min)..."
 nohup $VENV scripts/poll_odds.py --interval 30 \
   >> "$LOGS/poll_odds.log" 2>&1 &
 echo "  PID $!  ->  logs/poll_odds.log"
 
 # ── 5. Start poll_props.py daemon ────────────────────────────────────────────
-echo "[5/5] starting poll_props.py (every 60 min)..."
-nohup $VENV scripts/poll_props.py --interval 60 --hours 12 \
+echo "[5/6] starting poll_props.py (every 10 min)..."
+nohup $VENV scripts/poll_props.py --interval 10 --hours 4 \
   >> "$LOGS/poll_props.log" 2>&1 &
 echo "  PID $!  ->  logs/poll_props.log"
 
+# ── 6. Start poll_injuries.py daemon ─────────────────────────────────────────
+echo "[6/6] starting poll_injuries.py (every 10 min)..."
+nohup $VENV scripts/poll_injuries.py --interval 10 \
+  >> "$LOGS/poll_injuries.log" 2>&1 &
+echo "  PID $!  ->  logs/poll_injuries.log"
+
 echo ""
 echo "=== Done. Running daemons:"
-pgrep -a -f "poll_odds.py\|poll_props.py" || echo "  (none found)"
+pgrep -a -f "poll_odds.py\|poll_props.py\|poll_injuries.py" || echo "  (none found)"
 echo ""
 echo "Tail logs with:"
 echo "  tail -f $LOGS/poll_odds.log"
