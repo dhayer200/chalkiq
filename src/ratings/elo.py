@@ -34,6 +34,7 @@ class EloEngine:
     k: float = 24.0
     home_advantage: float = HOME_ADVANTAGE
     initial: float = DEFAULT_RATING
+    decay_half_life: float = 0.0   # days; 0 = no decay (uniform weighting)
 
     # internal state — not constructor args
     ratings: dict[str, float] = field(default_factory=dict, repr=False)
@@ -68,6 +69,7 @@ class EloEngine:
         away_score: int,
         neutral: bool = False,
         date: str | None = None,
+        k_override: float | None = None,
     ) -> float:
         """
         Process one finished game. Returns the pregame P(home wins).
@@ -89,8 +91,9 @@ class EloEngine:
         elo_diff   = abs(winner_elo - loser_elo)
         mov_factor = math.log(margin + 1) * (2.2 / (elo_diff * 0.001 + 2.2))
 
-        self.ratings[home_id] = r_home + self.k * mov_factor * (outcome - p_home)
-        self.ratings[away_id] = r_away + self.k * mov_factor * ((1.0 - outcome) - (1.0 - p_home))
+        k = k_override if k_override is not None else self.k
+        self.ratings[home_id] = r_home + k * mov_factor * (outcome - p_home)
+        self.ratings[away_id] = r_away + k * mov_factor * ((1.0 - outcome) - (1.0 - p_home))
 
         self.history.append(
             {
@@ -114,11 +117,37 @@ class EloEngine:
         """
         Process a list of game dicts as returned by data.fetch_season.
         Games are sorted by date before processing.
+
+        If decay_half_life > 0, the K factor is scaled by 0.5^(days_ago/half_life)
+        where days_ago is measured from the most recent game in the list.
+        This makes recent games move ratings more than old games.
         """
-        for g in sorted(games, key=lambda x: x["date"]):
-            # keep a name lookup table updated
+        from datetime import date as _date
+
+        sorted_games = sorted(games, key=lambda x: x["date"])
+
+        # Precompute max date for decay reference
+        max_date = None
+        if self.decay_half_life > 0 and sorted_games:
+            try:
+                max_date = _date.fromisoformat(
+                    max(g["date"] for g in sorted_games if g.get("date"))
+                )
+            except (ValueError, TypeError):
+                max_date = None
+
+        for g in sorted_games:
             self.names[g["home_id"]] = g["home_name"]
             self.names[g["away_id"]] = g["away_name"]
+
+            k_override = None
+            if self.decay_half_life > 0 and max_date and g.get("date"):
+                try:
+                    days_ago = (max_date - _date.fromisoformat(g["date"])).days
+                    k_override = self.k * (0.5 ** (days_ago / self.decay_half_life))
+                except (ValueError, TypeError):
+                    pass
+
             self.update(
                 home_id=g["home_id"],
                 away_id=g["away_id"],
@@ -126,6 +155,7 @@ class EloEngine:
                 away_score=g["away_score"],
                 neutral=g["neutral"],
                 date=g["date"],
+                k_override=k_override,
             )
 
     def rankings(self) -> list[tuple[str, str, float]]:

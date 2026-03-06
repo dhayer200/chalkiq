@@ -59,6 +59,42 @@ NORD = {
     "purple":  "#B48EAD",   # Nord15 — women's accent
 }
 
+# Power conference team names as they appear in ESPN data.
+# Used to filter CLV records to high-confidence matchups.
+POWER_CONF_TEAMS: set[str] = {
+    # Big Ten
+    "Oregon Ducks","Washington Huskies","USC Trojans","UCLA Bruins",
+    "Ohio State Buckeyes","Michigan Wolverines","Michigan State Spartans",
+    "Penn State Nittany Lions","Indiana Hoosiers","Purdue Boilermakers",
+    "Illinois Fighting Illini","Iowa Hawkeyes","Wisconsin Badgers",
+    "Minnesota Golden Gophers","Northwestern Wildcats","Rutgers Scarlet Knights",
+    "Nebraska Cornhuskers","Maryland Terrapins",
+    # Big 12
+    "Kansas Jayhawks","Kansas State Wildcats","Baylor Bears",
+    "Texas Tech Red Raiders","Oklahoma State Cowboys","TCU Horned Frogs",
+    "Iowa State Cyclones","West Virginia Mountaineers","Cincinnati Bearcats",
+    "UCF Knights","Houston Cougars","BYU Cougars","Colorado Buffaloes",
+    "Utah Utes","Arizona Wildcats","Arizona State Sun Devils",
+    # SEC
+    "Alabama Crimson Tide","Auburn Tigers","Florida Gators","Georgia Bulldogs",
+    "Kentucky Wildcats","LSU Tigers","Mississippi State Bulldogs",
+    "Ole Miss Rebels","South Carolina Gamecocks","Tennessee Volunteers",
+    "Vanderbilt Commodores","Arkansas Razorbacks","Missouri Tigers",
+    "Texas Longhorns","Texas A&M Aggies","Oklahoma Sooners",
+    # ACC
+    "Duke Blue Devils","North Carolina Tar Heels","NC State Wolfpack",
+    "Virginia Cavaliers","Virginia Tech Hokies","Clemson Tigers",
+    "Syracuse Orange","Pittsburgh Panthers","Miami Hurricanes",
+    "Wake Forest Demon Deacons","Louisville Cardinals","Georgia Tech Yellow Jackets",
+    "Boston College Eagles","Notre Dame Fighting Irish","Stanford Cardinal",
+    "California Golden Bears","SMU Mustangs","Florida State Seminoles",
+    # Big East
+    "UConn Huskies","Georgetown Hoyas","St. John's Red Storm",
+    "Seton Hall Pirates","Providence Friars","Xavier Musketeers",
+    "Marquette Golden Eagles","DePaul Blue Demons","Butler Bulldogs",
+    "Creighton Bluejays","Villanova Wildcats",
+}
+
 DIVISION_CONFIG = {
     "mens": {
         "label":        "Men's CBB",
@@ -2334,8 +2370,25 @@ with tab_signals:
         if not _clv_recs:
             st.info("No CLV records yet. CLV is computed when a game closes (poll_odds.py checks completed games).")
         else:
+            _clv_power_only = st.toggle(
+                "Power conferences only (ACC / Big Ten / Big 12 / SEC / Big East)",
+                value=False,
+                key="clv_power_filter",
+                help="Filters to matchups where at least one team is a power conference program. "
+                     "Elo calibration is better for high-volume programs; "
+                     "small-conference CLV gaps are often noise.",
+            )
+
+            _clv_filtered = _clv_recs
+            if _clv_power_only:
+                _clv_filtered = [
+                    _r for _r in _clv_recs
+                    if _r.get("home_team") in POWER_CONF_TEAMS
+                    or _r.get("away_team") in POWER_CONF_TEAMS
+                ]
+
             _clv_rows = []
-            for _r in reversed(_clv_recs):
+            for _r in reversed(_clv_filtered):
                 _beat = (_r.get("clv_vs_closing", 0) or 0) > 0
                 _clv_rows.append({
                     "Matchup":       f"{_r.get('away_team','?')} @ {_r.get('home_team','?')}",
@@ -2350,15 +2403,17 @@ with tab_signals:
                 })
             _df_clv = pd.DataFrame(_clv_rows)
 
-            # Summary row
-            _n_clv = len(_clv_recs)
-            _beat_n = sum(1 for _r in _clv_recs if (_r.get("clv_vs_closing") or 0) > 0)
-            _avg_clv = sum(_r.get("clv_vs_closing") or 0 for _r in _clv_recs) / _n_clv if _n_clv else 0
+            # Summary metrics for filtered set
+            _n_clv = len(_clv_filtered)
+            _beat_n = sum(1 for _r in _clv_filtered if (_r.get("clv_vs_closing") or 0) > 0)
+            _avg_clv = sum(_r.get("clv_vs_closing") or 0 for _r in _clv_filtered) / _n_clv if _n_clv else 0
+            _n_total = len(_clv_recs)
 
-            _c1, _c2, _c3 = st.columns(3)
-            _c1.metric("Games tracked", _n_clv)
+            _c1, _c2, _c3, _c4 = st.columns(4)
+            _c1.metric("Games shown", f"{_n_clv} / {_n_total}")
             _c2.metric("Beat closing line", f"{_beat_n}/{_n_clv} ({_beat_n/_n_clv:.0%})" if _n_clv else "-")
             _c3.metric("Avg CLV vs close", f"{_avg_clv:+.2%}")
+            _c4.metric("Target", "> 55% beat rate")
             st.markdown("---")
 
             def _color_beat(val):
@@ -2366,11 +2421,14 @@ with tab_signals:
                     return f"color: {NORD['green']}; font-weight: bold"
                 return ""
 
-            st.dataframe(
-                _df_clv.style.map(_color_beat, subset=["Beat Close"]),
-                use_container_width=True,
-                hide_index=True,
-            )
+            if _clv_rows:
+                st.dataframe(
+                    _df_clv.style.map(_color_beat, subset=["Beat Close"]),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.info("No records match the current filter.")
 
     # ── Injuries ──────────────────────────────────────────────────────────────
     with sig_tab_inj:
@@ -2424,7 +2482,7 @@ with tab_backtest:
     )
     st.markdown("---")
 
-    _bt_col1, _bt_col2, _bt_col3, _bt_col4 = st.columns([2, 2, 2, 2])
+    _bt_col1, _bt_col2, _bt_col3, _bt_col4, _bt_col5 = st.columns([2, 2, 2, 2, 2])
     with _bt_col1:
         _bt_div = st.selectbox("Division", ["mens", "womens"], key="bt_div")
     with _bt_col2:
@@ -2447,6 +2505,14 @@ with tab_backtest:
                  "the model needs games to separate good teams from bad ones before its "
                  "predictions are trustworthy enough to bet on.",
         )
+    with _bt_col5:
+        _bt_decay = st.slider(
+            "Decay half-life (days)", 0, 365, 0, step=15, key="bt_decay",
+            help="Recency decay: games N days old have K scaled by 0.5^(N/half_life). "
+                 "0 = no decay (all games weighted equally). "
+                 "90 = games 90 days ago have half the K factor of today's games. "
+                 "Shorter half-life = ratings reflect recent form more than season-long history.",
+        )
 
     _run_bt = st.button("Run Backtest", type="primary", key="run_bt")
 
@@ -2458,7 +2524,7 @@ with tab_backtest:
     }
 
     @st.cache_data(show_spinner="Running backtest…")
-    def _run_backtest(division: str, seasons: tuple[int, ...], min_edge: float, warmup: int):
+    def _run_backtest(division: str, seasons: tuple[int, ...], min_edge: float, warmup: int, decay: float):
         from src.backtest.engine import Backtester
         from src.utils.data import fetch_season
 
@@ -2476,7 +2542,7 @@ with tab_backtest:
             _games = fetch_season(_start, _end, cache_dir=_cache, division=division, verbose=False)
             all_games.extend(_games)
 
-        bt = Backtester(k=24.0, home_advantage=100.0)
+        bt = Backtester(k=24.0, home_advantage=100.0, decay_half_life=float(decay))
         return bt.run(all_games, min_edge=min_edge, stake=100.0, warmup_games=warmup)
 
     if _run_bt and _bt_seasons:
@@ -2486,6 +2552,7 @@ with tab_backtest:
                 tuple(sorted(_bt_seasons)),
                 _bt_edge / 100,
                 _bt_warmup,
+                _bt_decay,
             )
 
         if not _results.bets_placed:
@@ -2536,8 +2603,8 @@ with tab_backtest:
 
             st.markdown("---")
 
-            _bt_tab_month, _bt_tab_buckets, _bt_tab_bets = st.tabs([
-                "Monthly Breakdown", "Edge Buckets", "All Bets"
+            _bt_tab_month, _bt_tab_buckets, _bt_tab_bets, _bt_tab_clv = st.tabs([
+                "Monthly Breakdown", "Edge Buckets", "All Bets", "vs Closing Line"
             ])
 
             # ── Monthly breakdown ─────────────────────────────────────────────
@@ -2578,15 +2645,29 @@ with tab_backtest:
 
             # ── All bets log ──────────────────────────────────────────────────
             with _bt_tab_bets:
-                _bet_rows = [{
-                    "Date":       b.game_date,
-                    "Matchup":    f"{b.away_name} @ {b.home_name}",
-                    "Bet":        "HOME" if b.bet_on_home else "AWAY",
-                    "Model Prob": f"{b.model_prob:.1%}",
-                    "Edge":       f"{b.edge:+.1%}",
-                    "Result":     "W" if b.won else "L",
-                    "P&L":        f"${b.pnl:+,.0f}",
-                } for b in _results.bets]
+                # Build CLV lookup keyed by (home_name, away_name) — average across bookmakers
+                _clv_by_game: dict[tuple[str, str], float] = {}
+                for _cr in _clv_recs:
+                    _key = (_cr.get("home_team", ""), _cr.get("away_team", ""))
+                    _val = _cr.get("clv_vs_closing") or 0.0
+                    if _key in _clv_by_game:
+                        _clv_by_game[_key] = (_clv_by_game[_key] + _val) / 2
+                    else:
+                        _clv_by_game[_key] = _val
+
+                _bet_rows = []
+                for b in _results.bets:
+                    _clv_val = _clv_by_game.get((b.home_name, b.away_name))
+                    _bet_rows.append({
+                        "Date":       b.game_date,
+                        "Matchup":    f"{b.away_name} @ {b.home_name}",
+                        "Bet":        "HOME" if b.bet_on_home else "AWAY",
+                        "Model Prob": f"{b.model_prob:.1%}",
+                        "Edge":       f"{b.edge:+.1%}",
+                        "Result":     "W" if b.won else "L",
+                        "P&L":        f"${b.pnl:+,.0f}",
+                        "CLV":        f"{_clv_val:+.2%}" if _clv_val is not None else "-",
+                    })
                 _df_bets = pd.DataFrame(_bet_rows)
 
                 def _color_result(val):
@@ -2599,6 +2680,65 @@ with tab_backtest:
                     use_container_width=True,
                     hide_index=True,
                 )
+
+            # ── vs Closing Line ───────────────────────────────────────────────
+            with _bt_tab_clv:
+                st.caption(
+                    "Cross-references backtest bets against CLV records collected by poll_odds.py. "
+                    "Only games present in both datasets are shown. "
+                    "| **Bet beat close** — YES when our model had positive CLV on the bet side. "
+                    "This is the real-world sharpness test: did the bet we placed beat the closing line?"
+                )
+                # Filter to bets that have CLV data
+                _clv_bets = [
+                    b for b in _results.bets
+                    if (b.home_name, b.away_name) in _clv_by_game
+                ]
+                if not _clv_bets:
+                    st.info(
+                        "No overlap between backtest bets and CLV records yet. "
+                        "CLV data is collected by poll_odds.py going forward — "
+                        "as more games accumulate this tab will fill in."
+                    )
+                else:
+                    _clv_rows_bt = []
+                    for b in _clv_bets:
+                        _raw_clv = _clv_by_game[(b.home_name, b.away_name)]
+                        # CLV is from home team perspective; flip sign if we bet away
+                        _bet_clv = _raw_clv if b.bet_on_home else -_raw_clv
+                        _clv_rows_bt.append({
+                            "Date":     b.game_date,
+                            "Matchup":  f"{b.away_name} @ {b.home_name}",
+                            "Bet":      "HOME" if b.bet_on_home else "AWAY",
+                            "Result":   "W" if b.won else "L",
+                            "CLV (home side)": f"{_raw_clv:+.2%}",
+                            "CLV (bet side)":  f"{_bet_clv:+.2%}",
+                            "Bet beat close":  "YES" if _bet_clv > 0 else "no",
+                        })
+                    _df_clv_bt = pd.DataFrame(_clv_rows_bt)
+
+                    _n_clv_bt   = len(_clv_bets)
+                    _clv_beat_n = sum(1 for r in _clv_rows_bt if r["Bet beat close"] == "YES")
+                    _avg_bet_clv = sum(
+                        _clv_by_game[(b.home_name, b.away_name)] * (1 if b.bet_on_home else -1)
+                        for b in _clv_bets
+                    ) / _n_clv_bt
+
+                    _cb1, _cb2, _cb3 = st.columns(3)
+                    _cb1.metric("Bets with CLV data", _n_clv_bt)
+                    _cb2.metric("Bet beat close", f"{_clv_beat_n}/{_n_clv_bt} ({_clv_beat_n/_n_clv_bt:.0%})")
+                    _cb3.metric("Avg CLV (bet side)", f"{_avg_bet_clv:+.2%}")
+                    st.markdown("---")
+
+                    def _color_clv_beat(val):
+                        if val == "YES": return f"color: {NORD['green']}; font-weight: bold"
+                        return ""
+
+                    st.dataframe(
+                        _df_clv_bt.style.map(_color_clv_beat, subset=["Bet beat close"]),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
 
             # ── Export ────────────────────────────────────────────────────────
             _bt_label = f"{_bt_div}_{'-'.join(str(s) for s in sorted(_bt_seasons))}_edge{_bt_edge}pct"

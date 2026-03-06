@@ -60,9 +60,10 @@ class BacktestResults:
 
 
 class Backtester:
-    def __init__(self, k: float = 24.0, home_advantage: float = 100.0):
-        self.k   = k
-        self.hca = home_advantage
+    def __init__(self, k: float = 24.0, home_advantage: float = 100.0, decay_half_life: float = 0.0):
+        self.k    = k
+        self.hca  = home_advantage
+        self.decay = decay_half_life
 
     def run(
         self,
@@ -83,7 +84,7 @@ class Backtester:
         Games must be dicts with keys: date, home_id, home_name, away_id,
         away_name, home_score, away_score, neutral.
         """
-        engine = EloEngine(k=self.k, home_advantage=self.hca)
+        engine = EloEngine(k=self.k, home_advantage=self.hca, decay_half_life=self.decay)
         sorted_games = sorted(games, key=lambda g: g["date"])
 
         breakeven = 100.0 / (abs(juice) + 100.0)
