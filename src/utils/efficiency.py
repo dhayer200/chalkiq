@@ -1,12 +1,14 @@
 """
 Adjusted offensive and defensive efficiency.
 
-Methodology (KenPom-style iterative adjustment):
+Methodology (KenPom-style iterative adjustment, games-played weighted):
   - Raw OE  = points scored per game
   - Raw DE  = points allowed per game
-  - Adjusted OE = raw OE scaled by (league avg DE / avg DE of opponents faced)
-  - Adjusted DE = raw DE scaled by (league avg OE / avg OE of opponents faced)
-  - Run N iterations so the adjustments converge.
+  - Adjusted OE = raw OE scaled by (league avg DE / weighted avg DE of opponents faced)
+  - Adjusted DE = raw DE scaled by (league avg OE / weighted avg OE of opponents faced)
+  - Opponent averages are weighted by that opponent's games played — teams with more
+    data pull more weight, reducing noise from small-sample opponents.
+  - Run N iterations so the adjustments converge, renormalizing each pass.
 
 Only requires game history (home_id, away_id, home_score, away_score).
 No possession data needed — uses points per game as the efficiency proxy.
@@ -37,9 +39,9 @@ def compute_efficiency(
     # Build per-team game list: (points_scored, points_allowed, opponent_id)
     team_games: dict[str, list[tuple[float, float, str]]] = {}
     for g in history:
-        h  = g["home_id"]
-        a  = g["away_id"]
-        hs = float(g["home_score"])
+        h   = g["home_id"]
+        a   = g["away_id"]
+        hs  = float(g["home_score"])
         as_ = float(g["away_score"])
         team_games.setdefault(h, []).append((hs, as_, a))
         team_games.setdefault(a, []).append((as_, hs, h))
@@ -49,36 +51,42 @@ def compute_efficiency(
     if not teams:
         return {}
 
-    # Raw averages
+    # Games-played count used as weight (more games = more reliable data)
+    gp: dict[str, int] = {t: len(team_games[t]) for t in teams}
+
+    # Raw averages (unweighted — each game counts equally within a team's own record)
     raw_off: dict[str, float] = {
-        t: sum(g[0] for g in team_games[t]) / len(team_games[t])
+        t: sum(g[0] for g in team_games[t]) / gp[t]
         for t in teams
     }
     raw_def: dict[str, float] = {
-        t: sum(g[1] for g in team_games[t]) / len(team_games[t])
+        t: sum(g[1] for g in team_games[t]) / gp[t]
         for t in teams
     }
 
+    # League average anchors the scale
     league_avg = sum(raw_off.values()) / len(raw_off)
 
     adj_off = dict(raw_off)
     adj_def = dict(raw_def)
 
-    # Iterative adjustment with normalization to prevent divergence
+    # Iterative adjustment with games-played weighting + normalization
     for _ in range(n_iter):
         new_off: dict[str, float] = {}
         new_def: dict[str, float] = {}
         for t in teams:
             games = team_games[t]
-            # Only use opponents that are in our filtered set
+            # Only use opponents that passed the min_games filter
             valid = [(pts, opp_pts, opp) for pts, opp_pts, opp in games if opp in adj_def]
             if not valid:
                 new_off[t] = raw_off[t]
                 new_def[t] = raw_def[t]
                 continue
 
-            opp_avg_def = sum(adj_def[opp] for _, _, opp in valid) / len(valid)
-            opp_avg_off = sum(adj_off[opp] for _, _, opp in valid) / len(valid)
+            # Weight each opponent by their games played — more data = more trust
+            total_w = sum(gp[opp] for _, _, opp in valid)
+            opp_avg_def = sum(adj_def[opp] * gp[opp] for _, _, opp in valid) / total_w
+            opp_avg_off = sum(adj_off[opp] * gp[opp] for _, _, opp in valid) / total_w
 
             new_off[t] = raw_off[t] * (league_avg / opp_avg_def) if opp_avg_def else raw_off[t]
             new_def[t] = raw_def[t] * (league_avg / opp_avg_off) if opp_avg_off else raw_def[t]
@@ -91,7 +99,7 @@ def compute_efficiency(
 
     return {
         t: {
-            "gp":      len(team_games[t]),
+            "gp":      gp[t],
             "raw_off": round(raw_off[t], 1),
             "raw_def": round(raw_def[t], 1),
             "adj_off": round(adj_off[t], 1),
