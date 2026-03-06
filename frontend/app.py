@@ -1865,9 +1865,10 @@ with tab_players:
     )
 
     _box_dir = ROOT / "data" / "raw" / division / "boxscores"
+    _box_count = len(list(_box_dir.glob("*.json"))) if _box_dir.exists() else 0
 
     @st.cache_resource(show_spinner="Building player ratings...")
-    def _build_player_engine(box_dir: str) -> "PlayerEloEngine | None":
+    def _build_player_engine(box_dir: str, _n_files: int) -> "PlayerEloEngine | None":
         from src.players.engine import PlayerEloEngine, load_boxscores
         games = load_boxscores(box_dir)
         if not games:
@@ -1876,7 +1877,7 @@ with tab_players:
         engine.process_games(games)
         return engine
 
-    _p_engine = _build_player_engine(str(_box_dir))
+    _p_engine = _build_player_engine(str(_box_dir), _box_count)
 
     if _p_engine is None or not _p_engine.ratings:
         st.info(
