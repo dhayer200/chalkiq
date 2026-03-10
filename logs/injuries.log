@@ -1,0 +1,22 @@
+nohup: ignoring input
+nohup: ignoring input
+.venv/bin/python3: can't open file '/home/deep/march-madness/scrpits/poll_injuries.py': [Errno 2] No such file or directory
+nohup: ignoring input
+Building Elo engine...
+Scanning all 360 teams. Interval: 10 min on game days, 60 min otherwise.
+Ctrl+C to stop.
+
+[2026-03-06T01:48:50.636826+00:00] scanning all 360 teams (mens)...
+  [error] Could not find a suitable TLS CA certificate bundle, invalid path: /home/deep/march-madness/.venv/lib/python3.14/site-packages/certifi/cacert.pem
+Traceback (most recent call last):
+  File "/home/deep/march-madness/scripts/poll_injuries.py", line 155, in <module>
+  File "/home/deep/march-madness/scripts/poll_injuries.py", line 145, in main
+  File "/home/deep/march-madness/scripts/poll_injuries.py", line 46, in has_games_today
+  File "/home/deep/march-madness/src/live/feed.py", line 216, in fetch_other_games
+  File "/home/deep/march-madness/.venv/lib/python3.14/site-packages/requests/api.py", line 73, in get
+  File "/home/deep/march-madness/.venv/lib/python3.14/site-packages/requests/api.py", line 59, in request
+  File "/home/deep/march-madness/.venv/lib/python3.14/site-packages/requests/sessions.py", line 589, in request
+  File "/home/deep/march-madness/.venv/lib/python3.14/site-packages/requests/sessions.py", line 703, in send
+  File "/home/deep/march-madness/.venv/lib/python3.14/site-packages/requests/adapters.py", line 616, in send
+  File "/home/deep/march-madness/.venv/lib/python3.14/site-packages/requests/adapters.py", line 303, in cert_verify
+OSError: Could not find a suitable TLS CA certificate bundle, invalid path: /home/deep/march-madness/.venv/lib/python3.14/site-packages/certifi/cacert.pem

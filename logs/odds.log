@@ -1,0 +1,342 @@
+nohup: ignoring input
+nohup: ignoring input
+nohup: ignoring input
+Building Elo engine...
+  [engine] loaded 1,006 games  383 teams
+Polling every 30 minutes. Ctrl+C to stop.
+
+[2026-03-06T01:46:43.789614+00:00] fetching odds...
+  [odds-api] requests used=25  remaining=475
+  [LMA] Colgate Raiders vs Loyola (MD) Greyhounds  home ML: -250 -> -550  (68.2% -> 80.1%)  move=+11.9% [SHARP]
+  [LMA] Colgate Raiders vs Loyola (MD) Greyhounds  home ML: -550 -> -10000  (80.1% -> 93.9%)  move=+13.8% [SHARP]
+  [LMA] Colgate Raiders vs Loyola (MD) Greyhounds  home ML: -10000 -> -10000  (93.9% -> 97.1%)  move=+3.2%
+  [EDGE] Colgate Raiders vs Loyola (MD) Greyhounds [betmgm]  model=50.2%  line=97.1%  gap=-46.9%  -> AWAY
+  [LMA] Temple Owls vs Tulane Green Wave  home ML: -200 -> -10000  (63.9% -> 97.1%)  move=+33.3% [SHARP]
+  [EDGE] Temple Owls vs Tulane Green Wave [betmgm]  model=46.5%  line=97.1%  gap=-50.7%  -> AWAY
+  [LMA] Florida Int'l Golden Panthers vs Middle Tennessee Blue Raiders  home ML: -110 -> -900  (50.0% -> 84.8%)  move=+34.8% [SHARP]
+  [LMA] Florida Int'l Golden Panthers vs Middle Tennessee Blue Raiders  home ML: -900 -> -530  (84.8% -> 79.5%)  move=-5.3% [SHARP]
+  [LMA] Florida Int'l Golden Panthers vs Middle Tennessee Blue Raiders  home ML: -530 -> -280  (79.5% -> 69.5%)  move=-9.9% [SHARP]
+  [EDGE] Florida Int'l Golden Panthers vs Middle Tennessee Blue Raiders [fanduel]  model=43.9%  line=71.4%  gap=-27.5%  -> AWAY
+  [LMA] Florida Int'l Golden Panthers vs Middle Tennessee Blue Raiders  home ML: -110 -> -475  (50.0% -> 77.8%)  move=+27.8% [SHARP]
+  [LMA] Florida Int'l Golden Panthers vs Middle Tennessee Blue Raiders  home ML: -475 -> -620  (77.8% -> 81.2%)  move=+3.3%
+  [LMA] Florida Int'l Golden Panthers vs Middle Tennessee Blue Raiders  home ML: -600 -> -260  (80.8% -> 68.1%)  move=-12.7% [SHARP]
+  [EDGE] Florida Int'l Golden Panthers vs Middle Tennessee Blue Raiders [draftkings]  model=43.9%  line=69.5%  gap=-25.6%  -> AWAY
+  [LMA] Florida Int'l Golden Panthers vs Middle Tennessee Blue Raiders  home ML: -105 -> -525  (48.9% -> 79.1%)  move=+30.2% [SHARP]
+  [LMA] Florida Int'l Golden Panthers vs Middle Tennessee Blue Raiders  home ML: -475 -> -275  (78.1% -> 69.5%)  move=-8.7% [SHARP]
+  [EDGE] Florida Int'l Golden Panthers vs Middle Tennessee Blue Raiders [betmgm]  model=43.9%  line=69.5%  gap=-25.5%  -> AWAY
+  [LMA] Navy Midshipmen vs Bucknell Bison  home ML: -1450 -> -3500  (88.8% -> 93.6%)  move=+4.7% [SHARP]
+  [EDGE] Navy Midshipmen vs Bucknell Bison [draftkings]  model=48.9%  line=94.9%  gap=-46.0%  -> AWAY
+  [LMA] Navy Midshipmen vs Bucknell Bison  home ML: -2200 -> -7000  (89.9% -> 93.5%)  move=+3.6%
+  [LMA] Navy Midshipmen vs Bucknell Bison  home ML: -7000 -> -2800  (93.5% -> 90.6%)  move=-2.8%
+  [EDGE] Navy Midshipmen vs Bucknell Bison [fanduel]  model=48.9%  line=90.6%  gap=-41.7%  -> AWAY
+  [LMA] Liberty Flames vs Louisiana Tech Bulldogs  home ML: -450 -> -172  (78.3% -> 59.7%)  move=-18.6% [SHARP]
+  [LMA] Liberty Flames vs Louisiana Tech Bulldogs  home ML: -172 -> +400  (59.7% -> 18.9%)  move=-40.8% [SHARP]
+  [LMA] Liberty Flames vs Louisiana Tech Bulldogs  home ML: +400 -> +230  (18.9% -> 28.6%)  move=+9.8% [SHARP]
+  [LMA] Liberty Flames vs Louisiana Tech Bulldogs  home ML: +230 -> +4000  (28.6% -> 2.4%)  move=-26.2% [SHARP]
+  [EDGE] Liberty Flames vs Louisiana Tech Bulldogs [fanduel]  model=48.8%  line=2.4%  gap=+46.4%  -> HOME
+  [LMA] Liberty Flames vs Louisiana Tech Bulldogs  home ML: -455 -> -175  (78.7% -> 59.9%)  move=-18.7% [SHARP]
+  [LMA] Liberty Flames vs Louisiana Tech Bulldogs  home ML: -175 -> +190  (59.9% -> 32.6%)  move=-27.4% [SHARP]
+  [LMA] Liberty Flames vs Louisiana Tech Bulldogs  home ML: +190 -> +230  (32.6% -> 28.5%)  move=-4.0% [SHARP]
+  [LMA] Liberty Flames vs Louisiana Tech Bulldogs  home ML: +230 -> +2500  (28.5% -> 3.7%)  move=-24.8% [SHARP]
+  [EDGE] Liberty Flames vs Louisiana Tech Bulldogs [draftkings]  model=48.8%  line=3.7%  gap=+45.1%  -> HOME
+  [LMA] Lehigh Mountain Hawks vs Holy Cross Crusaders  home ML: -258 -> -215  (69.1% -> 64.4%)  move=-4.7% [SHARP]
+  [LMA] Lehigh Mountain Hawks vs Holy Cross Crusaders  home ML: -215 -> -154  (64.4% -> 57.1%)  move=-7.3% [SHARP]
+  [LMA] Lehigh Mountain Hawks vs Holy Cross Crusaders  home ML: -154 -> -175  (57.1% -> 59.9%)  move=+2.8%
+  [LMA] Lehigh Mountain Hawks vs Holy Cross Crusaders  home ML: -175 -> +360  (59.9% -> 20.5%)  move=-39.4% [SHARP]
+  [EDGE] Lehigh Mountain Hawks vs Holy Cross Crusaders [draftkings]  model=51.2%  line=20.5%  gap=+30.8%  -> HOME
+  [LMA] Lehigh Mountain Hawks vs Holy Cross Crusaders  home ML: -290 -> -140  (70.7% -> 54.8%)  move=-15.9% [SHARP]
+  [LMA] Lehigh Mountain Hawks vs Holy Cross Crusaders  home ML: -156 -> +320  (57.3% -> 22.3%)  move=-34.9% [SHARP]
+  [EDGE] Lehigh Mountain Hawks vs Holy Cross Crusaders [fanduel]  model=51.2%  line=22.3%  gap=+28.9%  -> HOME
+  [LMA] Lehigh Mountain Hawks vs Holy Cross Crusaders  home ML: -225 -> -155  (66.4% -> 57.2%)  move=-9.1% [SHARP]
+  [LMA] Lehigh Mountain Hawks vs Holy Cross Crusaders  home ML: -175 -> +240  (59.9% -> 27.8%)  move=-32.2% [SHARP]
+  [EDGE] Lehigh Mountain Hawks vs Holy Cross Crusaders [betmgm]  model=51.2%  line=27.8%  gap=+23.5%  -> HOME
+  [LMA] Tenn-Martin Skyhawks vs Eastern Illinois Panthers  home ML: -380 -> -188  (76.0% -> 61.5%)  move=-14.5% [SHARP]
+  [LMA] Tenn-Martin Skyhawks vs Eastern Illinois Panthers  home ML: -188 -> -238  (61.5% -> 66.3%)  move=+4.8% [SHARP]
+  [LMA] Tenn-Martin Skyhawks vs Eastern Illinois Panthers  home ML: -238 -> -720  (66.3% -> 82.8%)  move=+16.5% [SHARP]
+  [LMA] Tenn-Martin Skyhawks vs Eastern Illinois Panthers  home ML: -720 -> -4000  (82.8% -> 94.0%)  move=+11.1% [SHARP]
+  [EDGE] Tenn-Martin Skyhawks vs Eastern Illinois Panthers [draftkings]  model=53.9%  line=94.0%  gap=-40.1%  -> AWAY
+  [LMA] Tenn-Martin Skyhawks vs Eastern Illinois Panthers  home ML: -375 -> -190  (75.5% -> 61.6%)  move=-13.9% [SHARP]
+  [LMA] Tenn-Martin Skyhawks vs Eastern Illinois Panthers  home ML: -190 -> -220  (61.6% -> 65.0%)  move=+3.4%
+  [LMA] Tenn-Martin Skyhawks vs Eastern Illinois Panthers  home ML: -235 -> -2500  (66.7% -> 90.6%)  move=+23.9% [SHARP]
+  [EDGE] Tenn-Martin Skyhawks vs Eastern Illinois Panthers [betmgm]  model=53.9%  line=90.6%  gap=-36.7%  -> AWAY
+  [LMA] Tenn-Martin Skyhawks vs Eastern Illinois Panthers  home ML: -335 -> -200  (73.8% -> 62.9%)  move=-10.9% [SHARP]
+  [LMA] Tenn-Martin Skyhawks vs Eastern Illinois Panthers  home ML: -200 -> -225  (62.9% -> 65.3%)  move=+2.4%
+  [LMA] Tenn-Martin Skyhawks vs Eastern Illinois Panthers  home ML: -225 -> -330  (65.3% -> 72.3%)  move=+7.0% [SHARP]
+  [LMA] Tenn-Martin Skyhawks vs Eastern Illinois Panthers  home ML: -330 -> -1600  (72.3% -> 88.9%)  move=+16.6% [SHARP]
+  [EDGE] Tenn-Martin Skyhawks vs Eastern Illinois Panthers [fanduel]  model=53.9%  line=88.9%  gap=-35.0%  -> AWAY
+  [LMA] Delaware Blue Hens vs Sam Houston St Bearkats  home ML: +250 -> -280  (27.4% -> 69.5%)  move=+42.2% [SHARP]
+  [LMA] Delaware Blue Hens vs Sam Houston St Bearkats  home ML: -280 -> -150  (69.5% -> 56.7%)  move=-12.9% [SHARP]
+  [LMA] Delaware Blue Hens vs Sam Houston St Bearkats  home ML: -150 -> +120  (56.7% -> 42.9%)  move=-13.8% [SHARP]
+  [LMA] Delaware Blue Hens vs Sam Houston St Bearkats  home ML: +120 -> -390  (42.9% -> 75.1%)  move=+32.3% [SHARP]
+  [EDGE] Delaware Blue Hens vs Sam Houston St Bearkats [fanduel]  model=50.1%  line=75.1%  gap=-25.0%  -> AWAY
+  [LMA] Delaware Blue Hens vs Sam Houston St Bearkats  home ML: +270 -> -210  (25.9% -> 63.8%)  move=+37.9% [SHARP]
+  [LMA] Delaware Blue Hens vs Sam Houston St Bearkats  home ML: -210 -> +105  (63.8% -> 45.9%)  move=-17.9% [SHARP]
+  [LMA] Delaware Blue Hens vs Sam Houston St Bearkats  home ML: +105 -> +135  (45.9% -> 40.1%)  move=-5.8% [SHARP]
+  [LMA] Delaware Blue Hens vs Sam Houston St Bearkats  home ML: +135 -> -140  (40.1% -> 55.1%)  move=+15.0% [SHARP]
+  [LMA] Delaware Blue Hens vs Sam Houston St Bearkats  home ML: +260 -> -200  (26.7% -> 62.9%)  move=+36.2% [SHARP]
+  [LMA] Delaware Blue Hens vs Sam Houston St Bearkats  home ML: -200 -> -125  (62.9% -> 52.4%)  move=-10.5% [SHARP]
+  [LMA] Delaware Blue Hens vs Sam Houston St Bearkats  home ML: -125 -> +110  (52.4% -> 44.9%)  move=-7.5% [SHARP]
+  [LMA] Delaware Blue Hens vs Sam Houston St Bearkats  home ML: +110 -> -190  (44.9% -> 61.6%)  move=+16.7% [SHARP]
+  [EDGE] Delaware Blue Hens vs Sam Houston St Bearkats [betmgm]  model=50.1%  line=61.6%  gap=-11.5%  -> AWAY
+  [LMA] North Dakota St Bison vs Oral Roberts Golden Eagles  home ML: -800 -> -2000  (85.2% -> 90.0%)  move=+4.8% [SHARP]
+  [LMA] North Dakota St Bison vs Oral Roberts Golden Eagles  home ML: -2000 -> -10000  (90.0% -> 97.1%)  move=+7.1% [SHARP]
+  [EDGE] North Dakota St Bison vs Oral Roberts Golden Eagles [betmgm]  model=55.6%  line=97.1%  gap=-41.5%  -> AWAY
+  [LMA] Valparaiso Beacons vs Indiana St Sycamores  home ML: -166 -> +350  (59.8% -> 20.9%)  move=-38.8% [SHARP]
+  [LMA] Valparaiso Beacons vs Indiana St Sycamores  home ML: +350 -> +260  (20.9% -> 26.2%)  move=+5.3% [SHARP]
+  [LMA] Valparaiso Beacons vs Indiana St Sycamores  home ML: +280 -> +340  (24.9% -> 21.4%)  move=-3.4%
+  [EDGE] Valparaiso Beacons vs Indiana St Sycamores [fanduel]  model=50.8%  line=21.4%  gap=+29.4%  -> HOME
+  [LMA] Valparaiso Beacons vs Indiana St Sycamores  home ML: -162 -> +280  (59.3% -> 24.8%)  move=-34.5% [SHARP]
+  [LMA] Valparaiso Beacons vs Indiana St Sycamores  home ML: +280 -> +420  (24.8% -> 18.1%)  move=-6.7% [SHARP]
+  [EDGE] Valparaiso Beacons vs Indiana St Sycamores [draftkings]  model=50.8%  line=18.1%  gap=+32.7%  -> HOME
+  [LMA] Valparaiso Beacons vs Indiana St Sycamores  home ML: -155 -> +360  (57.8% -> 20.6%)  move=-37.2% [SHARP]
+  [LMA] Valparaiso Beacons vs Indiana St Sycamores  home ML: +300 -> +425  (23.6% -> 18.0%)  move=-5.6% [SHARP]
+  [EDGE] Valparaiso Beacons vs Indiana St Sycamores [betmgm]  model=50.8%  line=18.0%  gap=+32.8%  -> HOME
+  [LMA] Florida A&M Rattlers vs Bethune-Cookman Wildcats  home ML: +126 -> -125  (42.3% -> 52.4%)  move=+10.1% [SHARP]
+  [LMA] Florida A&M Rattlers vs Bethune-Cookman Wildcats  home ML: -125 -> +106  (52.4% -> 45.7%)  move=-6.7% [SHARP]
+  [EDGE] Florida A&M Rattlers vs Bethune-Cookman Wildcats [fanduel]  model=52.8%  line=45.7%  gap=+7.0%  -> HOME
+  [LMA] Florida A&M Rattlers vs Bethune-Cookman Wildcats  home ML: +120 -> -135  (43.6% -> 54.1%)  move=+10.4% [SHARP]
+  [LMA] Florida A&M Rattlers vs Bethune-Cookman Wildcats  home ML: -135 -> -154  (54.1% -> 57.1%)  move=+3.1%
+  [LMA] Florida A&M Rattlers vs Bethune-Cookman Wildcats  home ML: -154 -> +110  (57.1% -> 44.9%)  move=-12.2% [SHARP]
+  [EDGE] Florida A&M Rattlers vs Bethune-Cookman Wildcats [draftkings]  model=52.8%  line=44.9%  gap=+7.8%  -> HOME
+  [LMA] Florida A&M Rattlers vs Bethune-Cookman Wildcats  home ML: +120 -> -135  (43.4% -> 54.1%)  move=+10.6% [SHARP]
+  [LMA] Florida A&M Rattlers vs Bethune-Cookman Wildcats  home ML: -130 -> +130  (53.1% -> 41.1%)  move=-11.9% [SHARP]
+  [EDGE] Florida A&M Rattlers vs Bethune-Cookman Wildcats [betmgm]  model=52.8%  line=41.1%  gap=+11.6%  -> HOME
+  [LMA] Iowa Hawkeyes vs Michigan Wolverines  home ML: +310 -> +350  (23.0% -> 20.9%)  move=-2.1%
+  [LMA] Iowa Hawkeyes vs Michigan Wolverines  home ML: +350 -> +310  (20.9% -> 23.0%)  move=+2.1%
+  [LMA] Iowa Hawkeyes vs Michigan Wolverines  home ML: +310 -> +250  (23.0% -> 26.9%)  move=+3.9%
+  [EDGE] Iowa Hawkeyes vs Michigan Wolverines [draftkings]  model=21.3%  line=26.9%  gap=-5.6%  -> AWAY
+  [LMA] Iowa Hawkeyes vs Michigan Wolverines  home ML: +350 -> +290  (20.9% -> 24.2%)  move=+3.2%
+  [LMA] Iowa Hawkeyes vs Michigan Wolverines  home ML: +290 -> +196  (24.2% -> 31.9%)  move=+7.7% [SHARP]
+  [EDGE] Iowa Hawkeyes vs Michigan Wolverines [fanduel]  model=21.3%  line=31.9%  gap=-10.6%  -> AWAY
+  [LMA] Iowa Hawkeyes vs Michigan Wolverines  home ML: +320 -> +260  (22.5% -> 26.3%)  move=+3.8%
+  [LMA] Iowa Hawkeyes vs Michigan Wolverines  home ML: +260 -> +425  (26.3% -> 18.0%)  move=-8.3% [SHARP]
+  [LMA] Missouri St Bears vs Western Kentucky Hilltoppers  home ML: +105 -> +265  (46.7% -> 25.8%)  move=-20.9% [SHARP]
+  [LMA] Missouri St Bears vs Western Kentucky Hilltoppers  home ML: +265 -> +128  (25.8% -> 41.4%)  move=+15.6% [SHARP]
+  [LMA] Missouri St Bears vs Western Kentucky Hilltoppers  home ML: +128 -> +154  (41.4% -> 37.1%)  move=-4.2% [SHARP]
+  [LMA] Missouri St Bears vs Western Kentucky Hilltoppers  home ML: +154 -> -146  (37.1% -> 56.0%)  move=+18.8% [SHARP]
+  [LMA] Missouri St Bears vs Western Kentucky Hilltoppers  home ML: +105 -> +230  (46.8% -> 28.5%)  move=-18.2% [SHARP]
+  [LMA] Missouri St Bears vs Western Kentucky Hilltoppers  home ML: +230 -> +170  (28.5% -> 35.0%)  move=+6.5% [SHARP]
+  [LMA] Missouri St Bears vs Western Kentucky Hilltoppers  home ML: +170 -> +195  (35.0% -> 31.9%)  move=-3.1%
+  [LMA] Missouri St Bears vs Western Kentucky Hilltoppers  home ML: +195 -> -154  (31.9% -> 57.1%)  move=+25.2% [SHARP]
+  [EDGE] Missouri St Bears vs Western Kentucky Hilltoppers [draftkings]  model=51.5%  line=57.1%  gap=-5.6%  -> AWAY
+  [LMA] Missouri St Bears vs Western Kentucky Hilltoppers  home ML: +105 -> +220  (46.8% -> 29.5%)  move=-17.3% [SHARP]
+  [LMA] Missouri St Bears vs Western Kentucky Hilltoppers  home ML: +220 -> +140  (29.5% -> 39.3%)  move=+9.8% [SHARP]
+  [LMA] Missouri St Bears vs Western Kentucky Hilltoppers  home ML: +140 -> +175  (39.3% -> 34.4%)  move=-4.9% [SHARP]
+  [LMA] Missouri St Bears vs Western Kentucky Hilltoppers  home ML: +175 -> -140  (34.4% -> 55.1%)  move=+20.6% [SHARP]
+  [LMA] Michigan St Spartans vs Rutgers Scarlet Knights  home ML: -6500 -> -1600  (94.9% -> 89.4%)  move=-5.5% [SHARP]
+  [LMA] Michigan St Spartans vs Rutgers Scarlet Knights  home ML: -1600 -> -1050  (89.4% -> 86.5%)  move=-3.0%
+  [EDGE] Michigan St Spartans vs Rutgers Scarlet Knights [draftkings]  model=75.4%  line=86.5%  gap=-11.0%  -> AWAY
+  [LMA] Michigan St Spartans vs Rutgers Scarlet Knights  home ML: -5000 -> -1800  (93.2% -> 89.5%)  move=-3.7%
+  [LMA] Michigan St Spartans vs Rutgers Scarlet Knights  home ML: -1800 -> -1100  (89.5% -> 86.5%)  move=-3.0%
+  [EDGE] Michigan St Spartans vs Rutgers Scarlet Knights [fanduel]  model=75.4%  line=86.5%  gap=-11.1%  -> AWAY
+  [LMA] Michigan St Spartans vs Rutgers Scarlet Knights  home ML: -3000 -> -1000  (91.8% -> 86.0%)  move=-5.8% [SHARP]
+  [LMA] Michigan St Spartans vs Rutgers Scarlet Knights  home ML: -1000 -> -700  (86.0% -> 82.8%)  move=-3.2%
+  [EDGE] Michigan St Spartans vs Rutgers Scarlet Knights [betmgm]  model=75.4%  line=82.8%  gap=-7.4%  -> AWAY
+  [LMA] Tarleton State Texans vs UT-Arlington Mavericks  home ML: -125 -> -200  (53.1% -> 62.9%)  move=+9.8% [SHARP]
+  [LMA] Tarleton State Texans vs UT-Arlington Mavericks  home ML: -200 -> +100  (62.9% -> 47.1%)  move=-15.8% [SHARP]
+  [LMA] Tarleton State Texans vs UT-Arlington Mavericks  home ML: +100 -> -120  (47.1% -> 51.5%)  move=+4.3% [SHARP]
+  [LMA] Tarleton State Texans vs UT-Arlington Mavericks  home ML: -120 -> +108  (51.5% -> 45.3%)  move=-6.1% [SHARP]
+  [LMA] Tarleton State Texans vs UT-Arlington Mavericks  home ML: -130 -> -215  (54.3% -> 64.4%)  move=+10.1% [SHARP]
+  [LMA] Tarleton State Texans vs UT-Arlington Mavericks  home ML: -215 -> -120  (64.4% -> 51.0%)  move=-13.4% [SHARP]
+  [LMA] Tarleton State Texans vs UT-Arlington Mavericks  home ML: -120 -> -110  (51.0% -> 49.0%)  move=-2.0%
+  [LMA] Tarleton State Texans vs UT-Arlington Mavericks  home ML: -110 -> +100  (49.0% -> 46.9%)  move=-2.1%
+  [LMA] Tarleton State Texans vs UT-Arlington Mavericks  home ML: -125 -> -190  (53.2% -> 61.6%)  move=+8.4% [SHARP]
+  [LMA] Tarleton State Texans vs UT-Arlington Mavericks  home ML: -190 -> -110  (61.6% -> 50.0%)  move=-11.6% [SHARP]
+  [LMA] Tarleton State Texans vs UT-Arlington Mavericks  home ML: -110 -> -145  (50.0% -> 55.4%)  move=+5.4% [SHARP]
+  [EDGE] Tarleton State Texans vs UT-Arlington Mavericks [betmgm]  model=46.8%  line=55.1%  gap=-8.3%  -> AWAY
+  [LMA] Maryland-Eastern Shore Hawks vs Delaware St Hornets  home ML: -258 -> -160  (69.1% -> 58.0%)  move=-11.1% [SHARP]
+  [LMA] Maryland-Eastern Shore Hawks vs Delaware St Hornets  home ML: -160 -> -125  (58.0% -> 52.0%)  move=-5.9% [SHARP]
+  [LMA] Maryland-Eastern Shore Hawks vs Delaware St Hornets  home ML: -125 -> +100  (52.0% -> 46.9%)  move=-5.1% [SHARP]
+  [LMA] Maryland-Eastern Shore Hawks vs Delaware St Hornets  home ML: -250 -> -160  (68.2% -> 58.1%)  move=-10.1% [SHARP]
+  [LMA] Maryland-Eastern Shore Hawks vs Delaware St Hornets  home ML: -160 -> -120  (58.1% -> 51.6%)  move=-6.5% [SHARP]
+  [LMA] Maryland-Eastern Shore Hawks vs Delaware St Hornets  home ML: -120 -> +105  (51.6% -> 45.9%)  move=-5.7% [SHARP]
+  [EDGE] Maryland-Eastern Shore Hawks vs Delaware St Hornets [betmgm]  model=51.2%  line=45.9%  gap=+5.2%  -> HOME
+  [LMA] Maryland-Eastern Shore Hawks vs Delaware St Hornets  home ML: -260 -> -146  (68.8% -> 55.7%)  move=-13.1% [SHARP]
+  [LMA] Maryland-Eastern Shore Hawks vs Delaware St Hornets  home ML: -146 -> -125  (55.7% -> 52.1%)  move=-3.6%
+  [LMA] Maryland-Eastern Shore Hawks vs Delaware St Hornets  home ML: -125 -> +106  (52.1% -> 45.6%)  move=-6.6% [SHARP]
+  [EDGE] Maryland-Eastern Shore Hawks vs Delaware St Hornets [fanduel]  model=51.2%  line=45.6%  gap=+5.6%  -> HOME
+  [LMA] Norfolk St Spartans vs Howard Bison  home ML: +185 -> +150  (33.1% -> 37.7%)  move=+4.6% [SHARP]
+  [LMA] Norfolk St Spartans vs Howard Bison  home ML: +150 -> +130  (37.7% -> 41.1%)  move=+3.4%
+  [LMA] Norfolk St Spartans vs Howard Bison  home ML: +130 -> +160  (41.1% -> 36.2%)  move=-4.9% [SHARP]
+  [EDGE] Norfolk St Spartans vs Howard Bison [draftkings]  model=48.6%  line=36.2%  gap=+12.4%  -> HOME
+  [LMA] Norfolk St Spartans vs Howard Bison  home ML: +220 -> +160  (29.9% -> 36.2%)  move=+6.3% [SHARP]
+  [LMA] Norfolk St Spartans vs Howard Bison  home ML: +160 -> +135  (36.2% -> 40.1%)  move=+3.9%
+  [LMA] Norfolk St Spartans vs Howard Bison  home ML: +135 -> +170  (40.1% -> 35.0%)  move=-5.1% [SHARP]
+  [EDGE] Norfolk St Spartans vs Howard Bison [betmgm]  model=48.6%  line=35.0%  gap=+13.6%  -> HOME
+  [LMA] Norfolk St Spartans vs Howard Bison  home ML: +210 -> +235  (30.8% -> 28.5%)  move=-2.3%
+  [LMA] Norfolk St Spartans vs Howard Bison  home ML: +235 -> +165  (28.5% -> 35.4%)  move=+7.0% [SHARP]
+  [LMA] Norfolk St Spartans vs Howard Bison  home ML: +165 -> +114  (35.4% -> 43.9%)  move=+8.5% [SHARP]
+  [LMA] Norfolk St Spartans vs Howard Bison  home ML: +114 -> +165  (43.9% -> 35.4%)  move=-8.5% [SHARP]
+  [EDGE] Norfolk St Spartans vs Howard Bison [fanduel]  model=48.6%  line=35.4%  gap=+13.2%  -> HOME
+  [LMA] Fairfield Stags vs Manhattan Jaspers  home ML: -230 -> -192  (66.8% -> 62.9%)  move=-3.8%
+  [LMA] Fairfield Stags vs Manhattan Jaspers  home ML: -200 -> -310  (62.9% -> 71.4%)  move=+8.5% [SHARP]
+  [EDGE] Fairfield Stags vs Manhattan Jaspers [fanduel]  model=55.4%  line=71.4%  gap=-16.0%  -> AWAY
+  [LMA] Fairfield Stags vs Manhattan Jaspers  home ML: -220 -> -185  (65.8% -> 61.9%)  move=-3.9%
+  [LMA] Fairfield Stags vs Manhattan Jaspers  home ML: -210 -> -250  (63.8% -> 67.4%)  move=+3.6%
+  [EDGE] Fairfield Stags vs Manhattan Jaspers [betmgm]  model=55.4%  line=67.4%  gap=-12.0%  -> AWAY
+  [LMA] Southern Utah Thunderbirds vs Utah Valley Wolverines  home ML: +400 -> +550  (19.2% -> 14.6%)  move=-4.6% [SHARP]
+  [LMA] Southern Utah Thunderbirds vs Utah Valley Wolverines  home ML: +575 -> +700  (14.1% -> 11.9%)  move=-2.2%
+  [EDGE] Southern Utah Thunderbirds vs Utah Valley Wolverines [draftkings]  model=44.6%  line=11.9%  gap=+32.7%  -> HOME
+  [LMA] Southern Utah Thunderbirds vs Utah Valley Wolverines  home ML: +360 -> +650  (20.8% -> 12.6%)  move=-8.2% [SHARP]
+  [EDGE] Southern Utah Thunderbirds vs Utah Valley Wolverines [betmgm]  model=44.6%  line=13.5%  gap=+31.1%  -> HOME
+  [LMA] Southern Utah Thunderbirds vs Utah Valley Wolverines  home ML: +420 -> +560  (18.3% -> 14.2%)  move=-4.1% [SHARP]
+  [EDGE] Southern Utah Thunderbirds vs Utah Valley Wolverines [fanduel]  model=44.6%  line=11.1%  gap=+33.5%  -> HOME
+  [EDGE] Arkansas St Red Wolves vs Georgia Southern Eagles [draftkings]  model=55.6%  line=73.1%  gap=-17.5%  -> AWAY
+  [EDGE] Arkansas St Red Wolves vs Georgia Southern Eagles [fanduel]  model=55.6%  line=72.3%  gap=-16.7%  -> AWAY
+  [EDGE] Arkansas St Red Wolves vs Georgia Southern Eagles [betmgm]  model=55.6%  line=72.2%  gap=-16.6%  -> AWAY
+  [LMA] Morgan St Bears vs Coppin St Eagles  home ML: -270 -> -360  (70.0% -> 73.8%)  move=+3.8%
+  [LMA] Morgan St Bears vs Coppin St Eagles  home ML: -360 -> -230  (73.8% -> 65.7%)  move=-8.1% [SHARP]
+  [EDGE] Morgan St Bears vs Coppin St Eagles [draftkings]  model=50.0%  line=65.7%  gap=-15.7%  -> AWAY
+  [LMA] Morgan St Bears vs Coppin St Eagles  home ML: -250 -> -325  (68.2% -> 72.2%)  move=+4.0% [SHARP]
+  [LMA] Morgan St Bears vs Coppin St Eagles  home ML: -325 -> -210  (72.2% -> 63.8%)  move=-8.4% [SHARP]
+  [EDGE] Morgan St Bears vs Coppin St Eagles [betmgm]  model=50.0%  line=63.8%  gap=-13.8%  -> AWAY
+  [LMA] Morgan St Bears vs Coppin St Eagles  home ML: -290 -> -240  (70.7% -> 66.2%)  move=-4.5% [SHARP]
+  [EDGE] Morgan St Bears vs Coppin St Eagles [fanduel]  model=50.0%  line=66.2%  gap=-16.2%  -> AWAY
+  [LMA] Texas Southern Tigers vs Prairie View Panthers  home ML: -135 -> -245  (55.1% -> 66.9%)  move=+11.8% [SHARP]
+  [EDGE] Texas Southern Tigers vs Prairie View Panthers [draftkings]  model=49.9%  line=66.9%  gap=-17.0%  -> AWAY
+  [LMA] Texas Southern Tigers vs Prairie View Panthers  home ML: -130 -> -210  (53.1% -> 63.8%)  move=+10.7% [SHARP]
+  [EDGE] Texas Southern Tigers vs Prairie View Panthers [betmgm]  model=49.9%  line=63.8%  gap=-13.9%  -> AWAY
+  [LMA] Texas Southern Tigers vs Prairie View Panthers  home ML: -128 -> -255  (53.6% -> 67.4%)  move=+13.8% [SHARP]
+  [EDGE] Texas Southern Tigers vs Prairie View Panthers [fanduel]  model=49.9%  line=67.4%  gap=-17.5%  -> AWAY
+  [LMA] Jackson St Tigers vs Miss Valley St Delta Devils  home ML: -800 -> -575  (85.2% -> 81.7%)  move=-3.5%
+  [LMA] Jackson St Tigers vs Miss Valley St Delta Devils  home ML: -575 -> -375  (81.7% -> 74.5%)  move=-7.2% [SHARP]
+  [EDGE] Jackson St Tigers vs Miss Valley St Delta Devils [draftkings]  model=52.6%  line=74.5%  gap=-21.9%  -> AWAY
+  [LMA] Jackson St Tigers vs Miss Valley St Delta Devils  home ML: -750 -> -625  (84.7% -> 81.2%)  move=-3.5%
+  [EDGE] Jackson St Tigers vs Miss Valley St Delta Devils [betmgm]  model=52.6%  line=81.2%  gap=-28.5%  -> AWAY
+  [LMA] Jackson St Tigers vs Miss Valley St Delta Devils  home ML: -820 -> -670  (85.3% -> 83.2%)  move=-2.1%
+  [LMA] Jackson St Tigers vs Miss Valley St Delta Devils  home ML: -670 -> -460  (83.2% -> 77.1%)  move=-6.1% [SHARP]
+  [EDGE] Jackson St Tigers vs Miss Valley St Delta Devils [fanduel]  model=52.6%  line=77.1%  gap=-24.5%  -> AWAY
+  [LMA] Alabama St Hornets vs Grambling St Tigers  home ML: -145 -> -190  (56.3% -> 61.6%)  move=+5.3% [SHARP]
+  [EDGE] Alabama St Hornets vs Grambling St Tigers [betmgm]  model=51.0%  line=61.6%  gap=-10.6%  -> AWAY
+  [LMA] Alabama St Hornets vs Grambling St Tigers  home ML: -128 -> -140  (53.4% -> 55.8%)  move=+2.4%
+  [LMA] Alabama St Hornets vs Grambling St Tigers  home ML: -140 -> -198  (55.8% -> 62.4%)  move=+6.7% [SHARP]
+  [EDGE] Alabama St Hornets vs Grambling St Tigers [fanduel]  model=51.0%  line=62.4%  gap=-11.4%  -> AWAY
+  [EDGE] Alabama A&M Bulldogs vs Southern Jaguars [draftkings]  model=55.2%  line=49.6%  gap=+5.6%  -> HOME
+  [EDGE] Alabama A&M Bulldogs vs Southern Jaguars [betmgm]  model=55.2%  line=50.0%  gap=+5.2%  -> HOME
+  [EDGE] Alcorn St Braves vs Arkansas-Pine Bluff Golden Lions [draftkings]  model=53.7%  line=47.8%  gap=+5.8%  -> HOME
+  [LMA] Alcorn St Braves vs Arkansas-Pine Bluff Golden Lions  home ML: -105 -> +105  (48.9% -> 46.8%)  move=-2.2%
+  [EDGE] Alcorn St Braves vs Arkansas-Pine Bluff Golden Lions [betmgm]  model=53.7%  line=46.8%  gap=+6.9%  -> HOME
+  [EDGE] Alcorn St Braves vs Arkansas-Pine Bluff Golden Lions [fanduel]  model=53.7%  line=47.6%  gap=+6.0%  -> HOME
+  [EDGE] New Mexico St Aggies vs Jacksonville St Gamecocks [draftkings]  model=50.0%  line=69.6%  gap=-19.5%  -> AWAY
+  [EDGE] New Mexico St Aggies vs Jacksonville St Gamecocks [betmgm]  model=50.0%  line=70.1%  gap=-20.1%  -> AWAY
+  [EDGE] New Mexico St Aggies vs Jacksonville St Gamecocks [fanduel]  model=50.0%  line=69.1%  gap=-19.1%  -> AWAY
+  [LMA] UTEP Miners vs Kennesaw St Owls  home ML: +124 -> +154  (42.8% -> 37.8%)  move=-5.0% [SHARP]
+  [EDGE] UTEP Miners vs Kennesaw St Owls [draftkings]  model=53.8%  line=37.8%  gap=+16.1%  -> HOME
+  [LMA] UTEP Miners vs Kennesaw St Owls  home ML: +125 -> +145  (42.5% -> 39.1%)  move=-3.5%
+  [EDGE] UTEP Miners vs Kennesaw St Owls [betmgm]  model=53.8%  line=39.1%  gap=+14.7%  -> HOME
+  [LMA] UTEP Miners vs Kennesaw St Owls  home ML: +122 -> +142  (43.1% -> 39.5%)  move=-3.6%
+  [EDGE] UTEP Miners vs Kennesaw St Owls [fanduel]  model=53.8%  line=39.5%  gap=+14.3%  -> HOME
+  [LMA] Memphis Tigers vs South Florida Bulls  home ML: +202 -> +250  (31.7% -> 27.4%)  move=-4.3% [SHARP]
+  [EDGE] Memphis Tigers vs South Florida Bulls [fanduel]  model=39.4%  line=26.2%  gap=+13.2%  -> HOME
+  [LMA] Memphis Tigers vs South Florida Bulls  home ML: +230 -> +260  (29.0% -> 26.7%)  move=-2.4%
+  [EDGE] Memphis Tigers vs South Florida Bulls [draftkings]  model=39.4%  line=26.7%  gap=+12.8%  -> HOME
+  [LMA] Memphis Tigers vs South Florida Bulls  home ML: +225 -> +260  (29.6% -> 26.7%)  move=-2.9%
+  [EDGE] Memphis Tigers vs South Florida Bulls [betmgm]  model=39.4%  line=26.7%  gap=+12.8%  -> HOME
+  [LMA] Portland Pilots vs Pepperdine Waves  home ML: -135 -> -162  (55.1% -> 59.3%)  move=+4.2% [SHARP]
+  [EDGE] Portland Pilots vs Pepperdine Waves [draftkings]  model=55.0%  line=60.4%  gap=-5.4%  -> AWAY
+  [LMA] Portland Pilots vs Pepperdine Waves  home ML: -140 -> -160  (55.6% -> 59.1%)  move=+3.5%
+  [EDGE] Portland Pilots vs Pepperdine Waves [betmgm]  model=55.0%  line=60.2%  gap=-5.2%  -> AWAY
+  [LMA] Portland Pilots vs Pepperdine Waves  home ML: -137 -> -166  (55.3% -> 59.8%)  move=+4.5% [SHARP]
+  [EDGE] CSU Bakersfield Roadrunners vs CSU Northridge Matadors [draftkings]  model=40.7%  line=23.4%  gap=+17.3%  -> HOME
+  [LMA] CSU Bakersfield Roadrunners vs CSU Northridge Matadors  home ML: +260 -> +310  (26.7% -> 23.4%)  move=-3.3%
+  [EDGE] CSU Bakersfield Roadrunners vs CSU Northridge Matadors [betmgm]  model=40.7%  line=23.4%  gap=+17.4%  -> HOME
+  [EDGE] CSU Bakersfield Roadrunners vs CSU Northridge Matadors [fanduel]  model=40.7%  line=22.7%  gap=+18.0%  -> HOME
+  [EDGE] Northern Iowa Panthers vs Evansville Purple Aces [fanduel]  model=54.6%  line=91.1%  gap=-36.5%  -> AWAY
+  [EDGE] Northern Iowa Panthers vs Evansville Purple Aces [draftkings]  model=54.6%  line=89.9%  gap=-35.3%  -> AWAY
+  [EDGE] Northern Iowa Panthers vs Evansville Purple Aces [betmgm]  model=54.6%  line=89.4%  gap=-34.8%  -> AWAY
+  [LMA] SE Missouri St Redhawks vs Lindenwood Lions  home ML: -192 -> -162  (63.1% -> 59.3%)  move=-3.7%
+  [EDGE] SE Missouri St Redhawks vs Lindenwood Lions [draftkings]  model=51.0%  line=59.3%  gap=-8.3%  -> AWAY
+  [LMA] SE Missouri St Redhawks vs Lindenwood Lions  home ML: -178 -> -146  (61.2% -> 57.2%)  move=-4.0%
+  [EDGE] SE Missouri St Redhawks vs Lindenwood Lions [fanduel]  model=51.0%  line=57.2%  gap=-6.1%  -> AWAY
+  [LMA] SE Missouri St Redhawks vs Lindenwood Lions  home ML: -190 -> -160  (62.6% -> 59.1%)  move=-3.4%
+  [EDGE] SE Missouri St Redhawks vs Lindenwood Lions [betmgm]  model=51.0%  line=59.1%  gap=-8.1%  -> AWAY
+  [EDGE] St. Thomas (MN) Tommies vs South Dakota St Jackrabbits [fanduel]  model=54.5%  line=65.8%  gap=-11.3%  -> AWAY
+  [EDGE] St. Thomas (MN) Tommies vs South Dakota St Jackrabbits [draftkings]  model=54.5%  line=67.5%  gap=-13.0%  -> AWAY
+  [EDGE] St. Thomas (MN) Tommies vs South Dakota St Jackrabbits [betmgm]  model=54.5%  line=65.8%  gap=-11.3%  -> AWAY
+  [EDGE] Cal Baptist Lancers vs Abilene Christian Wildcats [draftkings]  model=50.3%  line=80.4%  gap=-30.1%  -> AWAY
+  [EDGE] Cal Baptist Lancers vs Abilene Christian Wildcats [betmgm]  model=50.3%  line=79.8%  gap=-29.5%  -> AWAY
+  [EDGE] Cal Baptist Lancers vs Abilene Christian Wildcats [fanduel]  model=50.3%  line=81.3%  gap=-31.0%  -> AWAY
+  [EDGE] CSU Fullerton Titans vs UC San Diego Tritons [draftkings]  model=51.3%  line=39.1%  gap=+12.2%  -> HOME
+  [EDGE] CSU Fullerton Titans vs UC San Diego Tritons [betmgm]  model=51.3%  line=39.8%  gap=+11.5%  -> HOME
+  [EDGE] CSU Fullerton Titans vs UC San Diego Tritons [fanduel]  model=51.3%  line=39.3%  gap=+12.0%  -> HOME
+  [EDGE] UC Irvine Anteaters vs Cal Poly Mustangs [fanduel]  model=50.2%  line=78.3%  gap=-28.1%  -> AWAY
+  [EDGE] UC Irvine Anteaters vs Cal Poly Mustangs [draftkings]  model=50.2%  line=78.7%  gap=-28.5%  -> AWAY
+  [EDGE] UC Irvine Anteaters vs Cal Poly Mustangs [betmgm]  model=50.2%  line=78.3%  gap=-28.1%  -> AWAY
+  [EDGE] Loyola Marymount Lions vs San Diego Toreros [fanduel]  model=52.2%  line=67.9%  gap=-15.7%  -> AWAY
+  [EDGE] Loyola Marymount Lions vs San Diego Toreros [draftkings]  model=52.2%  line=68.1%  gap=-15.9%  -> AWAY
+  [EDGE] Loyola Marymount Lions vs San Diego Toreros [betmgm]  model=52.2%  line=68.2%  gap=-16.0%  -> AWAY
+  [EDGE] Hawai'i Rainbow Warriors vs UC Riverside Highlanders [fanduel]  model=62.7%  line=85.0%  gap=-22.4%  -> AWAY
+  [EDGE] Hawai'i Rainbow Warriors vs UC Riverside Highlanders [draftkings]  model=62.7%  line=85.2%  gap=-22.6%  -> AWAY
+  [EDGE] Hawai'i Rainbow Warriors vs UC Riverside Highlanders [betmgm]  model=62.7%  line=84.7%  gap=-22.0%  -> AWAY
+  [EDGE] Central Arkansas Bears vs Bellarmine Knights [fanduel]  model=53.6%  line=68.3%  gap=-14.7%  -> AWAY
+  [EDGE] Central Arkansas Bears vs Bellarmine Knights [draftkings]  model=53.6%  line=70.5%  gap=-16.9%  -> AWAY
+  [EDGE] High Point Panthers vs Gardner-Webb Bulldogs [fanduel]  model=59.9%  line=96.1%  gap=-36.2%  -> AWAY
+  [EDGE] High Point Panthers vs Gardner-Webb Bulldogs [draftkings]  model=59.9%  line=96.8%  gap=-37.0%  -> AWAY
+  [EDGE] Belmont Bruins vs Drake Bulldogs [fanduel]  model=54.8%  line=82.0%  gap=-27.1%  -> AWAY
+  [EDGE] North Carolina A&T Aggies vs Northeastern Huskies [fanduel]  model=55.5%  line=50.3%  gap=+5.1%  -> HOME
+  [EDGE] Winthrop Eagles vs Charleston Southern Buccaneers [fanduel]  model=47.6%  line=61.7%  gap=-14.2%  -> AWAY
+  [LMA] Winthrop Eagles vs Charleston Southern Buccaneers  home ML: -218 -> -180  (65.8% -> 61.6%)  move=-4.1% [SHARP]
+  [EDGE] Winthrop Eagles vs Charleston Southern Buccaneers [draftkings]  model=47.6%  line=61.6%  gap=-14.1%  -> AWAY
+  [EDGE] Lipscomb Bisons vs Florida Gulf Coast Eagles [draftkings]  model=54.3%  line=62.3%  gap=-8.0%  -> AWAY
+  [EDGE] Austin Peay Governors vs Stetson Hatters [fanduel]  model=54.5%  line=79.4%  gap=-25.0%  -> AWAY
+  [EDGE] Austin Peay Governors vs Stetson Hatters [draftkings]  model=54.5%  line=80.0%  gap=-25.5%  -> AWAY
+  [EDGE] Chattanooga Mocs vs The Citadel Bulldogs [fanduel]  model=52.9%  line=70.1%  gap=-17.2%  -> AWAY
+  [EDGE] Chattanooga Mocs vs The Citadel Bulldogs [draftkings]  model=52.9%  line=71.4%  gap=-18.5%  -> AWAY
+  [EDGE] Akron Zips vs Northern Illinois Huskies [fanduel]  model=53.5%  line=94.3%  gap=-40.8%  -> AWAY
+  [EDGE] UNC Asheville Bulldogs vs Longwood Lancers [fanduel]  model=69.7%  line=48.3%  gap=+21.4%  -> HOME
+  [EDGE] UNC Asheville Bulldogs vs Longwood Lancers [draftkings]  model=69.7%  line=48.3%  gap=+21.4%  -> HOME
+  [EDGE] Merrimack Warriors vs Sacred Heart Pioneers [fanduel]  model=52.0%  line=69.6%  gap=-17.5%  -> AWAY
+  [EDGE] Eastern Michigan Eagles vs Bowling Green Falcons [fanduel]  model=47.1%  line=40.6%  gap=+6.5%  -> HOME
+  [EDGE] Eastern Michigan Eagles vs Bowling Green Falcons [betmgm]  model=47.1%  line=40.6%  gap=+6.5%  -> HOME
+  [LMA] Ball State Cardinals vs Central Michigan Chippewas  home ML: -115 -> -125  (51.1% -> 53.2%)  move=+2.2%
+  [LMA] Brown Bears vs Pennsylvania Quakers  home ML: +115 -> +125  (44.4% -> 42.2%)  move=-2.1%
+  [EDGE] Toledo Rockets vs Buffalo Bulls [fanduel]  model=48.1%  line=71.0%  gap=-22.8%  -> AWAY
+  [LMA] Toledo Rockets vs Buffalo Bulls  home ML: -295 -> -350  (71.1% -> 74.5%)  move=+3.3%
+  [EDGE] Toledo Rockets vs Buffalo Bulls [betmgm]  model=48.1%  line=74.5%  gap=-26.3%  -> AWAY
+  [EDGE] Harvard Crimson vs Columbia Lions [betmgm]  model=53.7%  line=62.6%  gap=-8.9%  -> AWAY
+  [EDGE] Kent State Golden Flashes vs Western Michigan Broncos [fanduel]  model=51.1%  line=80.5%  gap=-29.4%  -> AWAY
+  [EDGE] Kent State Golden Flashes vs Western Michigan Broncos [betmgm]  model=51.1%  line=82.6%  gap=-31.5%  -> AWAY
+  [EDGE] South Dakota Coyotes vs Omaha Mavericks [draftkings]  model=50.0%  line=42.8%  gap=+7.2%  -> HOME
+  [EDGE] Queens University Royals vs West Georgia Wolves [fanduel]  model=51.4%  line=68.3%  gap=-16.9%  -> AWAY
+  [EDGE] Queens University Royals vs West Georgia Wolves [draftkings]  model=51.4%  line=69.6%  gap=-18.1%  -> AWAY
+  [LMA] UNC Greensboro Spartans vs VMI Keydets  home ML: -345 -> -290  (74.4% -> 71.4%)  move=-3.0%
+  [EDGE] West Virginia Mountaineers vs UCF Knights [fanduel]  model=46.6%  line=58.0%  gap=-11.4%  -> AWAY
+  [EDGE] West Virginia Mountaineers vs UCF Knights [betmgm]  model=46.6%  line=59.4%  gap=-12.8%  -> AWAY
+  [EDGE] Radford Highlanders vs Presbyterian Blue Hose [draftkings]  model=51.0%  line=56.4%  gap=-5.4%  -> AWAY
+  [LMA] Ohio Bobcats vs Miami (OH) RedHawks  home ML: +230 -> +205  (29.0% -> 31.5%)  move=+2.4%
+  [EDGE] North Dakota Fighting Hawks vs Denver Pioneers [fanduel]  model=50.2%  line=38.8%  gap=+11.4%  -> HOME
+  [EDGE] North Dakota Fighting Hawks vs Denver Pioneers [draftkings]  model=50.2%  line=36.3%  gap=+13.9%  -> HOME
+  [EDGE] San Diego St Aztecs vs UNLV Rebels [fanduel]  model=51.2%  line=78.7%  gap=-27.5%  -> AWAY
+  [EDGE] San Diego St Aztecs vs UNLV Rebels [betmgm]  model=51.2%  line=80.9%  gap=-29.7%  -> AWAY
+  [EDGE] Missouri Tigers vs Arkansas Razorbacks [fanduel]  model=35.6%  line=42.0%  gap=-6.4%  -> AWAY
+  processed 165 odds records for 69 games
+  [CLV] Liberty Flames vs Louisiana Tech Bulldogs [draftkings]  model=48.8%  open=78.7%  close=3.7%  CLV=++45.1%  outcome=L
+  sleeping 30 min...
+
+[2026-03-06T02:16:46.836505+00:00] fetching odds...
+  [error] Could not find a suitable TLS CA certificate bundle, invalid path: /home/deep/march-madness/.venv/lib/python3.14/site-packages/certifi/cacert.pem
+  sleeping 30 min...
+
+[2026-03-06T02:46:46.842756+00:00] fetching odds...
+  [error] Could not find a suitable TLS CA certificate bundle, invalid path: /home/deep/march-madness/.venv/lib/python3.14/site-packages/certifi/cacert.pem
+  sleeping 30 min...
+
+[2026-03-06T03:16:46.849280+00:00] fetching odds...
+  [error] Could not find a suitable TLS CA certificate bundle, invalid path: /home/deep/march-madness/.venv/lib/python3.14/site-packages/certifi/cacert.pem
+  sleeping 30 min...
+
+[2026-03-06T03:46:46.855832+00:00] fetching odds...
+  [error] Could not find a suitable TLS CA certificate bundle, invalid path: /home/deep/march-madness/.venv/lib/python3.14/site-packages/certifi/cacert.pem
+  sleeping 30 min...
+
+[2026-03-06T04:16:46.862682+00:00] fetching odds...
+  [error] Could not find a suitable TLS CA certificate bundle, invalid path: /home/deep/march-madness/.venv/lib/python3.14/site-packages/certifi/cacert.pem
+  sleeping 30 min...
+
+[2026-03-06T04:46:46.874389+00:00] fetching odds...
+  [error] Could not find a suitable TLS CA certificate bundle, invalid path: /home/deep/march-madness/.venv/lib/python3.14/site-packages/certifi/cacert.pem
+  sleeping 30 min...
+
+[2026-03-06T05:16:46.880685+00:00] fetching odds...
+  [error] Could not find a suitable TLS CA certificate bundle, invalid path: /home/deep/march-madness/.venv/lib/python3.14/site-packages/certifi/cacert.pem
+  sleeping 30 min...
