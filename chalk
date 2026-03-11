@@ -1,0 +1,318 @@
+#!/usr/bin/env python3
+"""
+chalk — ChalkIQ command-line interface.
+
+Central hub for all ChalkIQ tools. Run `./chalk` or `python chalk` to see commands.
+
+Usage:
+    ./chalk slate                     Today's betting slate
+    ./chalk player "Cameron Boozer"   Player profile card
+    ./chalk leaders --top 50          Player leaderboard
+    ./chalk team "Duke"               Team roster overview
+    ./chalk backtest                   Run Elo backtest
+    ./chalk odds                      Poll live odds
+    ./chalk props                     Poll player props
+    ./chalk injuries                  Poll injury reports
+    ./chalk boxscores                 Fetch latest boxscores
+    ./chalk clv-backfill              Backfill historical CLV
+    ./chalk status                    System health check
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+SCRIPTS = ROOT / "scripts"
+VENV_PYTHON = ROOT / ".venv" / "bin" / "python"
+
+# Use venv python if available, otherwise system python
+PYTHON = str(VENV_PYTHON) if VENV_PYTHON.exists() else sys.executable
+
+BOLD   = "\033[1m"
+DIM    = "\033[2m"
+CYAN   = "\033[96m"
+GREEN  = "\033[92m"
+YELLOW = "\033[93m"
+RED    = "\033[91m"
+RESET  = "\033[0m"
+
+
+def _run(script: str, extra_args: list[str] | None = None) -> int:
+    """Run a script with the venv python, passing through extra args."""
+    cmd = [PYTHON, str(SCRIPTS / script)] + (extra_args or [])
+    env = os.environ.copy()
+    env.setdefault("PYTHONDONTWRITEBYTECODE", "1")
+    return subprocess.call(cmd, env=env, cwd=str(ROOT))
+
+
+def cmd_slate(args: argparse.Namespace) -> int:
+    extra = []
+    if args.min_edge:
+        extra += ["--min-edge", str(args.min_edge)]
+    if args.top:
+        extra += ["--top", str(args.top)]
+    if args.division:
+        extra += ["--division", args.division]
+    if args.no_fetch:
+        extra += ["--no-fetch"]
+    return _run("daily_slate.py", extra)
+
+
+def cmd_player(args: argparse.Namespace) -> int:
+    extra = [args.name]
+    if args.division:
+        extra += ["--division", args.division]
+    if args.min_games:
+        extra += ["--min-games", str(args.min_games)]
+    return _run("player_profile.py", extra)
+
+
+def cmd_leaders(args: argparse.Namespace) -> int:
+    extra = ["--top", str(args.top)]
+    if args.sort:
+        extra += ["--sort", args.sort]
+    if args.position:
+        extra += ["--position", args.position]
+    if args.division:
+        extra += ["--division", args.division]
+    if args.min_games:
+        extra += ["--min-games", str(args.min_games)]
+    return _run("player_profile.py", extra)
+
+
+def cmd_team(args: argparse.Namespace) -> int:
+    extra = ["--team", args.name]
+    if args.division:
+        extra += ["--division", args.division]
+    if args.min_games:
+        extra += ["--min-games", str(args.min_games)]
+    return _run("player_profile.py", extra)
+
+
+def cmd_backtest(args: argparse.Namespace) -> int:
+    extra = []
+    if args.seasons:
+        extra += ["--seasons"] + [str(s) for s in args.seasons]
+    if args.min_edge:
+        extra += ["--min-edge", str(args.min_edge)]
+    return _run("backtest.py", extra)
+
+
+def cmd_odds(args: argparse.Namespace) -> int:
+    extra = []
+    if args.once:
+        extra += ["--once"]
+    return _run("poll_odds.py", extra)
+
+
+def cmd_props(args: argparse.Namespace) -> int:
+    extra = []
+    if args.once:
+        extra += ["--once"]
+    return _run("poll_props.py", extra)
+
+
+def cmd_injuries(args: argparse.Namespace) -> int:
+    extra = []
+    if args.once:
+        extra += ["--once"]
+    return _run("poll_injuries.py", extra)
+
+
+def cmd_boxscores(args: argparse.Namespace) -> int:
+    extra = []
+    if args.division:
+        extra += ["--division", args.division]
+    return _run("fetch_boxscores.py", extra)
+
+
+def cmd_clv_backfill(args: argparse.Namespace) -> int:
+    extra = []
+    if args.seasons:
+        extra += ["--seasons"] + [str(s) for s in args.seasons]
+    if args.start_date:
+        extra += ["--start-date", args.start_date]
+    if args.dry_run:
+        extra += ["--dry-run"]
+    return _run("fetch_historical_clv.py", extra)
+
+
+def cmd_status(_args: argparse.Namespace) -> int:
+    """Quick health check: what data exists, how fresh is it."""
+    print(f"\n{BOLD}  ChalkIQ Status{RESET}")
+    print(f"  {'─' * 50}")
+
+    # Boxscores
+    box_dir = ROOT / "data" / "raw" / "mens" / "boxscores"
+    n_box = len(list(box_dir.glob("*.json"))) if box_dir.exists() else 0
+    latest_box = ""
+    if n_box:
+        files = sorted(box_dir.glob("*.json"))
+        latest_box = files[-1].stem[:10]
+    print(f"  Boxscores:        {GREEN}{n_box}{RESET} files  (latest: {latest_box})")
+
+    # Raw game data
+    raw_dir = ROOT / "data" / "raw"
+    n_raw = len(list(raw_dir.glob("*.json")))
+    print(f"  Raw game JSONs:   {GREEN}{n_raw}{RESET} files")
+
+    # CLV records
+    clv_file = ROOT / "data" / "odds" / "clv.jsonl"
+    hist_clv = ROOT / "data" / "odds" / "historical_clv.jsonl"
+    n_clv = sum(1 for _ in open(clv_file)) if clv_file.exists() else 0
+    n_hist = sum(1 for _ in open(hist_clv)) if hist_clv.exists() else 0
+    print(f"  CLV records:      {GREEN}{n_clv}{RESET} live  +  {GREEN}{n_hist}{RESET} historical")
+
+    # Odds cache
+    odds_dir = ROOT / "data" / "odds"
+    if odds_dir.exists():
+        n_odds = len(list(odds_dir.glob("*.jsonl")))
+        print(f"  Odds JSONL files: {GREEN}{n_odds}{RESET}")
+
+    # Injury alerts
+    inj_file = ROOT / "data" / "odds" / "injuries.jsonl"
+    n_inj = sum(1 for _ in open(inj_file)) if inj_file.exists() else 0
+    print(f"  Injury alerts:    {GREEN}{n_inj}{RESET}")
+
+    # API key — read .env directly without requiring dotenv
+    key = os.environ.get("ODDS_API_KEY", "")
+    if not key:
+        env_file = ROOT / ".env"
+        if env_file.exists():
+            for line in env_file.read_text().splitlines():
+                if line.startswith("ODDS_API_KEY="):
+                    key = line.split("=", 1)[1].strip()
+    key_status = f"{GREEN}set{RESET} ({key[:8]}...)" if key else f"{RED}NOT SET{RESET}"
+    print(f"  Odds API key:     {key_status}")
+
+    # Venv
+    venv_ok = VENV_PYTHON.exists()
+    venv_str = f"{GREEN}OK{RESET}" if venv_ok else f"{RED}missing{RESET} (.venv not found)"
+    print(f"  Python venv:      {venv_str}")
+
+    print(f"  {'─' * 50}\n")
+    return 0
+
+
+BANNER = f"""
+{CYAN}{BOLD}  ╔═══════════════════════════════════╗
+  ║         ChalkIQ CLI               ║
+  ╚═══════════════════════════════════╝{RESET}
+"""
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        prog="chalk",
+        description="ChalkIQ — NCAA basketball analytics CLI",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=f"""
+{BOLD}Commands:{RESET}
+  {CYAN}slate{RESET}          Today's betting slate overview
+  {CYAN}player{RESET}         Full player profile card
+  {CYAN}leaders{RESET}        Player leaderboard (top N)
+  {CYAN}team{RESET}           Team roster overview
+  {CYAN}backtest{RESET}       Run Elo model backtest
+  {CYAN}odds{RESET}           Poll live moneylines
+  {CYAN}props{RESET}          Poll player props
+  {CYAN}injuries{RESET}       Poll ESPN injury reports
+  {CYAN}boxscores{RESET}      Fetch latest boxscores
+  {CYAN}clv-backfill{RESET}   Backfill historical CLV data
+  {CYAN}status{RESET}         System health check
+
+{DIM}Examples:{RESET}
+  ./chalk slate --min-edge 5
+  ./chalk player "Cameron Boozer"
+  ./chalk leaders --top 20 --sort ppg
+  ./chalk team "Duke"
+  ./chalk backtest --seasons 2025 2026
+  ./chalk status
+""",
+    )
+    sub = parser.add_subparsers(dest="command")
+
+    # slate
+    p = sub.add_parser("slate", help="Today's betting slate")
+    p.add_argument("--min-edge", type=float, default=None)
+    p.add_argument("--top", type=int, default=None)
+    p.add_argument("--division", default=None)
+    p.add_argument("--no-fetch", action="store_true")
+    p.set_defaults(func=cmd_slate)
+
+    # player
+    p = sub.add_parser("player", help="Player profile card")
+    p.add_argument("name", help="Player name (fuzzy match)")
+    p.add_argument("--division", default=None)
+    p.add_argument("--min-games", type=int, default=None)
+    p.set_defaults(func=cmd_player)
+
+    # leaders
+    p = sub.add_parser("leaders", help="Player leaderboard")
+    p.add_argument("--top", type=int, default=50)
+    p.add_argument("--sort", default=None, choices=["elo", "off_eff", "def_imp", "ppg", "game_score"])
+    p.add_argument("--position", default=None, choices=["G", "F", "C"])
+    p.add_argument("--division", default=None)
+    p.add_argument("--min-games", type=int, default=None)
+    p.set_defaults(func=cmd_leaders)
+
+    # team
+    p = sub.add_parser("team", help="Team roster overview")
+    p.add_argument("name", help="Team name (fuzzy match)")
+    p.add_argument("--division", default=None)
+    p.add_argument("--min-games", type=int, default=None)
+    p.set_defaults(func=cmd_team)
+
+    # backtest
+    p = sub.add_parser("backtest", help="Run Elo backtest")
+    p.add_argument("--seasons", nargs="+", type=int, default=None)
+    p.add_argument("--min-edge", type=float, default=None)
+    p.set_defaults(func=cmd_backtest)
+
+    # odds
+    p = sub.add_parser("odds", help="Poll live odds")
+    p.add_argument("--once", action="store_true")
+    p.set_defaults(func=cmd_odds)
+
+    # props
+    p = sub.add_parser("props", help="Poll player props")
+    p.add_argument("--once", action="store_true")
+    p.set_defaults(func=cmd_props)
+
+    # injuries
+    p = sub.add_parser("injuries", help="Poll injury reports")
+    p.add_argument("--once", action="store_true")
+    p.set_defaults(func=cmd_injuries)
+
+    # boxscores
+    p = sub.add_parser("boxscores", help="Fetch latest boxscores")
+    p.add_argument("--division", default=None)
+    p.set_defaults(func=cmd_boxscores)
+
+    # clv-backfill
+    p = sub.add_parser("clv-backfill", help="Backfill historical CLV")
+    p.add_argument("--seasons", nargs="+", type=int, default=None)
+    p.add_argument("--start-date", default=None)
+    p.add_argument("--dry-run", action="store_true")
+    p.set_defaults(func=cmd_clv_backfill)
+
+    # status
+    p = sub.add_parser("status", help="System health check")
+    p.set_defaults(func=cmd_status)
+
+    args = parser.parse_args()
+
+    if not args.command:
+        print(BANNER)
+        parser.print_help()
+        return 0
+
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

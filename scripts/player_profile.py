@@ -274,14 +274,15 @@ def find_player(engine: PlayerEloEngine, query: str) -> list[str]:
     return matches
 
 
-def find_team(engine: PlayerEloEngine, query: str) -> str | None:
-    """Fuzzy match a team name. Returns team_id or None."""
+def find_team(query: str, games: list[dict]) -> str | None:
+    """Fuzzy match a team name from game data. Returns team_id or None."""
     q = query.lower().strip()
-    # Check engine.names from team Elo if available, otherwise use player teams
-    # We only have player team_ids, so collect unique team names from boxscore data
-    # Actually, the player engine stores team_id not team_name. We need to search
-    # the raw boxscore data for team names.
-    return q  # placeholder — we match below in context
+    for g in games:
+        if q in g.get("home_name", "").lower():
+            return g.get("home_id")
+        if q in g.get("away_name", "").lower():
+            return g.get("away_id")
+    return None
 
 
 def find_team_players(engine: PlayerEloEngine, team_query: str,
@@ -297,11 +298,9 @@ def find_team_players(engine: PlayerEloEngine, team_query: str,
 
     # Fuzzy match team
     matched_tid = None
-    matched_name = None
     for tid, tname in team_names.items():
         if q in tname.lower() or q == tid:
             matched_tid = tid
-            matched_name = tname
             break
 
     if not matched_tid:
@@ -319,7 +318,7 @@ def find_team_players(engine: PlayerEloEngine, team_query: str,
 # ── Display: single player profile ───────────────────────────────────────── #
 
 def print_profile(engine: PlayerEloEngine, player_id: str,
-                  all_stats: dict[str, dict], box_index: dict[str, list[dict]],
+                  all_stats: dict[str, dict],
                   games: list[dict]) -> None:
     """Print full player profile card."""
     s = all_stats.get(player_id)
@@ -489,7 +488,7 @@ SORT_KEYS = {
 
 def print_leaderboard(all_stats: dict[str, dict], top_n: int, sort_by: str,
                       team_filter: str | None, pos_filter: str | None,
-                      engine: PlayerEloEngine, games: list[dict]) -> None:
+                      games: list[dict]) -> None:
     """Print leaderboard table."""
     # Resolve team names
     team_names: dict[str, str] = {}
@@ -525,7 +524,7 @@ def print_leaderboard(all_stats: dict[str, dict], top_n: int, sort_by: str,
     aligns = ["r", "l", "l", "l", "r", "r", "r", "r", "r", "r", "r", "r"]
     rows = []
     for i, p in enumerate(players, 1):
-        tname = team_names.get(p["team"], p["team"])
+        tname = team_names.get(p["team"]) or p["team"]
         # Truncate long team names
         if len(tname) > 18:
             tname = tname[:17] + "."
@@ -550,7 +549,7 @@ def print_leaderboard(all_stats: dict[str, dict], top_n: int, sort_by: str,
 
 # ── Display: team roster ──────────────────────────────────────────────────── #
 
-def print_team_roster(engine: PlayerEloEngine, team_id: str, player_ids: list[str],
+def print_team_roster(team_id: str, player_ids: list[str],
                       all_stats: dict[str, dict], games: list[dict]) -> None:
     """Print all players on a team as a mini-leaderboard."""
     team_names: dict[str, str] = {}
@@ -652,14 +651,14 @@ Examples:
         if args.position:
             player_ids = [pid for pid in player_ids
                           if engine.positions.get(pid) == args.position.upper()]
-        print_team_roster(engine, team_id, player_ids, all_stats, games)
+        print_team_roster(team_id, player_ids, all_stats, games)
         return
 
     # ── Leaderboard mode ──────────────────────────────────────────────────── #
     if args.top is not None:
         print_leaderboard(all_stats, args.top, args.sort,
                           team_filter=None, pos_filter=args.position,
-                          engine=engine, games=games)
+                          games=games)
         return
 
     # ── Player profile mode ───────────────────────────────────────────────── #
@@ -682,14 +681,14 @@ Examples:
             sys.exit(1)
 
         if len(matches) == 1:
-            print_profile(engine, matches[0], all_stats, box_index, games)
+            print_profile(engine, matches[0], all_stats, games)
         else:
             # Multiple matches — show disambiguation then profile for best match
             # Prefer exact match first
             exact = [pid for pid in matches
                      if engine.names.get(pid, "").lower() == args.player.lower()]
             if len(exact) == 1:
-                print_profile(engine, exact[0], all_stats, box_index, games)
+                print_profile(engine, exact[0], all_stats, games)
                 return
 
             # Sort by Elo rating (most notable player first)
@@ -698,7 +697,7 @@ Examples:
             if len(matches) <= 3:
                 # Show profiles for all
                 for pid in matches:
-                    print_profile(engine, pid, all_stats, box_index, games)
+                    print_profile(engine, pid, all_stats, games)
             else:
                 print(c(f"  Multiple players match '{args.player}' — showing top 10:", YELLOW))
                 print()
