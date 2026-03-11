@@ -35,11 +35,15 @@ class EloEngine:
     home_advantage: float = HOME_ADVANTAGE
     initial: float = DEFAULT_RATING
     decay_half_life: float = 0.0   # days; 0 = no decay (uniform weighting)
+    season_regress: float = 0.33   # fraction to regress toward initial between seasons
+                                   # 0.33 = regress 1/3 of distance (accounts for roster turnover)
+    tempo_adjust: bool = True      # normalize MOV by pace (avg possessions ~70)
 
     # internal state — not constructor args
     ratings: dict[str, float] = field(default_factory=dict, repr=False)
     names: dict[str, str] = field(default_factory=dict, repr=False)
     history: list[dict] = field(default_factory=list, repr=False)
+    _last_season_year: int | None = field(default=None, repr=False)
 
     # ------------------------------------------------------------------ #
     # Public API                                                           #
@@ -61,6 +65,74 @@ class EloEngine:
         adj = 0.0 if neutral else self.home_advantage
         return 1.0 / (1.0 + 10.0 ** ((r_b - r_a - adj) / SCALE))
 
+    def regress_ratings(self) -> None:
+        """
+        Regress all ratings toward initial by season_regress fraction.
+
+        Called between seasons to account for roster turnover, transfers,
+        graduating seniors, and incoming freshmen. A 0.33 regress means:
+            new_rating = old_rating - 0.33 * (old_rating - 1500)
+        So a 1650-rated team becomes 1600.5, and a 1350-rated team becomes 1400.5.
+        """
+        if self.season_regress <= 0:
+            return
+        for tid in self.ratings:
+            diff = self.ratings[tid] - self.initial
+            self.ratings[tid] -= self.season_regress * diff
+
+    def _maybe_season_reset(self, game_date: str | None) -> None:
+        """Check if we've crossed into a new season and regress if so.
+
+        NCAA season runs Nov→Apr. Season year = spring calendar year.
+        A game on 2024-11-15 belongs to the 2025 season.
+        We trigger a regress when we see the first game of a new season
+        (i.e. season_year increases).
+        """
+        if not game_date or self.season_regress <= 0:
+            return
+
+        try:
+            month = int(game_date[5:7])
+            year  = int(game_date[:4])
+        except (ValueError, IndexError):
+            return
+
+        # Season year = spring portion's calendar year
+        # Nov/Dec of year Y → season Y+1; Jan-Apr of year Y → season Y
+        season_year = year + 1 if month >= 10 else year
+
+        if self._last_season_year is None:
+            self._last_season_year = season_year
+            return
+
+        if season_year > self._last_season_year:
+            self.regress_ratings()
+            self._last_season_year = season_year
+
+    @staticmethod
+    def _tempo_normalize(home_score: int, away_score: int) -> float:
+        """
+        Normalize margin of victory by pace.
+
+        Average D1 game has ~70 possessions per team. A 10-point margin in
+        an 80-possession game is less impressive than in a 60-possession game.
+
+        We estimate possessions from total points (rough but effective):
+            est_possessions = total_points / 2.0  (each possession ~1 point avg)
+        Then normalize: adj_margin = raw_margin * (70 / est_poss)
+
+        This prevents fast-paced teams from inflating their Elo via large raw margins.
+        """
+        total = home_score + away_score
+        if total == 0:
+            return 0.0
+        raw_margin = abs(home_score - away_score)
+        # Estimate possessions: total points / ~2.0 points per possession
+        # Average game: ~140 total points / 2.0 = ~70 possessions
+        est_poss = total / 2.0
+        # Normalize to 70-possession baseline
+        return raw_margin * (70.0 / max(est_poss, 30.0))
+
     def update(
         self,
         home_id: str,
@@ -76,6 +148,9 @@ class EloEngine:
 
         home_id / away_id: ESPN team ID strings
         """
+        # Check for season boundary → regress ratings
+        self._maybe_season_reset(date)
+
         outcome = 1.0 if home_score > away_score else 0.0
         p_home = self.win_prob(home_id, away_id, neutral)
 
@@ -85,7 +160,10 @@ class EloEngine:
         # Margin of victory scaling (FiveThirtyEight method).
         # Larger margins move ratings more, but diminishing returns via log.
         # Autocorrelation correction: blowouts vs weak teams count less.
-        margin = abs(home_score - away_score)
+        if self.tempo_adjust:
+            margin = self._tempo_normalize(home_score, away_score)
+        else:
+            margin = float(abs(home_score - away_score))
         winner_elo = r_home if outcome == 1.0 else r_away
         loser_elo  = r_away if outcome == 1.0 else r_home
         elo_diff   = abs(winner_elo - loser_elo)
