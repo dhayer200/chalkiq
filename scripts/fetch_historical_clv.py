@@ -16,17 +16,12 @@ How it works:
 
 Output: data/odds/historical_clv.jsonl  (same format as clv.jsonl + source=historical)
 
-Estimated API usage per season:
-  ~150 game dates x 2 calls (open + close) = ~300 requests/season
-  Three seasons (2023-2025) = ~900 requests total
-  Starter plan ($30/mo) = 5,000 requests -- comfortably covers everything.
-
 Usage:
     # Dry run first -- see what would be fetched without hitting the API
-    python scripts/fetch_historical_clv.py --seasons 2024 2025 2026 --dry-run
+    python scripts/fetch_historical_clv.py --seasons 2025 2026 --dry-run
 
-    # Real run
-    python scripts/fetch_historical_clv.py --seasons 2024 2025 2026
+    # Real run (start from Dec 2024 where Odds API actually has NCAAB data)
+    python scripts/fetch_historical_clv.py --seasons 2025 2026 --start-date 2024-12-01
 
     # Single season
     python scripts/fetch_historical_clv.py --seasons 2026
@@ -38,6 +33,8 @@ Environment:
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import sys
 import time
 from collections import defaultdict
@@ -58,6 +55,7 @@ from src.utils.data  import fetch_season
 
 
 _OUT_FILE = "historical_clv.jsonl"
+_CACHE_DIR = Path(__file__).resolve().parents[1] / "data" / "odds" / "_hist_cache"
 
 SEASONS: dict[int, tuple[date, date]] = {
     2023: (date(2022, 11, 7),  date(2023, 4,  3)),
@@ -84,6 +82,36 @@ CACHE_DIRS: dict[str, dict[int, str]] = {
 # Bookmaker priority for CLV (prefer most liquid books)
 _BOOK_PRIORITY = {"draftkings": 0, "fanduel": 1, "betmgm": 2, "caesars": 3}
 
+# How many consecutive dates with zero matches before we bail
+_MAX_CONSECUTIVE_MISSES = 10
+
+
+def _cache_key(sport: str, date_iso: str) -> Path:
+    """Return path for a cached API response."""
+    h = hashlib.md5(f"{sport}:{date_iso}".encode()).hexdigest()[:12]
+    safe_date = date_iso.replace(":", "").replace("-", "")
+    return _CACHE_DIR / f"{safe_date}_{h}.json"
+
+
+def fetch_historical_cached(sport: str, date_iso: str) -> list[dict]:
+    """Fetch historical odds with local file caching to avoid re-fetching."""
+    cache_path = _cache_key(sport, date_iso)
+    if cache_path.exists():
+        try:
+            data = json.loads(cache_path.read_text())
+            print(f"  [cached] {date_iso}")
+            return data
+        except (json.JSONDecodeError, OSError):
+            cache_path.unlink(missing_ok=True)
+
+    result = fetch_historical_odds(sport, date_iso)
+
+    # Cache the result (even empty ones, so we don't re-fetch)
+    _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(json.dumps(result))
+
+    return result
+
 
 def best_odds_lookup(odds_records: list[dict]) -> dict[tuple[str, str], dict]:
     """
@@ -102,43 +130,35 @@ def best_odds_lookup(odds_records: list[dict]) -> dict[tuple[str, str], dict]:
     return lookup
 
 
-def find_espn_game(
-    odds_home: str,
-    odds_away: str,
-    espn_index: dict,
-    games_by_espn_id: dict[tuple[str, str], dict],
-) -> tuple[dict | None, str | None, str | None]:
-    """
-    Match an Odds API (home, away) pair to an ESPN game dict.
-    Returns (espn_game, espn_home_id, espn_away_id) or (None, None, None).
-    """
-    espn_home_id, espn_away_id = match_game(odds_home, odds_away, espn_index)
-    if not espn_home_id or not espn_away_id:
-        return None, None, None
-    game = games_by_espn_id.get((espn_home_id, espn_away_id))
-    return game, espn_home_id, espn_away_id
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Backfill historical CLV from The Odds API (paid plan required)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("--seasons",     nargs="+", type=int, default=[2026],
-                        help="Season years to backfill (e.g. 2023 2024 2025 2026)")
+                        help="Season years to backfill (e.g. 2025 2026)")
     parser.add_argument("--sport",       default=SPORT_NCAAB,
                         help="Odds API sport key")
     parser.add_argument("--division",    default="mens", choices=["mens", "womens"],
                         help="ESPN division")
+    parser.add_argument("--start-date",  default=None,
+                        help="Skip dates before this (YYYY-MM-DD). Saves API calls for dates "
+                             "where the Odds API has no NCAAB data.")
     parser.add_argument("--open-offset", type=int, default=3,
                         help="Days before game date to fetch opening line")
     parser.add_argument("--close-hour",  type=int, default=22,
-                        help="UTC hour on game date to fetch closing line (22=5pm ET, before most tipoffs)")
+                        help="UTC hour on game date to fetch closing line (22=5pm ET)")
     parser.add_argument("--delay",       type=float, default=0.5,
                         help="Seconds to wait between API calls (avoid rate limiting)")
+    parser.add_argument("--max-misses",  type=int, default=_MAX_CONSECUTIVE_MISSES,
+                        help="Bail after this many consecutive dates with no NCAAB data")
+    parser.add_argument("--no-cache",    action="store_true",
+                        help="Bypass local response cache (re-fetch everything)")
     parser.add_argument("--dry-run",     action="store_true",
-                        help="Print what would be fetched without hitting the API")
+                        help="Print what would be fetched WITHOUT hitting the API")
     args = parser.parse_args()
+
+    start_date_filter = date.fromisoformat(args.start_date) if args.start_date else None
 
     # ── Load all game data ──────────────────────────────────────────────────
     print("Loading ESPN game data...")
@@ -163,9 +183,12 @@ def main() -> None:
     sorted_games = sorted(all_games, key=lambda g: g["date"])
     engine = EloEngine(k=24.0, home_advantage=100.0)
 
-    # pre_game_probs[(home_id, away_id, date)] = model_prob_home before the game
     pre_game_probs: dict[tuple[str, str, str], float] = {}
     for g in sorted_games:
+        # Populate names dict (update() doesn't do this, only fit() does)
+        engine.names[g["home_id"]] = g["home_name"]
+        engine.names[g["away_id"]] = g["away_name"]
+
         prob = engine.win_prob(g["home_id"], g["away_id"], neutral=g.get("neutral", True))
         key  = (g["home_id"], g["away_id"], g["date"])
         pre_game_probs[key] = prob
@@ -178,18 +201,22 @@ def main() -> None:
             date       = g["date"],
         )
 
-    # Build ESPN index for fuzzy team-name matching
     espn_index = build_index(engine.names)
 
-    # Group games by date for batch fetching
     games_by_date: dict[str, list[dict]] = defaultdict(list)
     for g in sorted_games:
         games_by_date[g["date"]].append(g)
 
-    # Also key by (home_id, away_id) for O(1) lookup within a date's batch
-    # We'll build this per-date inside the loop
-
     unique_dates = sorted(games_by_date.keys())
+
+    # Apply --start-date filter
+    if start_date_filter:
+        before = len(unique_dates)
+        unique_dates = [d for d in unique_dates if date.fromisoformat(d) >= start_date_filter]
+        skipped = before - len(unique_dates)
+        if skipped:
+            print(f"\n--start-date {args.start_date}: skipping {skipped} earlier dates")
+
     print(f"Unique game dates : {len(unique_dates)}")
     print(f"Estimated API calls: {len(unique_dates) * 2} (open + close per date)")
 
@@ -202,22 +229,26 @@ def main() -> None:
     print(f"Already have {len(existing_keys)} historical CLV records")
 
     if args.dry_run:
-        print("\n[DRY RUN] First 5 dates that would be fetched:")
-        for d in unique_dates[:5]:
-            gd        = date.fromisoformat(d)
-            open_ts   = (gd - timedelta(days=args.open_offset)).strftime("%Y-%m-%dT12:00:00Z")
-            close_ts  = gd.strftime(f"%Y-%m-%dT{args.close_hour:02d}:00:00Z")
-            n         = len(games_by_date[d])
+        print("\n[DRY RUN] No API calls will be made.")
+        print(f"Would fetch {len(unique_dates)} dates × 2 = {len(unique_dates)*2} API requests")
+        print(f"First date: {unique_dates[0] if unique_dates else 'none'}")
+        print(f"Last date:  {unique_dates[-1] if unique_dates else 'none'}")
+        sample = unique_dates[:5]
+        for d in sample:
+            gd       = date.fromisoformat(d)
+            open_ts  = (gd - timedelta(days=args.open_offset)).strftime("%Y-%m-%dT12:00:00Z")
+            close_ts = gd.strftime(f"%Y-%m-%dT{args.close_hour:02d}:00:00Z")
+            n        = len(games_by_date[d])
             print(f"  {d}  open={open_ts}  close={close_ts}  ({n} games)")
         if len(unique_dates) > 5:
             print(f"  ... and {len(unique_dates) - 5} more dates")
-        print(f"\nTotal requests needed: ~{len(unique_dates) * 2}")
-        print("Run without --dry-run to fetch.")
         return
 
     # ── Main fetch loop ─────────────────────────────────────────────────────
     total_written = 0
     total_skipped = 0
+    consecutive_misses = 0
+    fetch_fn = fetch_historical_odds if args.no_cache else fetch_historical_cached
 
     for i, game_date_str in enumerate(unique_dates):
         game_date = date.fromisoformat(game_date_str)
@@ -235,22 +266,29 @@ def main() -> None:
         if day_keys.issubset(existing_keys):
             print(f"  all games already processed, skipping API calls")
             total_skipped += len(day_keys)
+            consecutive_misses = 0  # these are successes from prior runs
             continue
 
         # Fetch opening and closing odds
         time.sleep(args.delay)
-        opening_odds = fetch_historical_odds(args.sport, open_ts)
+        opening_odds = fetch_fn(args.sport, open_ts)
         time.sleep(args.delay)
-        closing_odds = fetch_historical_odds(args.sport, close_ts)
+        closing_odds = fetch_fn(args.sport, close_ts)
 
         if not closing_odds:
-            print(f"  no closing odds for {game_date_str}, skipping")
+            print(f"  no closing odds returned")
+            consecutive_misses += 1
+            if consecutive_misses >= args.max_misses:
+                print(f"\n  *** {args.max_misses} consecutive dates with no data — "
+                      f"Odds API likely has no {args.sport} coverage this far back.")
+                print(f"  *** Stopping early to save API quota. "
+                      f"Try --start-date with a later date.")
+                break
             continue
 
         open_lookup  = best_odds_lookup(opening_odds)
         close_lookup = best_odds_lookup(closing_odds)
 
-        # Build a per-date ESPN lookup: (home_id, away_id) -> game dict
         espn_by_id: dict[tuple[str, str], dict] = {
             (g["home_id"], g["away_id"]): g for g in day_games
         }
@@ -263,13 +301,12 @@ def main() -> None:
 
             espn_game = espn_by_id.get((espn_home_id, espn_away_id))
             if not espn_game:
-                continue  # odds game not on this date in ESPN data
+                continue
 
             game_key = f"{espn_home_id}_{espn_away_id}_{game_date_str}"
             if game_key in existing_keys:
                 continue
 
-            # Get opening line (same team-name key)
             open_rec = open_lookup.get((odds_home, odds_away)) or close_rec
 
             model_prob = pre_game_probs.get((espn_home_id, espn_away_id, game_date_str))
@@ -326,7 +363,17 @@ def main() -> None:
             )
 
         if matched == 0:
-            print(f"  no matches found for this date (Odds API may not have had {args.sport} lines then)")
+            consecutive_misses += 1
+            print(f"  no NCAAB matches ({consecutive_misses}/{args.max_misses} consecutive misses)")
+            if consecutive_misses >= args.max_misses:
+                print(f"\n  *** {args.max_misses} consecutive dates with no NCAAB matches — "
+                      f"stopping to save API quota.")
+                print(f"  *** Try --start-date with a later date, or check that "
+                      f"the Odds API has {args.sport} data for this period.")
+                break
+        else:
+            consecutive_misses = 0
+            print(f"  matched {matched} games")
 
     # ── Summary ─────────────────────────────────────────────────────────────
     print(f"\n{'='*55}")
