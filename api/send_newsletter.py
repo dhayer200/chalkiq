@@ -92,7 +92,7 @@ class handler(BaseHTTPRequestHandler):
                 personalized_html = html.replace("{unsub_url}", unsub_url)
                 try:
                     resend.Emails.send({
-                        "from": "ChalkIQ <picks@chalkiq.com>",
+                        "from": "ChalkIQ <onboarding@resend.dev>",
                         "to": sub["email"],
                         "subject": subject,
                         "html": personalized_html,

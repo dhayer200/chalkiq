@@ -23,7 +23,7 @@ def _send_welcome(email: str, unsub_token: str) -> None:
         import resend
         resend.api_key = RESEND_API_KEY
         resend.Emails.send({
-            "from": "ChalkIQ <picks@chalkiq.com>",
+            "from": "ChalkIQ <onboarding@resend.dev>",
             "to": [email],
             "subject": "Welcome to ChalkIQ",
             "html": f"""
