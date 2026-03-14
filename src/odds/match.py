@@ -17,6 +17,7 @@ import re
 
 # Manual overrides: Odds API name -> ESPN display name substring
 _OVERRIDES: dict[str, str] = {
+    # NCAA basketball
     "uconn":              "connecticut",
     "connecticut":        "connecticut",
     "lsu":                "lsu",
@@ -36,6 +37,50 @@ _OVERRIDES: dict[str, str] = {
     "unc":                "north carolina",
     "nc state":           "nc state",
     "north carolina st":  "nc state",
+    # MLB
+    "arizona diamondbacks":   "diamondbacks",
+    "d-backs":                "diamondbacks",
+    "chi white sox":          "white sox",
+    "chicago white sox":      "white sox",
+    "chi cubs":               "cubs",
+    "chicago cubs":           "cubs",
+    "la dodgers":             "dodgers",
+    "los angeles dodgers":    "dodgers",
+    "la angels":              "angels",
+    "los angeles angels":     "angels",
+    "ny yankees":             "yankees",
+    "new york yankees":       "yankees",
+    "ny mets":                "mets",
+    "new york mets":          "mets",
+    "sf giants":              "giants",
+    "san francisco giants":   "giants",
+    "sd padres":              "padres",
+    "san diego padres":       "padres",
+    "st. louis cardinals":    "cardinals",
+    "st louis cardinals":     "cardinals",
+    "tb rays":                "rays",
+    "tampa bay rays":         "rays",
+    "kc royals":              "royals",
+    "kansas city royals":     "royals",
+    # NBA
+    "la lakers":              "lakers",
+    "los angeles lakers":     "lakers",
+    "la clippers":            "clippers",
+    "los angeles clippers":   "clippers",
+    "ny knicks":              "knicks",
+    "new york knicks":        "knicks",
+    "brooklyn nets":          "nets",
+    "golden state warriors":  "warriors",
+    "okc thunder":            "thunder",
+    "oklahoma city thunder":  "thunder",
+    "sa spurs":               "spurs",
+    "san antonio spurs":      "spurs",
+    "portland trail blazers": "trail blazers",
+    "minnesota timberwolves": "timberwolves",
+    "milwaukee bucks":        "bucks",
+    "indiana pacers":         "pacers",
+    "philadelphia 76ers":     "76ers",
+    "phoenix suns":           "suns",
 }
 
 # Suffixes to strip when normalizing ESPN display names

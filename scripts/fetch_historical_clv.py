@@ -46,11 +46,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
-from src.odds.api   import fetch_historical_odds, SPORT_NCAAB
+from src.odds.api   import fetch_historical_odds, SPORT_NCAAB, SPORT_MLB, SPORT_NBA
 from src.odds.clv   import compute_clv
 from src.odds.match import build_index, match_game
 from src.odds.store import append, read_all
-from src.ratings.elo import EloEngine
+from src.ratings.elo import EloEngine, SPORT_CONFIGS
 from src.utils.data  import fetch_season
 
 
@@ -58,11 +58,37 @@ _OUT_FILE = "historical_clv.jsonl"
 _CACHE_DIR = Path(__file__).resolve().parents[1] / "data" / "odds" / "_hist_cache"
 _ROOT = Path(__file__).resolve().parents[1]
 
-SEASONS: dict[int, tuple[date, date]] = {
-    2023: (date(2022, 11, 7),  date(2023, 4,  3)),
-    2024: (date(2023, 11, 6),  date(2024, 4,  8)),
-    2025: (date(2024, 11, 4),  date(2025, 4,  7)),
-    2026: (date(2025, 11, 4),  date.today()),
+# Division → Odds API sport key
+_ODDS_SPORT: dict[str, str] = {
+    "mens":   SPORT_NCAAB,
+    "womens": SPORT_NCAAB,
+    "mlb":    SPORT_MLB,
+    "nba":    SPORT_NBA,
+}
+
+SEASONS: dict[str, dict[int, tuple[date, date]]] = {
+    "mens": {
+        2023: (date(2022, 11, 7),  date(2023, 4,  3)),
+        2024: (date(2023, 11, 6),  date(2024, 4,  8)),
+        2025: (date(2024, 11, 4),  date(2025, 4,  7)),
+        2026: (date(2025, 11, 4),  date.today()),
+    },
+    "womens": {
+        2023: (date(2022, 11, 7),  date(2023, 4,  3)),
+        2024: (date(2023, 11, 6),  date(2024, 4,  8)),
+        2025: (date(2024, 11, 4),  date(2025, 4,  7)),
+        2026: (date(2025, 11, 4),  date.today()),
+    },
+    "mlb": {
+        2024: (date(2024, 3, 20), date(2024, 10, 30)),
+        2025: (date(2025, 3, 20), date(2025, 10, 30)),
+        2026: (date(2026, 2, 20), date.today()),
+    },
+    "nba": {
+        2024: (date(2023, 10, 24), date(2024, 6, 17)),
+        2025: (date(2024, 10, 22), date(2025, 6, 22)),
+        2026: (date(2025, 10, 21), date.today()),
+    },
 }
 
 CACHE_DIRS: dict[str, dict[int, str]] = {
@@ -77,6 +103,16 @@ CACHE_DIRS: dict[str, dict[int, str]] = {
         2024: "data/raw/womens/2024",
         2025: "data/raw/womens/2025",
         2026: "data/raw/womens",
+    },
+    "mlb": {
+        2024: "data/raw/mlb/2024",
+        2025: "data/raw/mlb/2025",
+        2026: "data/raw/mlb",
+    },
+    "nba": {
+        2024: "data/raw/nba/2024",
+        2025: "data/raw/nba/2025",
+        2026: "data/raw/nba",
     },
 }
 
@@ -256,10 +292,8 @@ def main() -> None:
     )
     parser.add_argument("--seasons",     nargs="+", type=int, default=[2026],
                         help="Season years to backfill (e.g. 2025 2026)")
-    parser.add_argument("--sport",       default=SPORT_NCAAB,
-                        help="Odds API sport key")
-    parser.add_argument("--division",    default="mens", choices=["mens", "womens"],
-                        help="ESPN division")
+    parser.add_argument("--division",    default="mens", choices=["mens", "womens", "mlb", "nba"],
+                        help="ESPN division (sport key auto-selected)")
     parser.add_argument("--start-date",  default=None,
                         help="Skip dates before this (YYYY-MM-DD). Saves API calls for dates "
                              "where the Odds API has no NCAAB data.")
@@ -286,12 +320,16 @@ def main() -> None:
 
     # ── Load all game data ──────────────────────────────────────────────────
     print("Loading ESPN game data...")
+    div_seasons = SEASONS.get(args.division, SEASONS["mens"])
+    sport_key = _ODDS_SPORT.get(args.division, SPORT_NCAAB)
+
     all_games: list[dict] = []
     for season in sorted(args.seasons):
-        if season not in SEASONS:
-            print(f"  Unknown season {season}, skipping")
+        if season not in div_seasons:
+            print(f"  Unknown season {season} for {args.division}. "
+                  f"Available: {list(div_seasons.keys())}")
             continue
-        start, end = SEASONS[season]
+        start, end = div_seasons[season]
         cache_dirs = CACHE_DIRS.get(args.division, CACHE_DIRS["mens"])
         cache      = cache_dirs.get(season, f"data/raw/{args.division}/{season}")
         games = fetch_season(start, end, cache_dir=cache, division=args.division, verbose=False)
@@ -305,7 +343,15 @@ def main() -> None:
     # ── Walk-forward Elo — capture model prob BEFORE each game ──────────────
     print(f"\nBuilding walk-forward Elo probs for {len(all_games):,} games...")
     sorted_games = sorted(all_games, key=lambda g: g["date"])
-    engine = EloEngine(k=24.0, home_advantage=100.0)
+    elo_cfg = SPORT_CONFIGS.get(args.division, SPORT_CONFIGS["mens"])
+    engine = EloEngine(
+        k=elo_cfg["k"],
+        home_advantage=elo_cfg["home_advantage"],
+        scale=elo_cfg.get("scale", 300.0),
+        season_regress=elo_cfg["season_regress"],
+        tempo_adjust=elo_cfg["tempo_adjust"],
+        season_boundary=elo_cfg.get("season_boundary", "ncaa"),
+    )
 
     # ── Build injury timeline from boxscores ─────────────────────────────────
     injury_timeline: dict[str, dict[str, float]] = {}
@@ -432,16 +478,16 @@ def main() -> None:
 
         # Fetch opening and closing odds
         time.sleep(args.delay)
-        opening_odds = fetch_fn(args.sport, open_ts)
+        opening_odds = fetch_fn(sport_key, open_ts)
         time.sleep(args.delay)
-        closing_odds = fetch_fn(args.sport, close_ts)
+        closing_odds = fetch_fn(sport_key, close_ts)
 
         if not closing_odds:
             print(f"  no closing odds returned")
             consecutive_misses += 1
             if consecutive_misses >= args.max_misses:
                 print(f"\n  *** {args.max_misses} consecutive dates with no data — "
-                      f"Odds API likely has no {args.sport} coverage this far back.")
+                      f"Odds API likely has no {sport_key} coverage this far back.")
                 print(f"  *** Stopping early to save API quota. "
                       f"Try --start-date with a later date.")
                 break
@@ -546,7 +592,7 @@ def main() -> None:
                 print(f"\n  *** {args.max_misses} consecutive dates with no NCAAB matches — "
                       f"stopping to save API quota.")
                 print(f"  *** Try --start-date with a later date, or check that "
-                      f"the Odds API has {args.sport} data for this period.")
+                      f"the Odds API has {sport_key} data for this period.")
                 break
         else:
             consecutive_misses = 0

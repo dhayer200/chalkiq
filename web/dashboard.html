@@ -1,0 +1,1529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ChalkIQ Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+/* ── Nord Palette ──────────────────────────────────────────────── */
+:root {
+  --bg0: #2e3440;
+  --bg1: #3b4252;
+  --bg2: #434c5e;
+  --bg3: #4c566a;
+  --fg0: #d8dee9;
+  --fg1: #e5e9f0;
+  --fg2: #eceff4;
+  --frost0: #8fbcbb;
+  --frost1: #88c0d0;
+  --frost2: #81a1c1;
+  --frost3: #5e81ac;
+  --red: #bf616a;
+  --orange: #d08770;
+  --yellow: #ebcb8b;
+  --green: #a3be8c;
+  --purple: #b48ead;
+  --glow: rgba(136, 192, 208, 0.08);
+  --border: rgba(216, 222, 233, 0.07);
+  --border-hl: rgba(136, 192, 208, 0.2);
+}
+
+/* ── Reset & Base ──────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  font-size: 14px;
+  background: var(--bg0);
+  color: var(--fg0);
+  font-family: 'JetBrains Mono', monospace;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse at 20% 0%, rgba(94, 129, 172, 0.06) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 100%, rgba(136, 192, 208, 0.04) 0%, transparent 60%),
+    var(--bg0);
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--frost3); }
+
+/* ── Layout ────────────────────────────────────────────────────── */
+.shell {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ── Top Bar ───────────────────────────────────────────────────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--bg0);
+  backdrop-filter: blur(12px);
+}
+
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: 'Instrument Sans', sans-serif;
+}
+
+.topbar-logo {
+  background: var(--green);
+  color: var(--bg0);
+  font-weight: 800;
+  font-size: 13px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  letter-spacing: -0.5px;
+}
+
+.topbar-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--fg2);
+  letter-spacing: -0.3px;
+}
+
+.topbar-sub {
+  font-size: 11px;
+  color: var(--bg3);
+  font-weight: 400;
+  margin-left: 2px;
+}
+
+/* ── Sport Switcher ────────────────────────────────────────────── */
+.sport-tabs {
+  display: flex;
+  gap: 2px;
+  background: var(--bg1);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.sport-tab {
+  padding: 6px 16px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--bg3);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: none;
+  background: none;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.sport-tab:hover { color: var(--fg0); }
+.sport-tab.active {
+  background: var(--bg2);
+  color: var(--frost1);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+/* ── Section Tabs ──────────────────────────────────────────────── */
+.section-nav {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin-top: 8px;
+  overflow-x: auto;
+}
+
+.section-tab {
+  padding: 10px 20px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--bg3);
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: 'Instrument Sans', sans-serif;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  transition: color 0.15s ease;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.section-tab:hover { color: var(--fg0); }
+.section-tab.active {
+  color: var(--frost1);
+  border-bottom-color: var(--frost1);
+}
+
+/* ── Panels ────────────────────────────────────────────────────── */
+.panel { display: none; padding: 20px 0; }
+.panel.active { display: block; }
+
+/* ── KPI Strip ─────────────────────────────────────────────────── */
+.kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.kpi {
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  transition: border-color 0.2s ease;
+}
+
+.kpi:hover { border-color: var(--border-hl); }
+
+.kpi-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--bg3);
+  margin-bottom: 6px;
+  font-family: 'Instrument Sans', sans-serif;
+}
+
+.kpi-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--fg2);
+  letter-spacing: -0.5px;
+}
+
+.kpi-value.positive { color: var(--green); }
+.kpi-value.negative { color: var(--red); }
+
+/* ── Cards ─────────────────────────────────────────────────────── */
+.card {
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.card-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.card-title {
+  font-family: 'Instrument Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg1);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.card-body { padding: 0; }
+
+/* ── Data Table ────────────────────────────────────────────────── */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.data-table th {
+  text-align: left;
+  padding: 8px 14px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--bg3);
+  font-weight: 500;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg1);
+  font-family: 'Instrument Sans', sans-serif;
+}
+
+.data-table th.right, .data-table td.right { text-align: right; }
+
+.data-table td {
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--fg0);
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table tr:hover td { background: var(--glow); }
+
+.data-table .rank {
+  color: var(--bg3);
+  font-weight: 500;
+  width: 36px;
+}
+
+.data-table .team-name {
+  font-weight: 500;
+  color: var(--fg2);
+}
+
+.data-table .elo-bar {
+  display: inline-block;
+  height: 3px;
+  background: var(--frost1);
+  border-radius: 2px;
+  vertical-align: middle;
+  margin-left: 8px;
+  opacity: 0.5;
+}
+
+.elo-hot { color: var(--green); }
+.elo-cold { color: var(--red); }
+
+/* ── Two-col Grid ──────────────────────────────────────────────── */
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.grid-full { margin-bottom: 16px; }
+
+/* ── Chart Container ───────────────────────────────────────────── */
+.chart-wrap {
+  padding: 16px;
+  height: 260px;
+  position: relative;
+}
+
+.chart-wrap.tall { height: 360px; }
+
+.chart-wrap canvas { width: 100% !important; height: 100% !important; }
+
+/* ── Movers ────────────────────────────────────────────────────── */
+.mover-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.mover-row:last-child { border-bottom: none; }
+.mover-name { color: var(--fg1); font-weight: 500; }
+.mover-delta { font-weight: 600; font-variant-numeric: tabular-nums; }
+.mover-delta.up { color: var(--green); }
+.mover-delta.down { color: var(--red); }
+
+/* ── Recent Games ──────────────────────────────────────────────── */
+.game-row {
+  display: grid;
+  grid-template-columns: 70px 1fr 60px 50px;
+  align-items: center;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.game-date { color: var(--bg3); font-size: 11px; }
+.game-matchup { color: var(--fg1); }
+.game-score { color: var(--fg0); text-align: right; font-variant-numeric: tabular-nums; }
+.game-check { text-align: center; font-size: 13px; }
+
+/* ── Math Section ──────────────────────────────────────────────── */
+.math-content {
+  padding: 24px;
+  line-height: 1.8;
+  font-size: 13px;
+  color: var(--fg0);
+  max-width: 720px;
+}
+
+.math-content h3 {
+  font-family: 'Instrument Sans', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--fg2);
+  margin: 28px 0 12px;
+  letter-spacing: -0.3px;
+}
+
+.math-content h3:first-child { margin-top: 0; }
+
+.math-content code {
+  background: var(--bg2);
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--frost1);
+}
+
+.math-content .formula {
+  background: var(--bg2);
+  border-left: 3px solid var(--frost3);
+  padding: 14px 18px;
+  margin: 14px 0;
+  border-radius: 0 6px 6px 0;
+  font-size: 13px;
+  color: var(--frost1);
+  overflow-x: auto;
+}
+
+.math-content p { margin-bottom: 12px; }
+
+/* ── Scrollable table container ────────────────────────────────── */
+.table-scroll {
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+/* ── Calibration dots ──────────────────────────────────────────── */
+.cal-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 60px 60px;
+  align-items: center;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.cal-label { color: var(--bg3); }
+.cal-bar-wrap { position: relative; height: 8px; background: var(--bg2); border-radius: 4px; }
+.cal-bar-pred {
+  position: absolute; top: 0; left: 0; height: 100%;
+  background: var(--frost2); border-radius: 4px; opacity: 0.5;
+}
+.cal-bar-obs {
+  position: absolute; top: 0; left: 0; height: 100%;
+  background: var(--green); border-radius: 4px;
+}
+.cal-n { color: var(--bg3); text-align: right; }
+
+/* ── Elo Tracker Controls ──────────────────────────────────────── */
+.tracker-controls {
+  padding: 16px 18px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.tracker-select {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  color: var(--fg0);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  min-width: 180px;
+}
+
+.tracker-select:focus {
+  outline: none;
+  border-color: var(--frost1);
+}
+
+.tracker-btn {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  color: var(--frost1);
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tracker-btn:hover {
+  background: var(--frost3);
+  color: var(--fg2);
+}
+
+.team-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 0 18px 12px;
+}
+
+.team-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--fg2);
+}
+
+.team-chip .remove {
+  cursor: pointer;
+  opacity: 0.6;
+  font-size: 13px;
+}
+
+.team-chip .remove:hover { opacity: 1; }
+
+/* ── Loading ───────────────────────────────────────────────────── */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 400px;
+  color: var(--bg3);
+  font-size: 13px;
+}
+
+.loading::after {
+  content: '';
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--bg3);
+  border-top-color: var(--frost1);
+  border-radius: 50%;
+  margin-left: 12px;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Timestamp ─────────────────────────────────────────────────── */
+.timestamp {
+  font-size: 10px;
+  color: var(--bg3);
+  letter-spacing: 0.5px;
+}
+
+/* ── Responsive ────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .kpi-strip { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width: 600px) {
+  .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+  .shell { padding: 0 12px; }
+}
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <!-- Top Bar -->
+  <div class="topbar">
+    <div class="topbar-brand">
+      <div class="topbar-logo">C</div>
+      <div>
+        <span class="topbar-title">ChalkIQ</span>
+        <span class="topbar-sub">DASHBOARD</span>
+      </div>
+    </div>
+    <div class="sport-tabs" id="sportTabs">
+      <button class="sport-tab active" data-div="mens">CBB M</button>
+      <button class="sport-tab" data-div="womens">CBB W</button>
+      <button class="sport-tab" data-div="nba">NBA</button>
+      <button class="sport-tab" data-div="mlb">MLB</button>
+    </div>
+    <div class="timestamp" id="genTime"></div>
+  </div>
+
+  <!-- Section Navigation -->
+  <div class="section-nav" id="sectionNav">
+    <button class="section-tab active" data-panel="overview">Overview</button>
+    <button class="section-tab" data-panel="rankings">Rankings</button>
+    <button class="section-tab" data-panel="tracker">Elo Tracker</button>
+    <button class="section-tab" data-panel="model">Model Eval</button>
+    <button class="section-tab" data-panel="games">Recent Games</button>
+    <button class="section-tab" data-panel="math">Methodology</button>
+  </div>
+
+  <!-- Loading State -->
+  <div class="loading" id="loader">Loading dashboard data</div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- OVERVIEW PANEL                                              -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div class="panel active" id="panel-overview">
+    <div class="kpi-strip" id="kpiStrip"></div>
+
+    <div class="grid-2">
+      <!-- Accuracy over time -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Cumulative Accuracy</span>
+        </div>
+        <div class="card-body chart-wrap">
+          <canvas id="chartAccuracy"></canvas>
+        </div>
+      </div>
+
+      <!-- Rating spread -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Rating Spread (Field Separation)</span>
+        </div>
+        <div class="card-body chart-wrap">
+          <canvas id="chartSpread"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <!-- Top Elo bar chart -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Top 20 by Elo</span>
+        </div>
+        <div class="card-body chart-wrap tall">
+          <canvas id="chartTopElo"></canvas>
+        </div>
+      </div>
+
+      <!-- Prediction distribution -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Prediction Distribution</span>
+        </div>
+        <div class="card-body chart-wrap">
+          <canvas id="chartPredDist"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <!-- Gainers -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Biggest Risers (30d)</span>
+        </div>
+        <div class="card-body" id="moversUp"></div>
+      </div>
+
+      <!-- Losers -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Biggest Fallers (30d)</span>
+        </div>
+        <div class="card-body" id="moversDown"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- RANKINGS PANEL                                              -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div class="panel" id="panel-rankings">
+    <div class="grid-2" style="margin-bottom:16px">
+      <!-- Rankings Table -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title" id="rankTitle">Power Rankings</span>
+        </div>
+        <div class="card-body table-scroll" id="rankTable"></div>
+      </div>
+
+      <!-- Elo Distribution Chart -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Elo Distribution</span>
+        </div>
+        <div class="card-body chart-wrap tall">
+          <canvas id="chartEloDist"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- ELO TRACKER PANEL (NCAA 361 equivalent)                     -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div class="panel" id="panel-tracker">
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-header">
+        <span class="card-title">Elo Rating Tracker</span>
+      </div>
+      <div class="tracker-controls">
+        <select id="trackerSelect" class="tracker-select">
+          <option value="">Select a team...</option>
+        </select>
+        <button class="tracker-btn" id="trackerAdd">+ Add Team</button>
+        <button class="tracker-btn" id="trackerClear">Clear All</button>
+      </div>
+      <div class="team-chips" id="trackerChips"></div>
+      <div class="card-body chart-wrap tall">
+        <canvas id="chartTracker"></canvas>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <!-- Spread chart (duplicate for context) -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Rating Spread Over Time</span>
+        </div>
+        <div class="card-body chart-wrap">
+          <canvas id="chartSpread2"></canvas>
+        </div>
+      </div>
+
+      <!-- Accuracy by confidence -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Accuracy by Confidence</span>
+        </div>
+        <div class="card-body chart-wrap">
+          <canvas id="chartAccByConf"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- MODEL EVAL PANEL                                            -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div class="panel" id="panel-model">
+    <div class="kpi-strip" id="modelKpi"></div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Calibration (Predicted vs Observed)</span>
+        </div>
+        <div class="card-body chart-wrap">
+          <canvas id="chartCal"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Calibration Detail</span>
+        </div>
+        <div class="card-body" id="calDetail"></div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Prediction Distribution</span>
+        </div>
+        <div class="card-body chart-wrap">
+          <canvas id="chartPredDist2"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Accuracy by Confidence Bucket</span>
+        </div>
+        <div class="card-body chart-wrap">
+          <canvas id="chartAccByConf2"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- RECENT GAMES PANEL                                          -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div class="panel" id="panel-games">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Recent Games (Last 50)</span>
+      </div>
+      <div class="card-body table-scroll" id="gamesTable"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- METHODOLOGY PANEL                                           -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div class="panel" id="panel-math">
+    <div class="card">
+      <div class="card-body math-content">
+        <h3>Elo Rating System</h3>
+        <p>Every team starts at <code>1500</code>. After each game, ratings update:</p>
+        <div class="formula">R' = R + K &times; MOV_factor &times; (outcome - expected)</div>
+        <p>Where <code>outcome</code> is 1 for a win, 0 for a loss, and <code>expected</code> is the pre-game win probability.</p>
+
+        <h3>Win Probability</h3>
+        <p>The probability of Team A beating Team B:</p>
+        <div class="formula">P(A wins) = 1 / (1 + 10^((R_B - R_A - HCA) / scale))</div>
+        <p><code>HCA</code> is the home-court/field advantage in Elo points. <code>scale</code> controls how quickly probability changes with rating gaps (300 for NCAAB, 350 for NBA, 400 for MLB).</p>
+
+        <h3>Margin of Victory</h3>
+        <p>Blowouts carry more weight, but with autocorrelation correction (FiveThirtyEight method):</p>
+        <div class="formula">MOV_factor = ln(|margin| + 1) &times; 2.2 / (gap &times; 0.001 + 2.2)</div>
+        <p>The denominator prevents a team from getting too much credit for blowing out a weak opponent they were already expected to crush.</p>
+
+        <h3>Tempo Normalization</h3>
+        <p>For basketball, margin of victory is normalized by game pace. A 10-point win in a 60-possession game is worth more than in an 80-possession game. Estimated possessions:</p>
+        <div class="formula">poss = 0.5 &times; (FGA - ORB + TO + 0.475 &times; FTA)</div>
+        <p>If possessions are below average (~70), the margin is scaled up; if above, scaled down. MLB does not use tempo normalization.</p>
+
+        <h3>Season Regression</h3>
+        <p>Between seasons, all ratings regress toward 1500 to account for roster turnover:</p>
+        <div class="formula">R_new = R_old - regress &times; (R_old - 1500)</div>
+        <p>NCAAB uses 33% regression (heavy turnover). NBA uses 25%. MLB uses 20% (most roster continuity).</p>
+
+        <h3>Sport-Specific Configs</h3>
+        <table class="data-table" style="margin: 12px 0;">
+          <tr><th>Param</th><th class="right">CBB</th><th class="right">NBA</th><th class="right">MLB</th></tr>
+          <tr><td>K-factor</td><td class="right">24</td><td class="right">12</td><td class="right">6</td></tr>
+          <tr><td>Home Advantage</td><td class="right">100</td><td class="right">70</td><td class="right">40</td></tr>
+          <tr><td>Scale</td><td class="right">300</td><td class="right">350</td><td class="right">400</td></tr>
+          <tr><td>Season Regress</td><td class="right">33%</td><td class="right">25%</td><td class="right">20%</td></tr>
+          <tr><td>Tempo Adjust</td><td class="right">Yes</td><td class="right">Yes</td><td class="right">No</td></tr>
+        </table>
+
+        <h3>Closing Line Value (CLV)</h3>
+        <p>The ultimate measure of a betting model. CLV compares the model's pre-game probability to the closing line set by the market (DraftKings, FanDuel, etc.).</p>
+        <div class="formula">CLV = model_prob - closing_implied_prob</div>
+        <p>Positive CLV means the model identified value that the market hadn't priced in. Consistently beating closing lines is the hallmark of a sharp model &mdash; closing lines incorporate all public and sharp money, making them the most efficient prices available.</p>
+
+        <h3>Log Loss &amp; Brier Score</h3>
+        <p><strong>Log Loss</strong> (cross-entropy) heavily penalizes confident wrong predictions. A coin-flip baseline scores 0.6931. Lower is better.</p>
+        <div class="formula">LL = -[y &times; ln(p) + (1-y) &times; ln(1-p)]</div>
+        <p><strong>Brier Score</strong> is mean squared error between prediction and outcome. Baseline is 0.2500. Lower is better.</p>
+        <div class="formula">BS = (p - y)&sup2;</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────
+let DATA = null;
+let currentDiv = 'mens';
+let currentPanel = 'overview';
+let charts = {};
+let trackerTeams = []; // team_ids selected in Elo Tracker
+
+const TEAM_COLORS = [
+  '#88c0d0', '#a3be8c', '#ebcb8b', '#bf616a', '#b48ead',
+  '#d08770', '#8fbcbb', '#81a1c1', '#5e81ac', '#d8dee9',
+];
+
+// ── Data Loading ──────────────────────────────────────────────────
+async function loadData() {
+  try {
+    const resp = await fetch('assets/dashboard.json');
+    DATA = await resp.json();
+    document.getElementById('loader').style.display = 'none';
+    document.getElementById('genTime').textContent =
+      'Updated ' + new Date(DATA.generated_at).toLocaleString();
+    renderAll();
+  } catch (e) {
+    document.getElementById('loader').textContent = 'Failed to load data: ' + e.message;
+  }
+}
+
+// ── Navigation ────────────────────────────────────────────────────
+document.getElementById('sportTabs').addEventListener('click', e => {
+  const tab = e.target.closest('.sport-tab');
+  if (!tab || !DATA?.divisions?.[tab.dataset.div]) return;
+  document.querySelectorAll('.sport-tab').forEach(t => t.classList.remove('active'));
+  tab.classList.add('active');
+  currentDiv = tab.dataset.div;
+  trackerTeams = [];
+  renderAll();
+});
+
+document.getElementById('sectionNav').addEventListener('click', e => {
+  const tab = e.target.closest('.section-tab');
+  if (!tab) return;
+  document.querySelectorAll('.section-tab').forEach(t => t.classList.remove('active'));
+  tab.classList.add('active');
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  const panel = document.getElementById('panel-' + tab.dataset.panel);
+  if (panel) panel.classList.add('active');
+  currentPanel = tab.dataset.panel;
+  renderAll();
+});
+
+// ── Render Everything ─────────────────────────────────────────────
+function renderAll() {
+  if (!DATA) return;
+  const d = DATA.divisions[currentDiv];
+  if (!d) return;
+
+  renderKPI(d);
+  renderRankings(d);
+  renderModelEval(d);
+  renderGames(d);
+  renderMovers(d);
+  renderTrackerControls(d);
+
+  // Charts need a tick to get dimensions
+  requestAnimationFrame(() => {
+    renderAccuracyChart(d);
+    renderSpreadChart(d);
+    renderCalibrationChart(d);
+    renderTopEloChart(d);
+    renderPredDistChart(d);
+    renderEloDistChart(d);
+    renderTrackerChart(d);
+    renderSpreadChart2(d);
+    renderAccByConfChart(d);
+    renderPredDistChart2(d);
+    renderAccByConfChart2(d);
+  });
+}
+
+// ── KPI Strip ─────────────────────────────────────────────────────
+function renderKPI(d) {
+  const m = d.metrics;
+  const n = m.n_games;
+  const acc = d.cumulative_accuracy;
+  const lastAcc = acc.length ? acc[acc.length - 1].accuracy : 0;
+  const llDelta = m.baseline_log_loss - m.log_loss;
+  const bsDelta = m.baseline_brier_score - m.brier_score;
+
+  document.getElementById('kpiStrip').innerHTML = `
+    <div class="kpi">
+      <div class="kpi-label">Games Scored</div>
+      <div class="kpi-value">${n.toLocaleString()}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Accuracy</div>
+      <div class="kpi-value ${lastAcc > 0.65 ? 'positive' : ''}">${(lastAcc * 100).toFixed(1)}%</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Log Loss</div>
+      <div class="kpi-value">${m.log_loss.toFixed(4)}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">LL vs Baseline</div>
+      <div class="kpi-value ${llDelta > 0 ? 'positive' : 'negative'}">${llDelta > 0 ? '+' : ''}${llDelta.toFixed(4)}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Brier Score</div>
+      <div class="kpi-value">${m.brier_score.toFixed(4)}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Teams Tracked</div>
+      <div class="kpi-value">${d.rankings.length}</div>
+    </div>
+  `;
+}
+
+// ── Rankings Table ────────────────────────────────────────────────
+function renderRankings(d) {
+  const maxElo = d.rankings.length ? d.rankings[0].elo : 1800;
+  const minElo = d.rankings.length ? d.rankings[d.rankings.length - 1].elo : 1200;
+  const range = maxElo - minElo || 1;
+
+  let html = `<table class="data-table">
+    <thead><tr>
+      <th>#</th><th>Team</th><th class="right">Elo</th><th></th>
+    </tr></thead><tbody>`;
+
+  d.rankings.forEach(r => {
+    const barW = Math.max(2, ((r.elo - minElo) / range) * 120);
+    const cls = r.elo >= 1700 ? 'elo-hot' : r.elo <= 1350 ? 'elo-cold' : '';
+    html += `<tr>
+      <td class="rank">${r.rank}</td>
+      <td class="team-name">${r.name}</td>
+      <td class="right ${cls}">${r.elo.toFixed(0)}</td>
+      <td><span class="elo-bar" style="width:${barW}px"></span></td>
+    </tr>`;
+  });
+
+  html += '</tbody></table>';
+  document.getElementById('rankTable').innerHTML = html;
+  document.getElementById('rankTitle').textContent =
+    `Power Rankings \u2014 ${d.label}`;
+}
+
+// ── Model Eval ────────────────────────────────────────────────────
+function renderModelEval(d) {
+  const m = d.metrics;
+  document.getElementById('modelKpi').innerHTML = `
+    <div class="kpi">
+      <div class="kpi-label">Log Loss</div>
+      <div class="kpi-value">${m.log_loss.toFixed(4)}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Baseline LL</div>
+      <div class="kpi-value">${m.baseline_log_loss.toFixed(4)}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Brier Score</div>
+      <div class="kpi-value">${m.brier_score.toFixed(4)}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Baseline BS</div>
+      <div class="kpi-value">${m.baseline_brier_score.toFixed(4)}</div>
+    </div>
+  `;
+
+  // Calibration detail
+  const cal = m.calibration || [];
+  let calHtml = '';
+  cal.forEach(c => {
+    const predW = (c.predicted_avg * 100).toFixed(0);
+    const obsW = (c.observed * 100).toFixed(0);
+    calHtml += `<div class="cal-row">
+      <div class="cal-label">${(c.bin_mid * 100).toFixed(0)}%</div>
+      <div class="cal-bar-wrap">
+        <div class="cal-bar-pred" style="width:${predW}%"></div>
+        <div class="cal-bar-obs" style="width:${obsW}%"></div>
+      </div>
+      <div style="text-align:right;color:var(--fg0);font-size:11px">${obsW}%</div>
+      <div class="cal-n">n=${c.n}</div>
+    </div>`;
+  });
+  document.getElementById('calDetail').innerHTML = calHtml;
+}
+
+// ── Movers ────────────────────────────────────────────────────────
+function renderMovers(d) {
+  const mv = d.movers || { gainers: [], losers: [] };
+
+  document.getElementById('moversUp').innerHTML = mv.gainers.map(m =>
+    `<div class="mover-row">
+      <span class="mover-name">${m.name}</span>
+      <span class="mover-delta up">+${m.change.toFixed(0)}</span>
+    </div>`
+  ).join('');
+
+  document.getElementById('moversDown').innerHTML = mv.losers.map(m =>
+    `<div class="mover-row">
+      <span class="mover-name">${m.name}</span>
+      <span class="mover-delta down">${m.change.toFixed(0)}</span>
+    </div>`
+  ).join('');
+}
+
+// ── Recent Games ──────────────────────────────────────────────────
+function renderGames(d) {
+  const games = d.recent_games || [];
+  let html = `<table class="data-table">
+    <thead><tr>
+      <th>Date</th><th>Matchup</th><th class="right">Score</th>
+      <th class="right">Model</th><th style="text-align:center">\u2713</th>
+    </tr></thead><tbody>`;
+
+  games.slice().reverse().forEach(g => {
+    const check = g.correct
+      ? '<span style="color:var(--green)">\u2713</span>'
+      : '<span style="color:var(--red)">\u2717</span>';
+    const homeWon = g.home_score > g.away_score;
+    const homeBold = homeWon ? 'font-weight:600;color:var(--fg2)' : '';
+    const awayBold = !homeWon ? 'font-weight:600;color:var(--fg2)' : '';
+    html += `<tr>
+      <td class="game-date">${g.date}</td>
+      <td><span style="${awayBold}">${g.away_name}</span> @ <span style="${homeBold}">${g.home_name}</span></td>
+      <td class="right">${g.away_score}-${g.home_score}</td>
+      <td class="right" style="color:var(--frost1)">${(g.pregame_prob_home * 100).toFixed(0)}%</td>
+      <td style="text-align:center">${check}</td>
+    </tr>`;
+  });
+
+  html += '</tbody></table>';
+  document.getElementById('gamesTable').innerHTML = html;
+}
+
+// ── Elo Tracker Controls ──────────────────────────────────────────
+function renderTrackerControls(d) {
+  const traj = d.elo_trajectories || {};
+  const select = document.getElementById('trackerSelect');
+  const entries = Object.entries(traj).sort((a, b) => b[1].elo - a[1].elo);
+
+  select.innerHTML = '<option value="">Select a team...</option>' +
+    entries.map(([tid, t]) =>
+      `<option value="${tid}">${t.name} (${t.elo.toFixed(0)})</option>`
+    ).join('');
+
+  // Render chips
+  renderTrackerChips(d);
+
+  // Auto-add top 3 if empty
+  if (trackerTeams.length === 0 && entries.length >= 3) {
+    trackerTeams = entries.slice(0, 3).map(([tid]) => tid);
+    renderTrackerChips(d);
+  }
+}
+
+function renderTrackerChips(d) {
+  const traj = d.elo_trajectories || {};
+  document.getElementById('trackerChips').innerHTML = trackerTeams.map((tid, i) => {
+    const t = traj[tid];
+    if (!t) return '';
+    const color = TEAM_COLORS[i % TEAM_COLORS.length];
+    return `<span class="team-chip" style="background:${color}22;border:1px solid ${color}44">
+      <span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block"></span>
+      ${t.name}
+      <span class="remove" data-tid="${tid}">&times;</span>
+    </span>`;
+  }).join('');
+}
+
+document.getElementById('trackerAdd').addEventListener('click', () => {
+  const select = document.getElementById('trackerSelect');
+  const tid = select.value;
+  if (!tid || trackerTeams.includes(tid)) return;
+  if (trackerTeams.length >= 8) return; // max 8 teams
+  trackerTeams.push(tid);
+  select.value = '';
+  const d = DATA.divisions[currentDiv];
+  renderTrackerChips(d);
+  requestAnimationFrame(() => renderTrackerChart(d));
+});
+
+document.getElementById('trackerClear').addEventListener('click', () => {
+  trackerTeams = [];
+  const d = DATA.divisions[currentDiv];
+  renderTrackerChips(d);
+  requestAnimationFrame(() => renderTrackerChart(d));
+});
+
+document.getElementById('trackerChips').addEventListener('click', e => {
+  const rm = e.target.closest('.remove');
+  if (!rm) return;
+  trackerTeams = trackerTeams.filter(t => t !== rm.dataset.tid);
+  const d = DATA.divisions[currentDiv];
+  renderTrackerChips(d);
+  requestAnimationFrame(() => renderTrackerChart(d));
+});
+
+// ── Charts ────────────────────────────────────────────────────────
+const CHART_DEFAULTS = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      backgroundColor: '#3b4252',
+      titleColor: '#e5e9f0',
+      bodyColor: '#d8dee9',
+      borderColor: 'rgba(136,192,208,0.2)',
+      borderWidth: 1,
+      cornerRadius: 6,
+      titleFont: { family: 'JetBrains Mono', size: 11 },
+      bodyFont: { family: 'JetBrains Mono', size: 11 },
+      padding: 10,
+    },
+  },
+  scales: {
+    x: {
+      grid: { color: 'rgba(216,222,233,0.04)', drawBorder: false },
+      ticks: { color: '#4c566a', font: { family: 'JetBrains Mono', size: 10 }, maxTicksLimit: 8 },
+    },
+    y: {
+      grid: { color: 'rgba(216,222,233,0.04)', drawBorder: false },
+      ticks: { color: '#4c566a', font: { family: 'JetBrains Mono', size: 10 } },
+    },
+  },
+};
+
+function destroyChart(key) {
+  if (charts[key]) { charts[key].destroy(); charts[key] = null; }
+}
+
+function renderAccuracyChart(d) {
+  destroyChart('accuracy');
+  const acc = d.cumulative_accuracy || [];
+  if (!acc.length) return;
+
+  const ctx = document.getElementById('chartAccuracy');
+  charts.accuracy = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: acc.map(a => a.date),
+      datasets: [{
+        data: acc.map(a => (a.accuracy * 100).toFixed(1)),
+        borderColor: '#88c0d0',
+        backgroundColor: 'rgba(136,192,208,0.05)',
+        fill: true,
+        borderWidth: 1.5,
+        pointRadius: 0,
+        tension: 0.3,
+      }, {
+        data: acc.map(() => 50),
+        borderColor: 'rgba(191,97,106,0.3)',
+        borderWidth: 1,
+        borderDash: [4, 4],
+        pointRadius: 0,
+      }],
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      scales: {
+        ...CHART_DEFAULTS.scales,
+        y: { ...CHART_DEFAULTS.scales.y, min: 40, max: 90,
+          ticks: { ...CHART_DEFAULTS.scales.y.ticks, callback: v => v + '%' } },
+      },
+    },
+  });
+}
+
+function renderSpreadChart(d) {
+  destroyChart('spread');
+  const sp = d.rating_spread || [];
+  if (!sp.length) return;
+
+  const ctx = document.getElementById('chartSpread');
+  charts.spread = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: sp.map(s => s.date),
+      datasets: [{
+        data: sp.map(s => s.spread.toFixed(1)),
+        borderColor: '#ebcb8b',
+        backgroundColor: 'rgba(235,203,139,0.05)',
+        fill: true,
+        borderWidth: 1.5,
+        pointRadius: 0,
+        tension: 0.3,
+      }],
+    },
+    options: CHART_DEFAULTS,
+  });
+}
+
+function renderCalibrationChart(d) {
+  destroyChart('calibration');
+  const cal = d.metrics.calibration || [];
+  if (!cal.length) return;
+
+  const ctx = document.getElementById('chartCal');
+  charts.calibration = new Chart(ctx, {
+    type: 'scatter',
+    data: {
+      datasets: [{
+        label: 'Model',
+        data: cal.map(c => ({ x: c.predicted_avg * 100, y: c.observed * 100 })),
+        backgroundColor: '#88c0d0',
+        borderColor: '#88c0d0',
+        pointRadius: 6,
+        pointHoverRadius: 8,
+      }, {
+        label: 'Perfect',
+        data: [{ x: 0, y: 0 }, { x: 100, y: 100 }],
+        type: 'line',
+        borderColor: 'rgba(191,97,106,0.3)',
+        borderWidth: 1,
+        borderDash: [4, 4],
+        pointRadius: 0,
+      }],
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      plugins: { ...CHART_DEFAULTS.plugins, legend: { display: false } },
+      scales: {
+        x: { ...CHART_DEFAULTS.scales.x, min: 0, max: 100,
+          title: { display: true, text: 'Predicted %', color: '#4c566a',
+            font: { family: 'JetBrains Mono', size: 10 } },
+          ticks: { ...CHART_DEFAULTS.scales.x.ticks, callback: v => v + '%' } },
+        y: { ...CHART_DEFAULTS.scales.y, min: 0, max: 100,
+          title: { display: true, text: 'Observed %', color: '#4c566a',
+            font: { family: 'JetBrains Mono', size: 10 } },
+          ticks: { ...CHART_DEFAULTS.scales.y.ticks, callback: v => v + '%' } },
+      },
+    },
+  });
+}
+
+// ── Top 20 Elo Horizontal Bar ─────────────────────────────────────
+function renderTopEloChart(d) {
+  destroyChart('topElo');
+  const top = d.rankings.slice(0, 20);
+  if (!top.length) return;
+
+  const ctx = document.getElementById('chartTopElo');
+  charts.topElo = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: top.map(r => r.name),
+      datasets: [{
+        data: top.map(r => r.elo),
+        backgroundColor: top.map((r, i) =>
+          i < 4 ? 'rgba(163,190,140,0.7)' :
+          i < 10 ? 'rgba(136,192,208,0.5)' :
+          'rgba(76,86,106,0.5)'
+        ),
+        borderColor: 'transparent',
+        borderRadius: 3,
+      }],
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      indexAxis: 'y',
+      scales: {
+        x: { ...CHART_DEFAULTS.scales.x,
+          min: Math.min(...top.map(r => r.elo)) - 50,
+          ticks: { ...CHART_DEFAULTS.scales.x.ticks } },
+        y: { ...CHART_DEFAULTS.scales.y,
+          ticks: { ...CHART_DEFAULTS.scales.y.ticks, font: { family: 'JetBrains Mono', size: 10 } } },
+      },
+    },
+  });
+}
+
+// ── Prediction Distribution ───────────────────────────────────────
+function renderPredDistChart(d, canvasId = 'chartPredDist', chartKey = 'predDist') {
+  destroyChart(chartKey);
+  const dist = d.prediction_distribution;
+  if (!dist || !dist.length) return;
+
+  const labels = dist.map((_, i) => `${i*10}-${i*10+10}%`);
+  const ctx = document.getElementById(canvasId);
+  charts[chartKey] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        data: dist,
+        backgroundColor: dist.map((_, i) =>
+          i < 3 || i > 6 ? 'rgba(136,192,208,0.6)' : 'rgba(76,86,106,0.4)'
+        ),
+        borderColor: 'transparent',
+        borderRadius: 3,
+      }],
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      scales: {
+        ...CHART_DEFAULTS.scales,
+        y: { ...CHART_DEFAULTS.scales.y,
+          title: { display: true, text: 'Games', color: '#4c566a',
+            font: { family: 'JetBrains Mono', size: 10 } } },
+      },
+    },
+  });
+}
+
+function renderPredDistChart2(d) {
+  renderPredDistChart(d, 'chartPredDist2', 'predDist2');
+}
+
+// ── Elo Distribution (histogram) ──────────────────────────────────
+function renderEloDistChart(d) {
+  destroyChart('eloDist');
+  const elos = d.rankings.map(r => r.elo);
+  if (!elos.length) return;
+
+  // Bucket into 50-point bins
+  const minE = Math.floor(Math.min(...elos) / 50) * 50;
+  const maxE = Math.ceil(Math.max(...elos) / 50) * 50;
+  const bins = [];
+  const labels = [];
+  for (let b = minE; b < maxE; b += 50) {
+    labels.push(`${b}`);
+    bins.push(elos.filter(e => e >= b && e < b + 50).length);
+  }
+
+  const ctx = document.getElementById('chartEloDist');
+  charts.eloDist = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        data: bins,
+        backgroundColor: 'rgba(136,192,208,0.4)',
+        borderColor: 'rgba(136,192,208,0.6)',
+        borderWidth: 1,
+        borderRadius: 2,
+      }],
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      scales: {
+        ...CHART_DEFAULTS.scales,
+        x: { ...CHART_DEFAULTS.scales.x,
+          title: { display: true, text: 'Elo Rating', color: '#4c566a',
+            font: { family: 'JetBrains Mono', size: 10 } } },
+        y: { ...CHART_DEFAULTS.scales.y,
+          title: { display: true, text: 'Teams', color: '#4c566a',
+            font: { family: 'JetBrains Mono', size: 10 } } },
+      },
+    },
+  });
+}
+
+// ── Elo Tracker (multi-team line chart) ───────────────────────────
+function renderTrackerChart(d) {
+  destroyChart('tracker');
+  const traj = d.elo_trajectories || {};
+  if (!trackerTeams.length) return;
+
+  // Build datasets
+  const datasets = trackerTeams.map((tid, i) => {
+    const t = traj[tid];
+    if (!t) return null;
+    const color = TEAM_COLORS[i % TEAM_COLORS.length];
+    return {
+      label: t.name,
+      data: t.points.map(p => ({ x: p.date, y: p.elo })),
+      borderColor: color,
+      backgroundColor: color + '11',
+      fill: false,
+      borderWidth: 2,
+      pointRadius: 0,
+      pointHoverRadius: 4,
+      tension: 0.2,
+    };
+  }).filter(Boolean);
+
+  // Reference line at 1500
+  const allDates = datasets.flatMap(ds => ds.data.map(p => p.x));
+  const minDate = allDates.length ? allDates.reduce((a, b) => a < b ? a : b) : '';
+  const maxDate = allDates.length ? allDates.reduce((a, b) => a > b ? a : b) : '';
+
+  datasets.push({
+    label: 'Baseline (1500)',
+    data: [{ x: minDate, y: 1500 }, { x: maxDate, y: 1500 }],
+    borderColor: 'rgba(191,97,106,0.25)',
+    borderWidth: 1,
+    borderDash: [4, 4],
+    pointRadius: 0,
+    fill: false,
+  });
+
+  const ctx = document.getElementById('chartTracker');
+  charts.tracker = new Chart(ctx, {
+    type: 'line',
+    data: { datasets },
+    options: {
+      ...CHART_DEFAULTS,
+      plugins: {
+        ...CHART_DEFAULTS.plugins,
+        legend: {
+          display: true,
+          position: 'top',
+          labels: {
+            color: '#d8dee9',
+            font: { family: 'JetBrains Mono', size: 10 },
+            boxWidth: 12,
+            padding: 16,
+            filter: item => item.text !== 'Baseline (1500)',
+          },
+        },
+      },
+      scales: {
+        x: {
+          type: 'category',
+          labels: [...new Set(allDates)].sort(),
+          grid: { color: 'rgba(216,222,233,0.04)', drawBorder: false },
+          ticks: { color: '#4c566a', font: { family: 'JetBrains Mono', size: 10 }, maxTicksLimit: 10 },
+        },
+        y: {
+          ...CHART_DEFAULTS.scales.y,
+          title: { display: true, text: 'Elo Rating', color: '#4c566a',
+            font: { family: 'JetBrains Mono', size: 10 } },
+        },
+      },
+    },
+  });
+}
+
+// ── Spread chart (tracker panel copy) ─────────────────────────────
+function renderSpreadChart2(d) {
+  destroyChart('spread2');
+  const sp = d.rating_spread || [];
+  if (!sp.length) return;
+
+  const ctx = document.getElementById('chartSpread2');
+  charts.spread2 = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: sp.map(s => s.date),
+      datasets: [{
+        data: sp.map(s => s.spread.toFixed(1)),
+        borderColor: '#8fbcbb',
+        backgroundColor: 'rgba(143,188,187,0.05)',
+        fill: true,
+        borderWidth: 1.5,
+        pointRadius: 0,
+        tension: 0.3,
+      }],
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      scales: {
+        ...CHART_DEFAULTS.scales,
+        y: { ...CHART_DEFAULTS.scales.y,
+          title: { display: true, text: 'Std Dev', color: '#4c566a',
+            font: { family: 'JetBrains Mono', size: 10 } } },
+      },
+    },
+  });
+}
+
+// ── Accuracy by Confidence ────────────────────────────────────────
+function renderAccByConfChart(d, canvasId = 'chartAccByConf', chartKey = 'accByConf') {
+  destroyChart(chartKey);
+  const abc = d.accuracy_by_confidence;
+  if (!abc || !abc.length) return;
+
+  const ctx = document.getElementById(canvasId);
+  charts[chartKey] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: abc.map(b => b.bucket),
+      datasets: [{
+        label: 'Accuracy',
+        data: abc.map(b => (b.accuracy * 100).toFixed(1)),
+        backgroundColor: abc.map(b =>
+          b.accuracy >= 0.7 ? 'rgba(163,190,140,0.6)' :
+          b.accuracy >= 0.5 ? 'rgba(136,192,208,0.5)' :
+          'rgba(191,97,106,0.5)'
+        ),
+        borderColor: 'transparent',
+        borderRadius: 3,
+      }],
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      scales: {
+        ...CHART_DEFAULTS.scales,
+        y: { ...CHART_DEFAULTS.scales.y, min: 0, max: 100,
+          ticks: { ...CHART_DEFAULTS.scales.y.ticks, callback: v => v + '%' },
+          title: { display: true, text: 'Win %', color: '#4c566a',
+            font: { family: 'JetBrains Mono', size: 10 } } },
+      },
+    },
+  });
+}
+
+function renderAccByConfChart2(d) {
+  renderAccByConfChart(d, 'chartAccByConf2', 'accByConf2');
+}
+
+// ── Init ──────────────────────────────────────────────────────────
+loadData();
+</script>
+</body>
+</html>

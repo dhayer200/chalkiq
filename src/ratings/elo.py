@@ -1,9 +1,11 @@
 """
-Elo rating engine for NCAA basketball.
+Elo rating engine for sports betting models.
+
+Supports NCAA basketball, NBA, and MLB with sport-specific tuning.
 
 Key design choices:
   - All teams start at DEFAULT_RATING (1500).
-  - Home-court advantage is modeled as a fixed Elo offset added to the
+  - Home-court/field advantage is modeled as a fixed Elo offset added to the
     home team's effective rating before computing win probability.
   - Ratings are updated after every game using the standard Elo formula:
         R' = R + K * mov_factor * (outcome - expected)
@@ -19,6 +21,10 @@ Usage:
     engine.process_games(games)           # games from data.fetch_season
     print(engine.rankings()[:10])         # top 10
     p = engine.win_prob("150", "248")     # Duke vs Houston (neutral)
+
+    # MLB with sport-specific tuning:
+    cfg = SPORT_CONFIGS["mlb"]
+    engine = EloEngine(**cfg)
 """
 
 import math
@@ -31,6 +37,42 @@ SCALE = 300.0          # Elo scale: a 300-point gap ≈ 90.9% win probability
                        # Standard Elo uses 400 but that underestimates favorites in NCAAB.
 HOME_ADVANTAGE = 100.0  # Elo points granted to the home team
 
+# Sport-specific Elo configurations
+SPORT_CONFIGS = {
+    "mens": {
+        "k": 24.0,
+        "home_advantage": 100.0,
+        "scale": 300.0,
+        "season_regress": 0.33,
+        "tempo_adjust": True,
+        "season_boundary": "ncaa",   # Nov-Apr academic year
+    },
+    "womens": {
+        "k": 24.0,
+        "home_advantage": 100.0,
+        "scale": 300.0,
+        "season_regress": 0.33,
+        "tempo_adjust": True,
+        "season_boundary": "ncaa",
+    },
+    "nba": {
+        "k": 12.0,
+        "home_advantage": 70.0,
+        "scale": 350.0,          # NBA has more parity than NCAAB
+        "season_regress": 0.25,
+        "tempo_adjust": True,
+        "season_boundary": "ncaa",   # NBA also runs Oct-Jun
+    },
+    "mlb": {
+        "k": 6.0,               # 162 games/season → need small K to avoid over-reaction
+        "home_advantage": 40.0,  # MLB home field ≈ 54% win rate
+        "scale": 400.0,          # Standard Elo scale — MLB has highest parity
+        "season_regress": 0.20,  # MLB rosters more stable than college
+        "tempo_adjust": False,   # 9 innings standard — no pace normalization
+        "season_boundary": "mlb", # Calendar year: season runs late Mar → Oct
+    },
+}
+
 
 @dataclass
 class EloEngine:
@@ -41,6 +83,8 @@ class EloEngine:
     season_regress: float = 0.33   # fraction to regress toward initial between seasons
                                    # 0.33 = regress 1/3 of distance (accounts for roster turnover)
     tempo_adjust: bool = True      # normalize MOV by pace (avg possessions ~70)
+    scale: float = SCALE           # Elo scale factor (300 for NCAAB, 400 for MLB, etc.)
+    season_boundary: str = "ncaa"  # "ncaa" = Nov-Apr academic year, "mlb" = calendar year (Mar-Oct)
 
     # internal state — not constructor args
     ratings: dict[str, float] = field(default_factory=dict, repr=False)
@@ -66,7 +110,7 @@ class EloEngine:
         r_a = self.rating(team_a)
         r_b = self.rating(team_b)
         adj = 0.0 if neutral else self.home_advantage
-        return 1.0 / (1.0 + 10.0 ** ((r_b - r_a - adj) / SCALE))
+        return 1.0 / (1.0 + 10.0 ** ((r_b - r_a - adj) / self.scale))
 
     def regress_ratings(self) -> None:
         """
@@ -87,7 +131,7 @@ class EloEngine:
         """Check if we've crossed into a new season and regress if so.
 
         NCAA season runs Nov→Apr. Season year = spring calendar year.
-        A game on 2024-11-15 belongs to the 2025 season.
+        MLB season runs Mar→Oct. Season year = calendar year.
         We trigger a regress when we see the first game of a new season
         (i.e. season_year increases).
         """
@@ -100,9 +144,13 @@ class EloEngine:
         except (ValueError, IndexError):
             return
 
-        # Season year = spring portion's calendar year
-        # Nov/Dec of year Y → season Y+1; Jan-Apr of year Y → season Y
-        season_year = year + 1 if month >= 10 else year
+        if self.season_boundary == "mlb":
+            # MLB: season = calendar year. Games in Jan-Feb are spring training
+            # (shouldn't appear), season starts late March.
+            season_year = year
+        else:
+            # NCAA/NBA: Nov/Dec of year Y → season Y+1; Jan-Apr of year Y → season Y
+            season_year = year + 1 if month >= 10 else year
 
         if self._last_season_year is None:
             self._last_season_year = season_year
@@ -245,7 +293,7 @@ class EloEngine:
         Used when injury adjustments are applied ad-hoc without mutating state.
         """
         adj = 0.0 if neutral else self.home_advantage
-        return 1.0 / (1.0 + 10.0 ** ((r_b - r_a - adj) / SCALE))
+        return 1.0 / (1.0 + 10.0 ** ((r_b - r_a - adj) / self.scale))
 
     def adjusted_copy(self, overrides: dict[str, float]) -> "EloEngine":
         """

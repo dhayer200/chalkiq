@@ -1,6 +1,7 @@
 // ChalkIQ — Charts & Rankings
 (function () {
-  const DATA_URL = "/assets/data.json";
+  // Use relative path so it works both on Vercel and via file://
+  const DATA_URL = "assets/data.json";
 
   fetch(DATA_URL)
     .then((r) => r.json())

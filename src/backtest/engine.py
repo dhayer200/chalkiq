@@ -60,10 +60,16 @@ class BacktestResults:
 
 
 class Backtester:
-    def __init__(self, k: float = 24.0, home_advantage: float = 100.0, decay_half_life: float = 0.0):
+    def __init__(self, k: float = 24.0, home_advantage: float = 100.0, decay_half_life: float = 0.0,
+                 season_regress: float = 0.33, tempo_adjust: bool = True, season_boundary: str = "ncaa",
+                 scale: float = 300.0):
         self.k    = k
         self.hca  = home_advantage
         self.decay = decay_half_life
+        self.season_regress = season_regress
+        self.tempo_adjust = tempo_adjust
+        self.season_boundary = season_boundary
+        self.scale = scale
 
     def run(
         self,
@@ -85,7 +91,9 @@ class Backtester:
         Games must be dicts with keys: date, home_id, home_name, away_id,
         away_name, home_score, away_score, neutral.
         """
-        engine = EloEngine(k=self.k, home_advantage=self.hca, decay_half_life=self.decay)
+        engine = EloEngine(k=self.k, home_advantage=self.hca, decay_half_life=self.decay,
+                           season_regress=self.season_regress, tempo_adjust=self.tempo_adjust,
+                           scale=self.scale, season_boundary=self.season_boundary)
         sorted_games = sorted(games, key=lambda g: g["date"])
 
         breakeven = 100.0 / (abs(juice) + 100.0)

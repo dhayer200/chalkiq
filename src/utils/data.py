@@ -1,6 +1,6 @@
 """
-Fetch NCAA basketball game results from ESPN's unofficial API.
-Supports both men's and women's divisions.
+Fetch game results from ESPN's unofficial API.
+Supports NCAA basketball (men's/women's), NBA, and MLB.
 
 Each game returned as:
     {
@@ -28,24 +28,26 @@ from pathlib import Path
 
 import requests
 
-_ESPN_TMPL = (
-    "https://site.api.espn.com/apis/site/v2/sports"
-    "/basketball/{sport}/scoreboard"
-)
+_ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports"
 
+# division -> (sport_category, league)
 _SPORTS = {
-    "mens":   "mens-college-basketball",
-    "womens": "womens-college-basketball",
-    "nba":    "nba",
+    "mens":   ("basketball", "mens-college-basketball"),
+    "womens": ("basketball", "womens-college-basketball"),
+    "nba":    ("basketball", "nba"),
+    "mlb":    ("baseball",   "mlb"),
 }
+
+def _scoreboard_url(division: str) -> str:
+    cat, league = _SPORTS.get(division, _SPORTS["mens"])
+    return f"{_ESPN_BASE}/{cat}/{league}/scoreboard"
 
 _FINAL_STATUSES = {"STATUS_FINAL", "STATUS_FINAL_OT", "STATUS_FINAL_OVERTIME"}
 
 
 def fetch_day(dt: date, division: str = "mens") -> list[dict]:
     """Return all completed games for a single calendar date."""
-    sport = _SPORTS.get(division, _SPORTS["mens"])
-    url = _ESPN_TMPL.format(sport=sport)
+    url = _scoreboard_url(division)
     params = {"dates": dt.strftime("%Y%m%d"), "limit": 300}
     r = requests.get(url, params=params, timeout=15)
     r.raise_for_status()

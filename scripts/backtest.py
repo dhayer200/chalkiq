@@ -29,15 +29,34 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.backtest.engine import Backtester
+from src.ratings.elo     import SPORT_CONFIGS
 from src.utils.data      import fetch_season
 
 
 # Season date ranges — extend as needed
-SEASONS: dict[int, tuple[date, date]] = {
-    2023: (date(2022, 11, 7), date(2023, 4, 3)),
-    2024: (date(2023, 11, 6), date(2024, 4, 8)),
-    2025: (date(2024, 11, 4), date(2025, 4, 7)),
-    2026: (date(2025, 11, 4), date.today()),
+SEASONS: dict[str, dict[int, tuple[date, date]]] = {
+    "mens": {
+        2023: (date(2022, 11, 7), date(2023, 4, 3)),
+        2024: (date(2023, 11, 6), date(2024, 4, 8)),
+        2025: (date(2024, 11, 4), date(2025, 4, 7)),
+        2026: (date(2025, 11, 4), date.today()),
+    },
+    "womens": {
+        2023: (date(2022, 11, 7), date(2023, 4, 3)),
+        2024: (date(2023, 11, 6), date(2024, 4, 8)),
+        2025: (date(2024, 11, 4), date(2025, 4, 7)),
+        2026: (date(2025, 11, 4), date.today()),
+    },
+    "mlb": {
+        2024: (date(2024, 3, 20), date(2024, 10, 30)),
+        2025: (date(2025, 3, 20), date(2025, 10, 30)),
+        2026: (date(2026, 2, 20), date.today()),
+    },
+    "nba": {
+        2024: (date(2023, 10, 24), date(2024, 6, 17)),
+        2025: (date(2024, 10, 22), date(2025, 6, 22)),
+        2026: (date(2025, 10, 21), date.today()),
+    },
 }
 
 CACHE_DIRS: dict[str, dict[int, str]] = {
@@ -53,15 +72,26 @@ CACHE_DIRS: dict[str, dict[int, str]] = {
         2025: "data/raw/womens/2025",
         2026: "data/raw/womens",
     },
+    "mlb": {
+        2024: "data/raw/mlb/2024",
+        2025: "data/raw/mlb/2025",
+        2026: "data/raw/mlb",
+    },
+    "nba": {
+        2024: "data/raw/nba/2024",
+        2025: "data/raw/nba/2025",
+        2026: "data/raw/nba",
+    },
 }
 
 
 def load_season(season: int, division: str) -> list[dict]:
-    if season not in SEASONS:
-        print(f"Unknown season {season}. Available: {list(SEASONS.keys())}")
+    div_seasons = SEASONS.get(division, SEASONS["mens"])
+    if season not in div_seasons:
+        print(f"Unknown season {season} for {division}. Available: {list(div_seasons.keys())}")
         sys.exit(1)
 
-    start, end = SEASONS[season]
+    start, end = div_seasons[season]
     cache_dirs  = CACHE_DIRS.get(division, CACHE_DIRS["mens"])
     cache_dir   = cache_dirs.get(season, f"data/raw/{division}/{season}")
 
@@ -76,7 +106,7 @@ def main() -> None:
         description="Backtest the Elo model",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--division",   default="mens",   choices=["mens", "womens"],
+    parser.add_argument("--division",   default="mens",   choices=["mens", "womens", "mlb", "nba"],
                         help="Division to backtest")
     parser.add_argument("--seasons",    nargs="+", type=int, default=[2026],
                         help="Season year(s) to include")
@@ -97,7 +127,16 @@ def main() -> None:
         print(f"  Recency decay: half-life = {args.decay:.0f} days "
               f"(games {args.decay:.0f}d ago have 50% K weight, {args.decay*2:.0f}d ago have 25%)")
 
-    bt = Backtester(k=24.0, home_advantage=100.0, decay_half_life=args.decay)
+    elo_cfg = SPORT_CONFIGS.get(args.division, SPORT_CONFIGS["mens"])
+    bt = Backtester(
+        k=elo_cfg["k"],
+        home_advantage=elo_cfg["home_advantage"],
+        scale=elo_cfg.get("scale", 300.0),
+        decay_half_life=args.decay,
+        season_regress=elo_cfg["season_regress"],
+        tempo_adjust=elo_cfg["tempo_adjust"],
+        season_boundary=elo_cfg.get("season_boundary", "ncaa"),
+    )
 
     if args.combined and len(args.seasons) > 1:
         # Load and combine all seasons

@@ -105,6 +105,7 @@ DIVISION_CONFIG = {
         "season_start": date(2025, 11, 4),
         "season_end":   date.today(),
         "is_nba":       False,
+        "is_mlb":       False,
         "avg_total":    140.0,   # avg combined points per game
     },
     "womens": {
@@ -116,7 +117,32 @@ DIVISION_CONFIG = {
         "season_start": date(2025, 11, 4),
         "season_end":   date.today(),
         "is_nba":       False,
+        "is_mlb":       False,
         "avg_total":    130.0,
+    },
+    "mlb": {
+        "label":        "MLB",
+        "cache_dir":    str(ROOT / "data" / "raw" / "mlb"),
+        "emoji":        "⚾",
+        "color":        NORD["orange"],
+        "light":        NORD["bg1"],
+        "season_start": date(date.today().year if date.today().month >= 3 else date.today().year - 1, 2, 20),
+        "season_end":   date.today(),
+        "is_nba":       False,
+        "is_mlb":       True,
+        "avg_total":    9.0,    # avg combined runs per game
+    },
+    "nba": {
+        "label":        "NBA",
+        "cache_dir":    str(ROOT / "data" / "raw" / "nba"),
+        "emoji":        "🏀",
+        "color":        NORD["frost0"],
+        "light":        NORD["bg1"],
+        "season_start": date(date.today().year if date.today().month >= 10 else date.today().year - 1, 10, 15),
+        "season_end":   date.today(),
+        "is_nba":       True,
+        "is_mlb":       False,
+        "avg_total":    220.0,  # avg combined points per game
     },
 }
 
@@ -164,6 +190,7 @@ def _fmt_ml(ml: int) -> str:
 
 @st.cache_resource(ttl=3600, show_spinner="Loading game data…")
 def load_engine(division: str) -> EloEngine:
+    from src.ratings.elo import SPORT_CONFIGS
     cfg = DIVISION_CONFIG[division]
     games = fetch_season(
         cfg["season_start"], cfg["season_end"],
@@ -171,7 +198,15 @@ def load_engine(division: str) -> EloEngine:
         division=division,
         verbose=False,
     )
-    engine = EloEngine(k=24.0, home_advantage=100.0)
+    elo_cfg = SPORT_CONFIGS.get(division, SPORT_CONFIGS["mens"])
+    engine = EloEngine(
+        k=elo_cfg["k"],
+        home_advantage=elo_cfg["home_advantage"],
+        scale=elo_cfg.get("scale", 300.0),
+        season_regress=elo_cfg["season_regress"],
+        tempo_adjust=elo_cfg["tempo_adjust"],
+        season_boundary=elo_cfg.get("season_boundary", "ncaa"),
+    )
     engine.process_games(games)
     return engine
 
@@ -948,11 +983,10 @@ st.markdown("""
 hcol1, hcol2 = st.columns([3, 1])
 with hcol1:
     st.markdown("## 🎯 ChalkIQ")
-    st.markdown("*the favorites win*")
 with hcol2:
     division = st.radio(
         "Division",
-        options=["mens", "womens"],
+        options=["mens", "womens", "mlb", "nba"],
         format_func=lambda d: f"{DIVISION_CONFIG[d]['emoji']} {DIVISION_CONFIG[d]['label']}",
         horizontal=True,
         key="division",
@@ -961,7 +995,11 @@ with hcol2:
 cfg   = DIVISION_CONFIG[division]
 color = cfg["color"]
 light = cfg["light"]
-
+_is_mlb = cfg.get("is_mlb", False)
+_is_nba = cfg.get("is_nba", False)
+_is_pro = _is_mlb or _is_nba  # skip CBB-only tabs for pro sports
+st.caption("*quantitative MLB analytics*" if _is_mlb else
+           "*quantitative NBA analytics*" if _is_nba else "*the favorites win*")
 st.markdown("---")
 
 # ── Load data ─────────────────────────────────────────────────────────────────
@@ -1033,21 +1071,37 @@ _inj_override_key = tuple(sorted(_inj_overrides.items()))
 adj_engine = engine.adjusted_copy(_inj_overrides) if _inj_overrides else engine
 
 rankings                   = adj_engine.rankings()
-regions, adv_odds, champ_odds = load_bracket_data(division, _inj_override_key)
+
+if not _is_pro:
+    regions, adv_odds, champ_odds = load_bracket_data(division, _inj_override_key)
+else:
+    regions, adv_odds, champ_odds = {}, {}, {}
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 
-tab_rank, tab_bracket, tab_eval, tab_math, tab_ncaa361, tab_signals, tab_backtest, tab_players, tab_sources = st.tabs([
-    "📊  Power Rankings",
-    "🏆  Bracket",
-    "📈  Model Evaluation",
-    "📐  Math",
-    "📈  NCAA 361",
-    "🔍  Signals",
-    "📉  Backtest",
-    "🏀  Players",
-    "📚  Sources",
-])
+if _is_pro:
+    tab_rank, tab_eval, tab_signals, tab_backtest, tab_sources = st.tabs([
+        "📊  Power Rankings",
+        "📈  Model Evaluation",
+        "🔍  Signals",
+        "📉  Backtest",
+        "📚  Sources",
+    ])
+    # These tabs don't exist for MLB — use expanders hidden off screen
+    # so the `with tab_X:` blocks below don't crash
+    tab_bracket = tab_math = tab_ncaa361 = tab_players = st.empty()
+else:
+    tab_rank, tab_bracket, tab_eval, tab_math, tab_ncaa361, tab_signals, tab_backtest, tab_players, tab_sources = st.tabs([
+        "📊  Power Rankings",
+        "🏆  Bracket",
+        "📈  Model Evaluation",
+        "📐  Math",
+        "📈  NCAA 361",
+        "🔍  Signals",
+        "📉  Backtest",
+        "🏀  Players",
+        "📚  Sources",
+    ])
 
 
 # ════════════════════════════════════════════════════════════════════════════ #
@@ -1208,43 +1262,44 @@ with tab_rank:
 # ════════════════════════════════════════════════════════════════════════════ #
 
 with tab_bracket:
-    st.subheader(f"Tournament Bracket | {cfg['label']} Division")
-    st.caption(
-        "Bracket seeded by current Elo (S-curve). "
-        "South TL | Midwest BL | East TR | West BR. "
-        "Win% and title odds shown on each Final Four team. "
-        "Actual Selection Sunday seeding may differ."
-    )
-
-    # Final Four visual at the top
-    fig_ff = draw_final_four(regions, adv_odds, engine.names, color)
-    st.pyplot(fig_ff, width="stretch")
-    plt.close()
-
-    st.markdown("---")
-
-    # Combined bracket — all 4 regions + Final Four + Championship on one canvas
-    bracket_html = combined_bracket_html(regions, engine.win_prob, color, cfg["label"], adv_odds)
-    components.html(bracket_html, height=980, scrolling=True)
-    st.caption(
-        "Highlighted box = projected winner.  "
-        "Win% shown bottom-right of each team.  "
-        "Elo shown bottom-left.  Neutral court assumption."
-    )
-
-    # Advancement probability tables (per region, collapsible)
-    with st.expander("Show advancement probability tables"):
-        reg_sub_tabs = st.tabs(REGIONS)
-        for rsub, region_name in zip(reg_sub_tabs, REGIONS):
-            with rsub:
-                df_reg = region_table(regions[region_name], adv_odds, champ_odds)
-                styled = style_region_table(df_reg, color)
-                st.dataframe(styled, width="stretch", height=420)
+    if not _is_pro:
+        st.subheader(f"Tournament Bracket | {cfg['label']} Division")
         st.caption(
-            "**R64** = survives first round  ·  **R32** = Round of 32  ·  "
-            "**S16** = Sweet 16  ·  **E8** = Elite 8  ·  "
-            "**FF** = Final Four  ·  **Title** = Championship"
+            "Bracket seeded by current Elo (S-curve). "
+            "South TL | Midwest BL | East TR | West BR. "
+            "Win% and title odds shown on each Final Four team. "
+            "Actual Selection Sunday seeding may differ."
         )
+
+        # Final Four visual at the top
+        fig_ff = draw_final_four(regions, adv_odds, engine.names, color)
+        st.pyplot(fig_ff, width="stretch")
+        plt.close()
+
+        st.markdown("---")
+
+        # Combined bracket — all 4 regions + Final Four + Championship on one canvas
+        bracket_html = combined_bracket_html(regions, engine.win_prob, color, cfg["label"], adv_odds)
+        components.html(bracket_html, height=980, scrolling=True)
+        st.caption(
+            "Highlighted box = projected winner.  "
+            "Win% shown bottom-right of each team.  "
+            "Elo shown bottom-left.  Neutral court assumption."
+        )
+
+        # Advancement probability tables (per region, collapsible)
+        with st.expander("Show advancement probability tables"):
+            reg_sub_tabs = st.tabs(REGIONS)
+            for rsub, region_name in zip(reg_sub_tabs, REGIONS):
+                with rsub:
+                    df_reg = region_table(regions[region_name], adv_odds, champ_odds)
+                    styled = style_region_table(df_reg, color)
+                    st.dataframe(styled, width="stretch", height=420)
+            st.caption(
+                "**R64** = survives first round  ·  **R32** = Round of 32  ·  "
+                "**S16** = Sweet 16  ·  **E8** = Elite 8  ·  "
+                "**FF** = Final Four  ·  **Title** = Championship"
+            )
 
 
 # TAB 4 — Model Evaluation
@@ -3147,7 +3202,7 @@ with tab_backtest:
 
     _bt_col1, _bt_col2, _bt_col3, _bt_col4, _bt_col5 = st.columns([2, 2, 2, 2, 2])
     with _bt_col1:
-        _bt_div = st.selectbox("Division", ["mens", "womens"], key="bt_div")
+        _bt_div = st.selectbox("Division", ["mens", "womens", "mlb", "nba"], key="bt_div")
     with _bt_col2:
         _bt_seasons = st.multiselect(
             "Seasons", [2023, 2024, 2025, 2026],
@@ -3187,12 +3242,31 @@ with tab_backtest:
     )
     _run_bt = st.button("Run Backtest", type="primary", key="run_bt")
 
-    _SEASON_RANGES = {
-        2023: (date(2022, 11, 7),  date(2023, 4, 3)),
-        2024: (date(2023, 11, 6),  date(2024, 4, 8)),
-        2025: (date(2024, 11, 4),  date(2025, 4, 7)),
-        2026: (date(2025, 11, 4),  date.today()),
+    _ALL_SEASON_RANGES: dict[str, dict[int, tuple]] = {
+        "mens": {
+            2023: (date(2022, 11, 7),  date(2023, 4, 3)),
+            2024: (date(2023, 11, 6),  date(2024, 4, 8)),
+            2025: (date(2024, 11, 4),  date(2025, 4, 7)),
+            2026: (date(2025, 11, 4),  date.today()),
+        },
+        "womens": {
+            2023: (date(2022, 11, 7),  date(2023, 4, 3)),
+            2024: (date(2023, 11, 6),  date(2024, 4, 8)),
+            2025: (date(2024, 11, 4),  date(2025, 4, 7)),
+            2026: (date(2025, 11, 4),  date.today()),
+        },
+        "mlb": {
+            2024: (date(2024, 3, 20), date(2024, 10, 30)),
+            2025: (date(2025, 3, 20), date(2025, 10, 30)),
+            2026: (date(2026, 2, 20), date.today()),
+        },
+        "nba": {
+            2024: (date(2023, 10, 24), date(2024, 6, 17)),
+            2025: (date(2024, 10, 22), date(2025, 6, 22)),
+            2026: (date(2025, 10, 21), date.today()),
+        },
     }
+    _SEASON_RANGES = _ALL_SEASON_RANGES.get(_bt_div, _ALL_SEASON_RANGES["mens"])
 
     # ── Injury timeline for backtest (current season only) ──────────────────
     def _build_bt_injury_timeline(bt_games: list[dict]) -> dict:
@@ -3268,39 +3342,37 @@ with tab_backtest:
         from src.backtest.engine import Backtester
         from src.utils.data import fetch_season
 
-        _cache_dirs = {
-            "mens":   {2023: "data/raw/mens/2023", 2024: "data/raw/mens/2024",
-                       2025: "data/raw/mens/2025", 2026: "data/raw/mens"},
-            "womens": {2023: "data/raw/womens/2023", 2024: "data/raw/womens/2024",
-                       2025: "data/raw/womens/2025", 2026: "data/raw/womens"},
-        }
-
         all_games: list[dict] = []
+        _sr = _ALL_SEASON_RANGES.get(division, _ALL_SEASON_RANGES["mens"])
         for _s in sorted(seasons):
-            _start, _end = _SEASON_RANGES[_s]
-            _cache = _cache_dirs.get(division, _cache_dirs["mens"]).get(_s, f"data/raw/{division}/{_s}")
+            if _s not in _sr:
+                continue
+            _start, _end = _sr[_s]
+            _cache = f"data/raw/{division}/{_s}" if _s < 2026 else f"data/raw/{division}"
             _games = fetch_season(_start, _end, cache_dir=_cache, division=division, verbose=False)
             all_games.extend(_games)
 
-        # injury_timeline is computed outside the cache boundary and passed in
-        # via use_injuries flag (busts cache when toggled)
-        bt = Backtester(k=24.0, home_advantage=100.0, decay_half_life=float(decay))
+        from src.ratings.elo import SPORT_CONFIGS as _SC
+        _ecfg = _SC.get(division, _SC["mens"])
+        bt = Backtester(
+            k=_ecfg["k"], home_advantage=_ecfg["home_advantage"],
+            scale=_ecfg.get("scale", 300.0), decay_half_life=float(decay),
+            season_regress=_ecfg["season_regress"], tempo_adjust=_ecfg["tempo_adjust"],
+            season_boundary=_ecfg.get("season_boundary", "ncaa"),
+        )
         return bt.run(all_games, min_edge=min_edge, stake=100.0, warmup_games=warmup)
 
     @st.cache_data(show_spinner="Loading game data for backtest…")
     def _fetch_bt_games(division: str, seasons: tuple[int, ...]) -> list[dict]:
         """Load and cache game data for all selected seasons. Shared by both backtest paths."""
         from src.utils.data import fetch_season as _fs
-        _cache_dirs = {
-            "mens":   {2023: "data/raw/mens/2023", 2024: "data/raw/mens/2024",
-                       2025: "data/raw/mens/2025", 2026: "data/raw/mens"},
-            "womens": {2023: "data/raw/womens/2023", 2024: "data/raw/womens/2024",
-                       2025: "data/raw/womens/2025", 2026: "data/raw/womens"},
-        }
+        _sr = _ALL_SEASON_RANGES.get(division, _ALL_SEASON_RANGES["mens"])
         _games: list[dict] = []
         for _s in sorted(seasons):
-            _st, _en = _SEASON_RANGES[_s]
-            _cd = _cache_dirs.get(division, _cache_dirs["mens"]).get(_s, f"data/raw/{division}/{_s}")
+            if _s not in _sr:
+                continue
+            _st, _en = _sr[_s]
+            _cd = f"data/raw/{division}/{_s}" if _s < 2026 else f"data/raw/{division}"
             _games.extend(_fs(_st, _en, cache_dir=_cd, division=division, verbose=False))
         return _games
 
@@ -3310,7 +3382,14 @@ with tab_backtest:
                 _bt_games = _fetch_bt_games(_bt_div, tuple(sorted(_bt_seasons)))
                 _timeline = _build_bt_injury_timeline(_bt_games)
                 from src.backtest.engine import Backtester as _BTAdj
-                _bt_adj = _BTAdj(k=24.0, home_advantage=100.0, decay_half_life=float(_bt_decay))
+                from src.ratings.elo import SPORT_CONFIGS as _SC2
+                _ecfg2 = _SC2.get(_bt_div, _SC2["mens"])
+                _bt_adj = _BTAdj(
+                    k=_ecfg2["k"], home_advantage=_ecfg2["home_advantage"],
+                    scale=_ecfg2.get("scale", 300.0), decay_half_life=float(_bt_decay),
+                    season_regress=_ecfg2["season_regress"], tempo_adjust=_ecfg2["tempo_adjust"],
+                    season_boundary=_ecfg2.get("season_boundary", "ncaa"),
+                )
                 _results = _bt_adj.run(
                     _bt_games, min_edge=_bt_edge / 100, stake=100.0,
                     warmup_games=_bt_warmup, injury_timeline=_timeline or None,

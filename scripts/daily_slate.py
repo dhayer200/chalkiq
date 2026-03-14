@@ -35,12 +35,20 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 from src.live.feed        import fetch_other_games
-from src.odds.api         import fetch_odds, SPORT_NCAAB
+from src.odds.api         import fetch_odds, SPORT_NCAAB, SPORT_MLB, SPORT_NBA
 from src.odds.store       import load_snapshots
 from src.odds.match       import build_index, match_team
-from src.ratings.elo      import EloEngine
+from src.ratings.elo      import EloEngine, SPORT_CONFIGS
 from src.signals.injuries import fetch_team_injuries, _CONCERN_STATUSES, _OUT_STATUSES
 from src.utils.data       import fetch_season
+
+# Map division to odds API sport key
+_ODDS_SPORT = {
+    "mens":   SPORT_NCAAB,
+    "womens": SPORT_NCAAB,
+    "mlb":    SPORT_MLB,
+    "nba":    SPORT_NBA,
+}
 
 ET = ZoneInfo("America/New_York")
 
@@ -80,13 +88,38 @@ def color(text: str, code: str) -> str:
 def load_engine(division: str) -> EloEngine:
     from datetime import date as _date
     ROOT = Path(__file__).resolve().parents[1]
-    season_start = _date(2025, 11, 4)
-    season_end   = _date.today()
-    cache_dir    = ROOT / "data" / "raw" / division
+    today = _date.today()
+
+    if division == "mlb":
+        # MLB season: late March → October. Fetch current + prior season.
+        yr = today.year if today.month >= 3 else today.year - 1
+        season_start = _date(yr, 2, 20)  # spring training start for current season
+        season_end   = today
+    elif division == "nba":
+        # NBA season: Oct → Jun
+        yr = today.year if today.month >= 10 else today.year - 1
+        season_start = _date(yr, 10, 15)
+        season_end   = today
+    else:
+        # NCAA: Nov → Apr
+        season_start = _date(2025, 11, 4)
+        season_end   = today
+
+    cache_dir = ROOT / "data" / "raw" / division
     print(color("  Loading Elo ratings...", DIM), end="\r")
     games = fetch_season(season_start, season_end,
                          cache_dir=str(cache_dir), division=division, verbose=False)
-    eng = EloEngine(k=24.0, home_advantage=100.0)
+
+    # Use sport-specific Elo config
+    cfg = SPORT_CONFIGS.get(division, SPORT_CONFIGS["mens"])
+    eng = EloEngine(
+        k=cfg["k"],
+        home_advantage=cfg["home_advantage"],
+        scale=cfg.get("scale", 300.0),
+        season_regress=cfg["season_regress"],
+        tempo_adjust=cfg["tempo_adjust"],
+        season_boundary=cfg.get("season_boundary", "ncaa"),
+    )
     eng.process_games(games)
     print(f"  Elo engine: {len(eng.ratings)} teams rated from {len(games)} games")
     return eng
@@ -176,7 +209,8 @@ def run(division: str, min_edge: float, top_n: int | None, no_fetch: bool,
     if not no_fetch:
         print(color("  Fetching live odds from The Odds API...", DIM), end="\r")
         try:
-            live_odds = fetch_odds(sport=SPORT_NCAAB, bookmakers=",".join(BOOKS))
+            odds_sport = _ODDS_SPORT.get(division, SPORT_NCAAB)
+            live_odds = fetch_odds(sport=odds_sport, bookmakers=",".join(BOOKS))
             print(f"  Live odds: {len(live_odds)} records across {len({o['game_id'] for o in live_odds})} games")
         except EnvironmentError as e:
             print(color(f"  [warn] {e}", YELLOW))
@@ -542,8 +576,8 @@ Examples:
   python scripts/daily_slate.py --date 2026-03-15
 """,
     )
-    parser.add_argument("--division",  default="mens", choices=["mens", "womens"],
-                        help="mens or womens D1 (default: mens)")
+    parser.add_argument("--division",  default="mens", choices=["mens", "womens", "mlb", "nba"],
+                        help="mens, womens, mlb, or nba (default: mens)")
     parser.add_argument("--min-edge",  type=float, default=0.03,
                         help="Minimum model edge %% to flag as a bet (default: 3%%)")
     parser.add_argument("--top",       type=int, default=None,

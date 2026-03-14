@@ -1,14 +1,14 @@
 """
-Fetch live NCAA basketball games from ESPN's unofficial scoreboard API.
+Fetch live games from ESPN's unofficial scoreboard API.
+Supports NCAA basketball, NBA, and MLB.
 
-Returns in-progress games with score, clock, and period so the live win
+Returns in-progress games with score, clock/period info so the live win
 probability model can compute updated win estimates.
 
 Usage:
     from src.live.feed import fetch_live_games
     games = fetch_live_games(division="mens")
-    # games = [{"game_id": ..., "home_id": ..., "home_score": 54,
-    #            "away_score": 49, "minutes_remaining": 12.3, ...}, ...]
+    games = fetch_live_games(division="mlb")
 """
 
 from __future__ import annotations
@@ -17,19 +17,23 @@ from datetime import date
 
 import requests
 
-_ESPN_TMPL = (
-    "https://site.api.espn.com/apis/site/v2/sports"
-    "/basketball/{sport}/scoreboard"
-)
+_ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports"
 
 _SPORTS = {
-    "mens":   "mens-college-basketball",
-    "womens": "womens-college-basketball",
-    "nba":    "nba",
+    "mens":   ("basketball", "mens-college-basketball"),
+    "womens": ("basketball", "womens-college-basketball"),
+    "nba":    ("basketball", "nba"),
+    "mlb":    ("baseball",   "mlb"),
 }
+
+def _scoreboard_url(division: str) -> str:
+    cat, league = _SPORTS.get(division, _SPORTS["mens"])
+    return f"{_ESPN_BASE}/{cat}/{league}/scoreboard"
 
 # Divisions that use NBA quarter structure (4 × 12 min)
 _NBA_DIVISIONS = {"nba"}
+# Divisions that use innings (baseball)
+_BASEBALL_DIVISIONS = {"mlb"}
 
 # Statuses that count as a "live" game we want to show
 _LIVE_STATUSES = {"STATUS_IN_PROGRESS", "STATUS_HALFTIME"}
@@ -69,7 +73,14 @@ def _minutes_remaining(
 
     For CBB: 2 halves × 20 min.  period 1 = first half, 2 = second half.
     For NBA: 4 quarters × 12 min. period 1-4 = quarters, 5+ = OT.
+    For MLB: 9 innings. No clock — returns innings remaining as a float.
     """
+    if division in _BASEBALL_DIVISIONS:
+        # MLB: 9 innings, no game clock
+        # Return innings remaining (used as a progress indicator, not minutes)
+        remaining = max(0, 9 - period)
+        return float(remaining)
+
     if division in _NBA_DIVISIONS:
         # NBA: 4 quarters, each 12 min
         if period <= 4:
@@ -114,8 +125,7 @@ def fetch_live_games(
 
     Returns an empty list when no games are live or on network error.
     """
-    sport = _SPORTS.get(division, _SPORTS["mens"])
-    url   = _ESPN_TMPL.format(sport=sport)
+    url = _scoreboard_url(division)
     params: dict = {"limit": 300}
     if for_date:
         params["dates"] = for_date.strftime("%Y%m%d")
@@ -206,8 +216,7 @@ def fetch_other_games(
     if status_filter is None:
         status_filter = _FINAL_STATUSES | _SCHEDULED_STATUSES
 
-    sport  = _SPORTS.get(division, _SPORTS["mens"])
-    url    = _ESPN_TMPL.format(sport=sport)
+    url = _scoreboard_url(division)
     params: dict = {"limit": 300}
     if for_date:
         params["dates"] = for_date.strftime("%Y%m%d")
