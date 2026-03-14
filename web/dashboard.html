@@ -566,6 +566,7 @@ body {
     <button class="section-tab" data-panel="model">Model Eval</button>
     <button class="section-tab" data-panel="games">Recent Games</button>
     <button class="section-tab" data-panel="math">Methodology</button>
+    <button class="section-tab" data-panel="guide">Chart Guide</button>
   </div>
 
   <!-- Loading State -->
@@ -817,6 +818,70 @@ body {
         <div class="formula">LL = -[y &times; ln(p) + (1-y) &times; ln(1-p)]</div>
         <p><strong>Brier Score</strong> is mean squared error between prediction and outcome. Baseline is 0.2500. Lower is better.</p>
         <div class="formula">BS = (p - y)&sup2;</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- CHART GUIDE PANEL                                           -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div class="panel" id="panel-guide">
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-body math-content" style="max-width:none">
+        <h3 style="margin-top:0">Chart Guide</h3>
+        <p>Every visualization on this dashboard serves a specific purpose. Here's what each one tells you and how to read it.</p>
+
+        <h3>Overview Tab</h3>
+
+        <p><strong style="color:var(--frost1)">Cumulative Accuracy</strong><br>
+        Shows the model's win-prediction accuracy over the entire season as games accumulate. The line starts volatile (small sample) and stabilizes as more games are scored. The dashed red line at 50% is a coin-flip baseline. A model that stays well above 50% is adding real predictive value. Look for: sustained separation from baseline; any downward trends may signal the model is losing edge.</p>
+
+        <p><strong style="color:var(--frost1)">Rating Spread (Field Separation)</strong><br>
+        Tracks the standard deviation of all team Elo ratings over time. Early in a season, all teams start near 1500 and the spread is low. As games are played, good teams rise and bad teams fall, increasing the spread. A rising spread means the model is confidently separating the field. A plateau means the ratings have stabilized. If it drops, ratings may be compressing (e.g. season regression).</p>
+
+        <p><strong style="color:var(--frost1)">Top 20 by Elo</strong><br>
+        Horizontal bar chart showing the 20 highest-rated teams. Green bars = top 4 (elite tier), blue = 5-10 (contenders), gray = 11-20 (bubble). The length of each bar represents the team's Elo rating. Use this for a quick visual of the power hierarchy.</p>
+
+        <p><strong style="color:var(--frost1)">Prediction Distribution</strong><br>
+        Histogram of all model win probabilities issued this season, bucketed into 10% bins. A well-calibrated model should produce a U-shaped distribution &mdash; most predictions should be confident (near 0% or 100%), with fewer coin-flip games (40-60%). If the distribution is flat or concentrated in the middle, the model isn't differentiating strong favorites from toss-ups.</p>
+
+        <p><strong style="color:var(--frost1)">Biggest Risers / Fallers (30d)</strong><br>
+        Teams whose Elo rating changed the most over the last 30 days. Risers are on a hot streak (beating expectations); fallers are underperforming. This is the "momentum" indicator &mdash; useful for spotting teams whose current form diverges from their season-long rating.</p>
+
+        <h3>Rankings Tab</h3>
+
+        <p><strong style="color:var(--frost1)">Power Rankings Table</strong><br>
+        Every team ranked by current Elo. Green numbers indicate elite ratings (1700+), red indicates weak teams (1350-). The thin blue bar next to each Elo gives a visual sense of where the team sits in the overall distribution. This is the authoritative ranking &mdash; all other views are derived from these ratings.</p>
+
+        <p><strong style="color:var(--frost1)">Elo Distribution</strong><br>
+        Histogram showing how team ratings are distributed. A bell curve centered around 1500 is expected. The width of the distribution tells you how separated the field is. A wider spread = more parity between top and bottom. Spikes at certain ratings may indicate clusters of similarly-rated teams.</p>
+
+        <h3>Elo Tracker Tab</h3>
+
+        <p><strong style="color:var(--frost1)">Elo Rating Tracker</strong><br>
+        The centerpiece &mdash; a multi-team line chart showing how Elo ratings evolve game by game over the season. Select up to 8 teams to compare trajectories. Every team starts at 1500; the line goes up after wins (especially upsets) and down after losses. The dashed line at 1500 is the average baseline. Use this to visualize: breakout teams (steep rises), collapses (steep drops), consistency (flat at a high level), and head-to-head comparisons.</p>
+
+        <p><strong style="color:var(--frost1)">Rating Spread Over Time</strong><br>
+        Same as the overview version &mdash; repeated here for context alongside the team-specific tracker. Helps you understand whether the individual team trajectories you're viewing are moving with or against the overall field trend.</p>
+
+        <p><strong style="color:var(--frost1)">Accuracy by Confidence</strong><br>
+        Bar chart showing the model's accuracy broken out by how confident it was. The x-axis is the model's confidence bucket (e.g. 50-60% = toss-up, 90-100% = heavy favorite). A well-calibrated model should win ~55% of 50-60% games, ~65% of 60-70%, and so on &mdash; each bucket's accuracy should roughly match its confidence level. If low-confidence predictions are winning at high rates, the model is being too conservative; if high-confidence ones are losing, it's overconfident.</p>
+
+        <h3>Model Eval Tab</h3>
+
+        <p><strong style="color:var(--frost1)">Calibration (Predicted vs Observed)</strong><br>
+        The gold standard of model evaluation. Each dot represents a bin of predictions: the x-axis is the average predicted probability, the y-axis is the actual win rate. A perfectly calibrated model would have all dots on the diagonal dashed line (predicted 70% &rarr; actually won 70% of the time). Dots above the line mean the model was underconfident (reality exceeded predictions); dots below mean overconfident. This chart reveals systematic biases &mdash; e.g. if the model consistently overrates underdogs.</p>
+
+        <p><strong style="color:var(--frost1)">Calibration Detail</strong><br>
+        The same calibration data in table form with visual bars. Blue bars show the predicted probability, green bars show observed outcomes. When green closely matches blue across all bins, the model is well-calibrated. The n= count shows how many predictions fell in each bin &mdash; bins with very low n are less reliable.</p>
+
+        <p><strong style="color:var(--frost1)">KPI Metrics (Log Loss, Brier Score)</strong><br>
+        <em>Log Loss</em> heavily penalizes confident wrong predictions. Baseline is 0.6931 (coin flip). Lower is better. <em>Brier Score</em> is the mean squared error &mdash; baseline is 0.2500. The "vs baseline" KPI shows how much the model improves over always predicting 50/50. Even small improvements (0.01-0.03) represent meaningful predictive power.</p>
+
+        <h3>Recent Games Tab</h3>
+
+        <p><strong style="color:var(--frost1)">Recent Games Table</strong><br>
+        Last 50 games with the model's pre-game home-win probability and whether the prediction was correct. The "Model" column shows what % chance the model gave the home team. A green checkmark means the model's favored team won; a red X means it was wrong. Scan for patterns: is the model struggling with certain types of games (road upsets, close games)?</p>
       </div>
     </div>
   </div>
@@ -1218,37 +1283,92 @@ function renderCalibrationChart(d) {
   const cal = d.metrics.calibration || [];
   if (!cal.length) return;
 
+  // Build labels from bin midpoints and use line chart with two datasets
+  const labels = cal.map(c => (c.bin_mid * 100).toFixed(0));
+  const predicted = cal.map(c => +(c.predicted_avg * 100).toFixed(1));
+  const observed = cal.map(c => +(c.observed * 100).toFixed(1));
+  const perfect = cal.map(c => +(c.bin_mid * 100).toFixed(1));
+  const sizes = cal.map(c => Math.max(4, Math.min(12, Math.sqrt(c.n) * 1.2)));
+
   const ctx = document.getElementById('chartCal');
   charts.calibration = new Chart(ctx, {
-    type: 'scatter',
+    type: 'line',
     data: {
-      datasets: [{
-        label: 'Model',
-        data: cal.map(c => ({ x: c.predicted_avg * 100, y: c.observed * 100 })),
-        backgroundColor: '#88c0d0',
-        borderColor: '#88c0d0',
-        pointRadius: 6,
-        pointHoverRadius: 8,
-      }, {
-        label: 'Perfect',
-        data: [{ x: 0, y: 0 }, { x: 100, y: 100 }],
-        type: 'line',
-        borderColor: 'rgba(191,97,106,0.3)',
-        borderWidth: 1,
-        borderDash: [4, 4],
-        pointRadius: 0,
-      }],
+      labels,
+      datasets: [
+        {
+          label: 'Perfect Calibration',
+          data: perfect,
+          borderColor: 'rgba(191,97,106,0.35)',
+          borderWidth: 1.5,
+          borderDash: [6, 4],
+          pointRadius: 0,
+          fill: false,
+          tension: 0,
+        },
+        {
+          label: 'Observed Win %',
+          data: observed,
+          borderColor: '#a3be8c',
+          backgroundColor: '#a3be8c',
+          borderWidth: 2,
+          pointRadius: sizes,
+          pointHoverRadius: sizes.map(s => s + 2),
+          pointBackgroundColor: '#a3be8c',
+          pointBorderColor: '#a3be8c',
+          fill: false,
+          tension: 0.2,
+        },
+        {
+          label: 'Predicted Avg',
+          data: predicted,
+          borderColor: '#88c0d0',
+          backgroundColor: '#88c0d0',
+          borderWidth: 2,
+          pointRadius: sizes,
+          pointHoverRadius: sizes.map(s => s + 2),
+          pointBackgroundColor: '#88c0d0',
+          pointBorderColor: '#88c0d0',
+          borderDash: [3, 3],
+          fill: false,
+          tension: 0.2,
+        },
+      ],
     },
     options: {
       ...CHART_DEFAULTS,
-      plugins: { ...CHART_DEFAULTS.plugins, legend: { display: false } },
+      plugins: {
+        ...CHART_DEFAULTS.plugins,
+        legend: {
+          display: true,
+          position: 'top',
+          labels: {
+            color: '#d8dee9',
+            font: { family: 'JetBrains Mono', size: 10 },
+            boxWidth: 12,
+            padding: 12,
+          },
+        },
+        tooltip: {
+          ...CHART_DEFAULTS.plugins.tooltip,
+          callbacks: {
+            label: function(ctx) {
+              const i = ctx.dataIndex;
+              const c = cal[i];
+              if (ctx.datasetIndex === 0) return `Perfect: ${ctx.parsed.y}%`;
+              if (ctx.datasetIndex === 1) return `Observed: ${ctx.parsed.y}% (n=${c?.n || '?'})`;
+              return `Predicted: ${ctx.parsed.y}%`;
+            }
+          }
+        },
+      },
       scales: {
-        x: { ...CHART_DEFAULTS.scales.x, min: 0, max: 100,
-          title: { display: true, text: 'Predicted %', color: '#4c566a',
+        x: { ...CHART_DEFAULTS.scales.x,
+          title: { display: true, text: 'Probability Bin', color: '#4c566a',
             font: { family: 'JetBrains Mono', size: 10 } },
-          ticks: { ...CHART_DEFAULTS.scales.x.ticks, callback: v => v + '%' } },
+          ticks: { ...CHART_DEFAULTS.scales.x.ticks, callback: function(v, i) { return labels[i] + '%'; } } },
         y: { ...CHART_DEFAULTS.scales.y, min: 0, max: 100,
-          title: { display: true, text: 'Observed %', color: '#4c566a',
+          title: { display: true, text: 'Win Rate %', color: '#4c566a',
             font: { family: 'JetBrains Mono', size: 10 } },
           ticks: { ...CHART_DEFAULTS.scales.y.ticks, callback: v => v + '%' } },
       },
