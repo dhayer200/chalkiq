@@ -1,7 +1,8 @@
-"""POST /api/subscribe — Free newsletter signup."""
+"""POST /api/subscribe — Free newsletter signup with welcome email."""
 
 from http.server import BaseHTTPRequestHandler
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -10,6 +11,40 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from api._shared.db import add_subscriber
 
 _EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+SITE_URL = os.environ.get("SITE_URL", "https://chalkiq.com")
+
+
+def _send_welcome(email: str, unsub_token: str) -> None:
+    """Send a welcome email via Resend. Best-effort, never blocks signup."""
+    if not RESEND_API_KEY:
+        return
+    try:
+        import resend
+        resend.api_key = RESEND_API_KEY
+        resend.Emails.send({
+            "from": "ChalkIQ <picks@chalkiq.com>",
+            "to": [email],
+            "subject": "Welcome to ChalkIQ",
+            "html": f"""
+            <div style="font-family:monospace;max-width:560px;margin:0 auto;color:#d8dee9;background:#2e3440;padding:32px;border-radius:8px">
+              <h2 style="color:#a3be8c;margin-top:0">Welcome to ChalkIQ</h2>
+              <p>You're in. You'll receive our analytics newsletter with:</p>
+              <ul>
+                <li>Elo power rankings across CBB, NBA, and MLB</li>
+                <li>Model-driven betting edges and CLV analysis</li>
+                <li>Market movers and sharp signals</li>
+              </ul>
+              <p style="color:#88c0d0">Stay sharp.</p>
+              <hr style="border:none;border-top:1px solid #434c5e;margin:24px 0">
+              <p style="font-size:11px;color:#4c566a">
+                <a href="{SITE_URL}/api/unsubscribe?token={unsub_token}" style="color:#4c566a">Unsubscribe</a>
+              </p>
+            </div>
+            """,
+        })
+    except Exception:
+        pass  # Never fail signup because of email
 
 
 class handler(BaseHTTPRequestHandler):
@@ -28,6 +63,11 @@ class handler(BaseHTTPRequestHandler):
             tier = "free"
 
         result = add_subscriber(email, tier)
+
+        # Send welcome email for new signups (not re-subs or existing)
+        if result.get("ok") and not result.get("exists"):
+            _send_welcome(email, result.get("token", ""))
+
         return self._json(200, result)
 
     def _json(self, status: int, data: dict):
