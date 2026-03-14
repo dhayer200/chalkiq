@@ -30,6 +30,8 @@ from src.ratings.elo import EloEngine, SPORT_CONFIGS
 from src.utils.data import fetch_season
 from src.utils.metrics import evaluate
 from src.utils.rating_history import build_rating_histories, market_movers, ncaa361_spread
+from src.bracket.structure import assign_seeds, region_bracket_order, REGIONS, ROUND_LABELS
+from src.bracket.simulator import round_advancement_odds
 
 
 SEASONS: dict[str, dict[int, tuple[date, date]]] = {
@@ -221,11 +223,60 @@ def build_division(division: str) -> dict:
                 "n": counts["total"],
             })
 
+    # Bracket data (CBB only — 64-team NCAA tournament simulation)
+    bracket_data = None
+    if division in ("mens", "womens") and len(rankings_raw) >= 64:
+        print(f"  [{division}] Simulating bracket (5,000 sims)...")
+        regions = assign_seeds(rankings_raw)
+        bracket_order: list[str] = []
+        for region_name in REGIONS:
+            bracket_order.extend(region_bracket_order(regions[region_name]))
+        adv_odds = round_advancement_odds(
+            seeded_teams=bracket_order,
+            win_prob_fn=engine.win_prob,
+            n_sims=5000,
+            seed=42,
+        )
+        # Build exportable bracket structure
+        bracket_regions = {}
+        for region_name in REGIONS:
+            seed_map = regions[region_name]
+            seeds = []
+            for seed_num in sorted(seed_map.keys()):
+                tid, name, elo = seed_map[seed_num]
+                team_adv = adv_odds.get(tid, {})
+                seeds.append({
+                    "seed": seed_num,
+                    "team_id": tid,
+                    "name": name,
+                    "elo": round(elo, 1),
+                    "r64": round(team_adv.get(1, 0), 4),
+                    "r32": round(team_adv.get(2, 0), 4),
+                    "s16": round(team_adv.get(3, 0), 4),
+                    "e8": round(team_adv.get(4, 0), 4),
+                    "ff": round(team_adv.get(5, 0), 4),
+                    "champ": round(team_adv.get(6, 0), 4),
+                })
+            bracket_regions[region_name] = seeds
+
+        # Championship odds top 16
+        champ_top = sorted(
+            [(tid, adv_odds[tid].get(6, 0)) for tid in bracket_order],
+            key=lambda x: -x[1],
+        )[:16]
+        bracket_data = {
+            "regions": bracket_regions,
+            "champ_odds": [
+                {"name": engine.names.get(tid, tid), "odds": round(p, 4)}
+                for tid, p in champ_top
+            ],
+        }
+
     print(f"  [{division}] Rankings: {len(rankings)}, Recent: {len(recent_games)}, "
           f"Spread pts: {len(rating_spread)}, Accuracy pts: {len(cumulative_accuracy)}, "
           f"Trajectories: {len(elo_trajectories)}")
 
-    return {
+    result = {
         "label": DIVISION_LABELS.get(division, division),
         "rankings": rankings,
         "metrics": metrics,
@@ -237,6 +288,9 @@ def build_division(division: str) -> dict:
         "prediction_distribution": pred_dist,
         "accuracy_by_confidence": accuracy_by_conf,
     }
+    if bracket_data:
+        result["bracket"] = bracket_data
+    return result
 
 
 def main() -> None:

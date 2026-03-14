@@ -495,6 +495,34 @@ body {
 
 .team-chip .remove:hover { opacity: 1; }
 
+/* ── Bracket Table ─────────────────────────────────────────────── */
+.bracket-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.bracket-table th {
+  text-align: left; padding: 6px 10px; font-size: 9px;
+  text-transform: uppercase; letter-spacing: 0.8px;
+  color: var(--bg3); font-weight: 500;
+  border-bottom: 1px solid var(--border);
+  font-family: 'Instrument Sans', sans-serif;
+}
+.bracket-table th.right { text-align: right; }
+.bracket-table td {
+  padding: 5px 10px; border-bottom: 1px solid var(--border);
+  color: var(--fg0); font-variant-numeric: tabular-nums;
+}
+.bracket-table tr:hover td { background: var(--glow); }
+.bracket-table .seed-num { color: var(--bg3); font-weight: 600; width: 24px; text-align: center; }
+.bracket-table .team { font-weight: 500; color: var(--fg2); }
+.bracket-table .pct { text-align: right; font-size: 10px; }
+.bracket-table .pct-hot { color: var(--green); font-weight: 600; }
+.bracket-table .pct-warm { color: var(--frost1); }
+.bracket-table .pct-cold { color: var(--bg3); }
+
+.region-header {
+  font-family: 'Instrument Sans', sans-serif;
+  font-size: 13px; font-weight: 700; color: var(--fg2);
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+
 /* ── Loading ───────────────────────────────────────────────────── */
 .loading {
   display: flex;
@@ -562,6 +590,7 @@ body {
   <div class="section-nav" id="sectionNav">
     <button class="section-tab active" data-panel="overview">Overview</button>
     <button class="section-tab" data-panel="rankings">Rankings</button>
+    <button class="section-tab" data-panel="bracket">Bracket</button>
     <button class="section-tab" data-panel="tracker">Elo Tracker</button>
     <button class="section-tab" data-panel="model">Model Eval</button>
     <button class="section-tab" data-panel="games">Recent Games</button>
@@ -663,6 +692,29 @@ body {
           <canvas id="chartEloDist"></canvas>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- BRACKET PANEL                                               -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div class="panel" id="panel-bracket">
+    <div id="bracketNotice" style="display:none;padding:40px;text-align:center;color:var(--bg3);font-size:13px">
+      Bracket simulation is available for college basketball only.
+    </div>
+    <div id="bracketContent">
+      <!-- Championship Odds Bar Chart -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header">
+          <span class="card-title">Championship Odds (Monte Carlo, 5K sims)</span>
+        </div>
+        <div class="card-body chart-wrap tall">
+          <canvas id="chartChampOdds"></canvas>
+        </div>
+      </div>
+
+      <!-- Four Regions Grid -->
+      <div class="grid-2" id="bracketRegions"></div>
     </div>
   </div>
 
@@ -856,6 +908,14 @@ body {
         <p><strong style="color:var(--frost1)">Elo Distribution</strong><br>
         Histogram showing how team ratings are distributed. A bell curve centered around 1500 is expected. The width of the distribution tells you how separated the field is. A wider spread = more parity between top and bottom. Spikes at certain ratings may indicate clusters of similarly-rated teams.</p>
 
+        <h3>Bracket Tab</h3>
+
+        <p><strong style="color:var(--frost1)">Championship Odds</strong><br>
+        Horizontal bar chart showing each team's probability of winning the national championship, computed via 5,000 Monte Carlo simulations of the full 64-team bracket. The simulation draws each game outcome from the Elo win probability at a neutral site. Green = favorite, blue = contenders, gray = long shots. Only available for college basketball.</p>
+
+        <p><strong style="color:var(--frost1)">Region Tables (East / West / South / Midwest)</strong><br>
+        Each table shows 16 teams seeded using the NCAA S-curve. Columns show the probability of reaching each round: R64 (first round), R32, Sweet 16, Elite 8, Final Four, and Championship. Green percentages (&ge;50%) indicate strong favorites to reach that round. Dashes mean &lt;1% probability. Use this to find value &mdash; a team with high S16 odds but low seed may be underrated by the market.</p>
+
         <h3>Elo Tracker Tab</h3>
 
         <p><strong style="color:var(--frost1)">Elo Rating Tracker</strong><br>
@@ -949,6 +1009,7 @@ function renderAll() {
   renderGames(d);
   renderMovers(d);
   renderTrackerControls(d);
+  renderBracket(d);
 
   // Charts need a tick to get dimensions
   requestAnimationFrame(() => {
@@ -963,6 +1024,7 @@ function renderAll() {
     renderAccByConfChart(d);
     renderPredDistChart2(d);
     renderAccByConfChart2(d);
+    renderChampOddsChart(d);
   });
 }
 
@@ -1640,6 +1702,97 @@ function renderAccByConfChart(d, canvasId = 'chartAccByConf', chartKey = 'accByC
 
 function renderAccByConfChart2(d) {
   renderAccByConfChart(d, 'chartAccByConf2', 'accByConf2');
+}
+
+// ── Bracket ───────────────────────────────────────────────────────
+function renderBracket(d) {
+  const b = d.bracket;
+  const notice = document.getElementById('bracketNotice');
+  const content = document.getElementById('bracketContent');
+
+  if (!b) {
+    notice.style.display = 'block';
+    content.style.display = 'none';
+    return;
+  }
+  notice.style.display = 'none';
+  content.style.display = 'block';
+
+  // Region tables
+  const regionsDiv = document.getElementById('bracketRegions');
+  const roundCols = ['r64', 'r32', 's16', 'e8', 'ff', 'champ'];
+  const roundLabels = ['R64', 'R32', 'S16', 'E8', 'FF', 'W'];
+
+  let html = '';
+  for (const [region, seeds] of Object.entries(b.regions)) {
+    html += `<div class="card" style="margin-bottom:16px">
+      <div class="card-header">
+        <span class="card-title region-header">${region}</span>
+      </div>
+      <div class="card-body" style="overflow-x:auto">
+        <table class="bracket-table">
+          <thead><tr>
+            <th>#</th><th>Team</th><th class="right">Elo</th>
+            ${roundLabels.map(r => `<th class="right">${r}</th>`).join('')}
+          </tr></thead><tbody>`;
+
+    seeds.forEach(s => {
+      html += `<tr>
+        <td class="seed-num">${s.seed}</td>
+        <td class="team">${s.name}</td>
+        <td class="right" style="color:var(--frost1)">${s.elo.toFixed(0)}</td>`;
+
+      roundCols.forEach(col => {
+        const pct = s[col] * 100;
+        const cls = pct >= 50 ? 'pct-hot' : pct >= 15 ? 'pct-warm' : 'pct-cold';
+        html += `<td class="pct ${cls}">${pct >= 1 ? pct.toFixed(0) + '%' : pct > 0 ? '<1%' : '-'}</td>`;
+      });
+
+      html += '</tr>';
+    });
+
+    html += '</tbody></table></div></div>';
+  }
+  regionsDiv.innerHTML = html;
+}
+
+function renderChampOddsChart(d) {
+  destroyChart('champOdds');
+  const b = d.bracket;
+  if (!b || !b.champ_odds) return;
+
+  const odds = b.champ_odds.filter(c => c.odds > 0);
+  if (!odds.length) return;
+
+  const ctx = document.getElementById('chartChampOdds');
+  charts.champOdds = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: odds.map(c => c.name.replace(/ (Blue Devils|Wolverines|Wildcats|Gators|Cougars|Bulldogs|Bears|Huskies|Tar Heels|Tigers|Longhorns|Jayhawks|Boilermakers|Aggies|Cyclones|Cardinals|Volunteers|Crimson Tide)/, '')),
+      datasets: [{
+        data: odds.map(c => +(c.odds * 100).toFixed(1)),
+        backgroundColor: odds.map((c, i) =>
+          i === 0 ? 'rgba(163,190,140,0.8)' :
+          i < 4 ? 'rgba(136,192,208,0.6)' :
+          'rgba(76,86,106,0.5)'
+        ),
+        borderColor: 'transparent',
+        borderRadius: 3,
+      }],
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      indexAxis: 'y',
+      scales: {
+        x: { ...CHART_DEFAULTS.scales.x,
+          ticks: { ...CHART_DEFAULTS.scales.x.ticks, callback: v => v + '%' },
+          title: { display: true, text: 'Championship %', color: '#4c566a',
+            font: { family: 'JetBrains Mono', size: 10 } } },
+        y: { ...CHART_DEFAULTS.scales.y,
+          ticks: { ...CHART_DEFAULTS.scales.y.ticks, font: { family: 'JetBrains Mono', size: 10 } } },
+      },
+    },
+  });
 }
 
 // ── Init ──────────────────────────────────────────────────────────
