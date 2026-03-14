@@ -20,3 +20,6 @@ streamlit.log
 notebooks/
 toy-madness/
 .env
+
+# Subscriber database
+data/subscribers.db
