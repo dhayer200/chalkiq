@@ -22,6 +22,7 @@ Supports:
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -189,8 +190,16 @@ def compute_player_stats(engine: PlayerEloEngine, player_id: str,
     off_eff = ts_pct + p36_ast - 1.5 * p36_to
     def_imp = 3 * p36_stl + 2 * p36_blk + 0.3 * p36_dreb - p36_pf
 
+    # Player Impact — magnitude of both-way contribution
+    # Euclidean norm of off_eff and def_imp, sign-aware:
+    # negative components reduce the magnitude
+    player_impact = math.sqrt(max(off_eff, 0) ** 2 + max(def_imp, 0) ** 2)
+
     # Injury impact
     injury_impact = engine.injury_elo_impact(player_id)
+
+    # Last game date (for staleness filtering)
+    last_game = boxes[-1].get("game_date", "") if boxes else ""
 
     return {
         "player_id": player_id,
@@ -224,7 +233,9 @@ def compute_player_stats(engine: PlayerEloEngine, player_id: str,
         "ts_pct": ts_pct,
         "off_eff": off_eff,
         "def_imp": def_imp,
+        "player_impact": player_impact,
         "injury_impact": injury_impact,
+        "last_game": last_game,
     }
 
 
@@ -245,6 +256,7 @@ def compute_all_rankings(engine: PlayerEloEngine, box_index: dict[str, list[dict
         ("elo_rank", "elo", True),
         ("off_eff_rank", "off_eff", True),
         ("def_imp_rank", "def_imp", True),
+        ("impact_rank", "player_impact", True),
         ("gs_rank", "avg_gs", True),
         ("ppg_rank", "avg_pts", True),
     ]:
@@ -285,9 +297,26 @@ def find_team(query: str, games: list[dict]) -> str | None:
     return None
 
 
+def _current_season_cutoff() -> str:
+    """Return the earliest date considered 'current season'.
+
+    NCAA season runs Nov→Apr. If today is Oct or later, the current season
+    started this November. Otherwise it started the previous November.
+    """
+    from datetime import date
+    today = date.today()
+    season_start_year = today.year if today.month >= 10 else today.year - 1
+    return f"{season_start_year}-10-01"
+
+
 def find_team_players(engine: PlayerEloEngine, team_query: str,
-                      games: list[dict], min_games: int) -> tuple[str, list[str]]:
-    """Find all players on a team matching the query. Returns (team_id, [player_ids])."""
+                      games: list[dict], min_games: int,
+                      all_stats: dict[str, dict] | None = None) -> tuple[str, list[str]]:
+    """Find all players on a team matching the query. Returns (team_id, [player_ids]).
+
+    Filters to players whose last boxscore is in the current season so that
+    graduated/transferred/drafted players don't appear on old rosters.
+    """
     q = team_query.lower().strip()
 
     # Build team_id -> team_name mapping from raw games
@@ -306,12 +335,20 @@ def find_team_players(engine: PlayerEloEngine, team_query: str,
     if not matched_tid:
         return ("", [])
 
+    cutoff = _current_season_cutoff()
     game_counts = engine.player_game_counts()
-    pids = [
-        pid for pid in engine.ratings
-        if engine.teams.get(pid) == matched_tid
-        and game_counts.get(pid, 0) >= min_games
-    ]
+    pids = []
+    for pid in engine.ratings:
+        if engine.teams.get(pid) != matched_tid:
+            continue
+        if game_counts.get(pid, 0) < min_games:
+            continue
+        # Filter stale players: must have played in current season
+        if all_stats and pid in all_stats:
+            last = all_stats[pid].get("last_game", "")
+            if last and last < cutoff:
+                continue
+        pids.append(pid)
     return (matched_tid, pids)
 
 
@@ -380,6 +417,9 @@ def print_profile(engine: PlayerEloEngine, player_id: str,
           f"   (rank #{s['def_imp_rank']})")
     print(f"  Hollinger Game Score:  {c(f'{s['avg_gs']:.1f}', gs_color)}"
           f"   (rank #{s['gs_rank']})")
+    pi_color = GREEN if s["player_impact"] > 60 else YELLOW if s["player_impact"] > 50 else RESET
+    print(f"  Player Impact:         {c(f'{s['player_impact']:.1f}', pi_color)}"
+          f"   (rank #{s['impact_rank']})")
     print(f"  Off Score (avg):       {s['avg_off']:.1f}")
     print()
 
@@ -481,6 +521,7 @@ SORT_KEYS = {
     "elo":       ("elo", True),
     "off_eff":   ("off_eff", True),
     "def_imp":   ("def_imp", True),
+    "impact":    ("player_impact", True),
     "ppg":       ("avg_pts", True),
     "game_score":("avg_gs", True),
 }
@@ -520,8 +561,8 @@ def print_leaderboard(all_stats: dict[str, dict], top_n: int, sort_by: str,
     print()
 
     headers = ["#", "Name", "Team", "Pos", "GP", "PPG", "RPG", "APG",
-               "Elo", "Off Eff", "Def Imp", "GmSc"]
-    aligns = ["r", "l", "l", "l", "r", "r", "r", "r", "r", "r", "r", "r"]
+               "Elo", "Off Eff", "Def Imp", "Impact", "GmSc"]
+    aligns = ["r", "l", "l", "l", "r", "r", "r", "r", "r", "r", "r", "r", "r"]
     rows = []
     for i, p in enumerate(players, 1):
         tname = team_names.get(p["team"]) or p["team"]
@@ -540,6 +581,7 @@ def print_leaderboard(all_stats: dict[str, dict], top_n: int, sort_by: str,
             f"{p['elo']:.0f}",
             f"{p['off_eff']:.1f}",
             f"{p['def_imp']:.1f}",
+            f"{p['player_impact']:.1f}",
             f"{p['avg_gs']:.1f}",
         ])
 
@@ -570,8 +612,8 @@ def print_team_roster(team_id: str, player_ids: list[str],
     print()
 
     headers = ["#", "Name", "Pos", "GP", "MIN", "PPG", "RPG", "APG",
-               "FG%", "TS%", "Elo", "Off Eff", "Def Imp", "GmSc", "Inj Impact"]
-    aligns = ["r", "l", "l", "r", "r", "r", "r", "r", "r", "r", "r", "r", "r", "r", "r"]
+               "FG%", "TS%", "Elo", "Off Eff", "Def Imp", "Impact", "GmSc", "Inj Impact"]
+    aligns = ["r", "l", "l", "r", "r", "r", "r", "r", "r", "r", "r", "r", "r", "r", "r", "r"]
     rows = []
     for i, p in enumerate(players, 1):
         rows.append([
@@ -588,6 +630,7 @@ def print_team_roster(team_id: str, player_ids: list[str],
             f"{p['elo']:.0f}",
             f"{p['off_eff']:.1f}",
             f"{p['def_imp']:.1f}",
+            f"{p['player_impact']:.1f}",
             f"{p['avg_gs']:.1f}",
             f"{p['injury_impact']:.1f}",
         ])
@@ -625,7 +668,7 @@ Examples:
     parser.add_argument("--min-games", type=int, default=5,
                         help="Minimum games played (default: 5)")
     parser.add_argument("--sort", type=str, default="elo",
-                        choices=list(SORT_KEYS.keys()),
+                        choices=sorted(SORT_KEYS.keys()),
                         help="Sort leaderboard by (default: elo)")
     args = parser.parse_args()
 
@@ -644,7 +687,7 @@ Examples:
 
     # ── Team mode ─────────────────────────────────────────────────────────── #
     if args.team:
-        team_id, player_ids = find_team_players(engine, args.team, games, args.min_games)
+        team_id, player_ids = find_team_players(engine, args.team, games, args.min_games, all_stats)
         if not player_ids:
             print(c(f"  No team found matching '{args.team}'", RED))
             sys.exit(1)

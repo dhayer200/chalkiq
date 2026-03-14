@@ -25,7 +25,7 @@ from __future__ import annotations
 import argparse
 import sys
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -123,30 +123,47 @@ def get_opening_lines(snapshots: list[dict]) -> dict[tuple, dict]:
 
 # ── Main ──────────────────────────────────────────────────────────────────── #
 
-def run(division: str, min_edge: float, top_n: int | None, no_fetch: bool) -> None:
+def run(division: str, min_edge: float, top_n: int | None, no_fetch: bool,
+        target_dates: list[date] | None = None) -> None:
     today = date.today()
     now_et = datetime.now(ET)
+    dates = target_dates or [today]
+
+    is_single_day = len(dates) == 1
 
     print()
     print(color("━" * 72, CYAN))
-    print(color(f"  ChalkIQ Daily Slate  —  {today.strftime('%A, %B %d %Y')}  ({division.upper()})", BOLD))
+    if is_single_day:
+        d = dates[0]
+        label = "Today" if d == today else ("Tomorrow" if d == today + timedelta(days=1)
+                else "Yesterday" if d == today - timedelta(days=1) else d.strftime("%A, %B %d %Y"))
+        print(color(f"  ChalkIQ Slate  —  {label}  ({division.upper()})", BOLD))
+    else:
+        print(color(f"  ChalkIQ Slate  —  {dates[0].strftime('%b %d')} → {dates[-1].strftime('%b %d %Y')}  ({division.upper()})", BOLD))
     print(color("━" * 72, CYAN))
     print()
 
-    # ── 1. Today's games ─────────────────────────────────────────────────── #
-    print(color("  Fetching today's schedule from ESPN...", DIM), end="\r")
-    games_today = fetch_other_games(division=division, for_date=today)
-    scheduled   = [g for g in games_today if g["status"] == "scheduled"]
-    live_now    = [g for g in games_today if g["status"] not in ("scheduled", "final")]
-    final_today = [g for g in games_today if g["status"] == "final"]
+    # ── 1. Fetch games across all target dates ───────────────────────────── #
+    all_games: list[dict] = []
+    for d in dates:
+        tag = "today's" if d == today else d.strftime("%b %d")
+        print(color(f"  Fetching {tag} schedule from ESPN...", DIM), end="\r")
+        day_games = fetch_other_games(division=division, for_date=d)
+        all_games.extend(day_games)
+    print(f"  Fetched {len(all_games)} games across {len(dates)} day(s)" + " " * 30)
 
-    print(f"  Schedule: {len(scheduled)} upcoming  |  {len(live_now)} live  |  {len(final_today)} final today")
+    scheduled   = [g for g in all_games if g["status"] == "scheduled"]
+    live_now    = [g for g in all_games if g["status"] not in ("scheduled", "final")]
+    final_games = [g for g in all_games if g["status"] == "final"]
+
+    print(f"  {len(scheduled)} upcoming  |  {len(live_now)} live  |  {len(final_games)} final")
     print()
 
-    if not scheduled and not live_now:
-        print(color("  No games scheduled today. Enjoy the day off.", YELLOW))
+    if not all_games:
+        print(color("  No games found for the selected date(s).", YELLOW))
         return
 
+    # Separate upcoming from completed
     all_upcoming = live_now + scheduled
 
     # ── 2. Elo engine ─────────────────────────────────────────────────────── #
@@ -334,9 +351,62 @@ def run(division: str, min_edge: float, top_n: int | None, no_fetch: bool) -> No
     if top_n:
         game_cards = game_cards[:top_n]
 
-    # ── 7. Print cards ─────────────────────────────────────────────────────── #
+    # ── 7a. Print completed game results ────────────────────────────────── #
+    if final_games:
+        print(color(f"  RESULTS  ({len(final_games)} games)", BOLD))
+        print()
+
+        # Group by date
+        from itertools import groupby
+        final_sorted = sorted(final_games, key=lambda g: g.get("game_date", ""))
+        for gdate, grp in groupby(final_sorted, key=lambda g: g.get("game_date", "")):
+            if len(dates) > 1:
+                print(color(f"  {gdate}", DIM))
+            for g in grp:
+                h_score = g["home_score"]
+                a_score = g["away_score"]
+                h_win = h_score > a_score
+
+                # Model prediction for completed games
+                model_h = engine.win_prob(g["home_id"], g["away_id"],
+                                          neutral=g.get("neutral", False))
+                predicted_home = model_h >= 0.5
+                correct = (predicted_home == h_win)
+
+                # Winner bold, loser dim
+                if h_win:
+                    h_str = color(f"{g['home_name']} {h_score}", GREEN + BOLD)
+                    a_str = f"{g['away_name']} {a_score}"
+                else:
+                    h_str = f"{g['home_name']} {h_score}"
+                    a_str = color(f"{g['away_name']} {a_score}", GREEN + BOLD)
+
+                check = color("V", GREEN) if correct else color("X", RED)
+                prob_str = f"{model_h:.0%}" if predicted_home else f"{1-model_h:.0%}"
+                fav_name = g['home_name'] if predicted_home else g['away_name']
+
+                print(f"    {check}  {a_str}  @  {h_str}"
+                      f"    {color(f'(model: {fav_name} {prob_str})', DIM)}")
+            print()
+
+        # Accuracy summary
+        n_correct = sum(
+            1 for g in final_games
+            if (engine.win_prob(g["home_id"], g["away_id"],
+                                neutral=g.get("neutral", False)) >= 0.5) == (g["home_score"] > g["away_score"])
+        )
+        n_final = len(final_games)
+        pct = n_correct / n_final * 100 if n_final else 0
+        acc_color = GREEN if pct >= 60 else YELLOW if pct >= 50 else RED
+        print(f"  Model accuracy: {color(f'{n_correct}/{n_final} ({pct:.0f}%)', acc_color)}")
+        print()
+
+    # ── 7b. Print upcoming game cards ────────────────────────────────────── #
 
     bet_count = 0
+    if game_cards:
+        print(color(f"  UPCOMING  ({len(game_cards)} games)", BOLD))
+        print()
     for card in game_cards:
         edge_h = card["edge_home"]
         edge_a = card["edge_away"]
@@ -438,10 +508,39 @@ def run(division: str, min_edge: float, top_n: int | None, no_fetch: bool) -> No
 
 # ── CLI ───────────────────────────────────────────────────────────────────── #
 
+def _parse_dates(args: argparse.Namespace) -> list[date]:
+    """Turn --date / --week / --days into a list of dates."""
+    today = date.today()
+    if args.date:
+        return [date.fromisoformat(args.date)]
+    if args.yesterday:
+        return [today - timedelta(days=1)]
+    if args.tomorrow:
+        return [today + timedelta(days=1)]
+    if args.week:
+        return [today + timedelta(days=i) for i in range(7)]
+    if args.days:
+        n = args.days
+        if n > 0:
+            return [today + timedelta(days=i) for i in range(n)]
+        else:
+            return [today + timedelta(days=i) for i in range(n, 1)]
+    return [today]
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Bettor's daily overview — today's CBB slate with edge analysis",
+        description="Bettor's daily overview — CBB slate with edge analysis",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python scripts/daily_slate.py                # today
+  python scripts/daily_slate.py --yesterday    # yesterday's results
+  python scripts/daily_slate.py --tomorrow     # tomorrow's schedule
+  python scripts/daily_slate.py --week         # next 7 days
+  python scripts/daily_slate.py --days -3      # last 3 days + today
+  python scripts/daily_slate.py --date 2026-03-15
+""",
     )
     parser.add_argument("--division",  default="mens", choices=["mens", "womens"],
                         help="mens or womens D1 (default: mens)")
@@ -451,10 +550,22 @@ if __name__ == "__main__":
                         help="Show only top N games by edge (default: all)")
     parser.add_argument("--no-fetch",  action="store_true",
                         help="Skip live odds API call, use cached snapshots only")
+    parser.add_argument("--date",      type=str, default=None,
+                        help="Specific date (YYYY-MM-DD)")
+    parser.add_argument("--yesterday", action="store_true",
+                        help="Show yesterday's results")
+    parser.add_argument("--tomorrow",  action="store_true",
+                        help="Show tomorrow's schedule")
+    parser.add_argument("--week",      action="store_true",
+                        help="Show next 7 days")
+    parser.add_argument("--days",      type=int, default=None,
+                        help="Number of days (positive=forward, negative=backward)")
     args = parser.parse_args()
+    target_dates = _parse_dates(args)
     run(
         division=args.division,
         min_edge=args.min_edge / 100 if args.min_edge > 1 else args.min_edge,
         top_n=args.top,
         no_fetch=args.no_fetch,
+        target_dates=target_dates,
     )

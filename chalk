@@ -60,6 +60,16 @@ def cmd_slate(args: argparse.Namespace) -> int:
         extra += ["--division", args.division]
     if args.no_fetch:
         extra += ["--no-fetch"]
+    if args.date:
+        extra += ["--date", args.date]
+    if args.yesterday:
+        extra += ["--yesterday"]
+    if args.tomorrow:
+        extra += ["--tomorrow"]
+    if args.week:
+        extra += ["--week"]
+    if args.days is not None:
+        extra += ["--days", str(args.days)]
     return _run("daily_slate.py", extra)
 
 
@@ -213,7 +223,7 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"""
 {BOLD}Commands:{RESET}
-  {CYAN}slate{RESET}          Today's betting slate overview
+  {CYAN}slate{RESET}          Game slate (today / --yesterday / --date / --week)
   {CYAN}player{RESET}         Full player profile card
   {CYAN}leaders{RESET}        Player leaderboard (top N)
   {CYAN}team{RESET}           Team roster overview
@@ -226,22 +236,29 @@ def main() -> int:
   {CYAN}status{RESET}         System health check
 
 {DIM}Examples:{RESET}
-  ./chalk slate --min-edge 5
-  ./chalk player "Cameron Boozer"
-  ./chalk leaders --top 20 --sort ppg
-  ./chalk team "Duke"
-  ./chalk backtest --seasons 2025 2026
-  ./chalk status
+  chalk slate                       # today's games
+  chalk slate --yesterday           # yesterday's results
+  chalk slate --week                # next 7 days
+  chalk slate --date 2026-03-15     # specific date
+  chalk slate --days -3             # last 3 days + today
+  chalk player "Cameron Boozer"
+  chalk leaders --top 20 --sort ppg
+  chalk team "Duke"
 """,
     )
     sub = parser.add_subparsers(dest="command")
 
     # slate
-    p = sub.add_parser("slate", help="Today's betting slate")
+    p = sub.add_parser("slate", help="Game slate (past, present, future)")
     p.add_argument("--min-edge", type=float, default=None)
     p.add_argument("--top", type=int, default=None)
     p.add_argument("--division", default=None)
     p.add_argument("--no-fetch", action="store_true")
+    p.add_argument("--date", type=str, default=None, help="Specific date (YYYY-MM-DD)")
+    p.add_argument("--yesterday", action="store_true")
+    p.add_argument("--tomorrow", action="store_true")
+    p.add_argument("--week", action="store_true", help="Next 7 days")
+    p.add_argument("--days", type=int, default=None, help="Days forward (+) or back (-)")
     p.set_defaults(func=cmd_slate)
 
     # player
@@ -254,7 +271,7 @@ def main() -> int:
     # leaders
     p = sub.add_parser("leaders", help="Player leaderboard")
     p.add_argument("--top", type=int, default=50)
-    p.add_argument("--sort", default=None, choices=["elo", "off_eff", "def_imp", "ppg", "game_score"])
+    p.add_argument("--sort", default=None, choices=["elo", "off_eff", "def_imp", "impact", "ppg", "game_score"])
     p.add_argument("--position", default=None, choices=["G", "F", "C"])
     p.add_argument("--division", default=None)
     p.add_argument("--min-games", type=int, default=None)
