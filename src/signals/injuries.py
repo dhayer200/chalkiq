@@ -1,5 +1,5 @@
 """
-ESPN injury report polling for college basketball (and NBA).
+ESPN injury report polling for college basketball, NBA, and MLB.
 
 Polls the ESPN unofficial API every N minutes, detects status changes,
 and flags games where a key player has gone from available to out/doubtful.
@@ -24,17 +24,22 @@ import requests
 
 _ESPN_INJURIES_TMPL = (
     "https://site.api.espn.com/apis/site/v2/sports"
-    "/basketball/{sport}/teams/{team_id}/injuries"
+    "/{category}/{league}/teams/{team_id}/injuries"
 )
 _ESPN_TEAMS_TMPL = (
     "https://site.api.espn.com/apis/site/v2/sports"
-    "/basketball/{sport}/teams"
+    "/{category}/{league}/teams"
 )
 
+# (category, league) tuples for ESPN API paths
 _SPORTS = {
-    "mens":   "mens-college-basketball",
-    "womens": "womens-college-basketball",
-    "nba":    "nba",
+    "mens":   ("basketball", "mens-college-basketball"),
+    "womens": ("basketball", "womens-college-basketball"),
+    "nba":    ("basketball", "nba"),
+    "mlb":    ("baseball",   "mlb"),
+    "epl":    ("soccer",     "eng.1"),
+    "mls":    ("soccer",     "usa.1"),
+    "ufc":    ("mma",        "ufc"),
 }
 
 # Statuses that mean a player is likely missing the game
@@ -49,8 +54,8 @@ def fetch_team_ids(division: str = "mens") -> list[dict]:
     Fetch all team IDs for a division from ESPN.
     Returns [{team_id, name}].
     """
-    sport = _SPORTS.get(division, _SPORTS["mens"])
-    url   = _ESPN_TEAMS_TMPL.format(sport=sport)
+    category, league = _SPORTS.get(division, _SPORTS["mens"])
+    url = _ESPN_TEAMS_TMPL.format(category=category, league=league)
     try:
         resp = requests.get(url, params={"limit": 500}, timeout=15)
         resp.raise_for_status()
@@ -70,8 +75,8 @@ def fetch_team_injuries(team_id: str, division: str = "mens") -> list[dict]:
     Fetch injury report for a single team.
     Returns list of player injury dicts.
     """
-    sport = _SPORTS.get(division, _SPORTS["mens"])
-    url   = _ESPN_INJURIES_TMPL.format(sport=sport, team_id=team_id)
+    category, league = _SPORTS.get(division, _SPORTS["mens"])
+    url = _ESPN_INJURIES_TMPL.format(category=category, league=league, team_id=team_id)
     try:
         resp = requests.get(url, timeout=10)
         resp.raise_for_status()

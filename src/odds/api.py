@@ -16,16 +16,55 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 import requests
 
+if TYPE_CHECKING:
+    from src.odds.budget import QuotaBudget
+
 _BASE = "https://api.the-odds-api.com/v4"
+
+
+def _budget_get(
+    url: str,
+    params: dict,
+    timeout: int = 15,
+    budget: QuotaBudget | None = None,
+    cost: int = 1,
+    label: str = "odds-api",
+) -> requests.Response | None:
+    """
+    GET with optional budget checking.
+    Returns the response, or None if budget is exhausted or request fails.
+    """
+    if budget and not budget.can_spend(cost):
+        print(f"  [{label}] skipping — budget exhausted ({budget.remaining} remaining)")
+        return None
+
+    try:
+        resp = requests.get(url, params=params, timeout=timeout)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        print(f"  [{label}] request failed: {e}")
+        return None
+
+    if budget:
+        budget.record_from_headers(dict(resp.headers))
+
+    remaining = resp.headers.get("x-requests-remaining", "?")
+    used = resp.headers.get("x-requests-used", "?")
+    print(f"  [{label}] requests used={used}  remaining={remaining}")
+
+    return resp
 
 SPORT_NCAAB = "basketball_ncaab"
 SPORT_NBA   = "basketball_nba"
 SPORT_MLB   = "baseball_mlb"
 SPORT_EPL   = "soccer_epl"
 SPORT_MLS   = "soccer_usa_mls"
+SPORT_UFC   = "mma_mixed_martial_arts"
+SPORT_NHL   = "icehockey_nhl"
 
 
 def _key() -> str:
@@ -56,6 +95,7 @@ def fetch_odds(
     sport: str = SPORT_NCAAB,
     markets: str = "h2h",
     bookmakers: str = "draftkings,fanduel,betmgm,caesars",
+    budget: QuotaBudget | None = None,
 ) -> list[dict]:
     """
     Fetch current moneyline (h2h) or spread odds for all upcoming games.
@@ -74,26 +114,20 @@ def fetch_odds(
         "fetched_at":    str,   # ISO UTC timestamp of this fetch
     }
     """
-    try:
-        resp = requests.get(
-            f"{_BASE}/sports/{sport}/odds",
-            params={
-                "apiKey":      _key(),
-                "regions":     "us",
-                "markets":     markets,
-                "oddsFormat":  "american",
-                "bookmakers":  bookmakers,
-            },
-            timeout=15,
-        )
-        resp.raise_for_status()
-    except requests.RequestException as e:
-        print(f"  [odds-api] request failed: {e}")
+    resp = _budget_get(
+        f"{_BASE}/sports/{sport}/odds",
+        params={
+            "apiKey":      _key(),
+            "regions":     "us",
+            "markets":     markets,
+            "oddsFormat":  "american",
+            "bookmakers":  bookmakers,
+        },
+        budget=budget,
+        label=f"odds-api/{sport}",
+    )
+    if resp is None:
         return []
-
-    remaining = resp.headers.get("x-requests-remaining", "?")
-    used      = resp.headers.get("x-requests-used", "?")
-    print(f"  [odds-api] requests used={used}  remaining={remaining}")
 
     fetched_at = datetime.now(timezone.utc).isoformat()
     results: list[dict] = []
@@ -200,22 +234,23 @@ def fetch_historical_odds(
     return results
 
 
-def fetch_events(sport: str = SPORT_NCAAB) -> list[dict]:
+def fetch_events(
+    sport: str = SPORT_NCAAB,
+    budget: QuotaBudget | None = None,
+) -> list[dict]:
     """
     Fetch upcoming events with their Odds API event IDs.
     Costs 1 API request. Use this to get event IDs for fetch_player_props().
 
     Returns list of {event_id, home_team, away_team, commence_time}.
     """
-    try:
-        resp = requests.get(
-            f"{_BASE}/sports/{sport}/events",
-            params={"apiKey": _key()},
-            timeout=15,
-        )
-        resp.raise_for_status()
-    except requests.RequestException as e:
-        print(f"  [odds-api] events request failed: {e}")
+    resp = _budget_get(
+        f"{_BASE}/sports/{sport}/events",
+        params={"apiKey": _key()},
+        budget=budget,
+        label=f"events/{sport}",
+    )
+    if resp is None:
         return []
 
     return [
@@ -243,6 +278,7 @@ def fetch_player_props(
     event_id: str,
     markets: str = "player_points,player_rebounds,player_assists,player_steals,player_blocks",
     bookmakers: str = "draftkings,fanduel,betmgm",
+    budget: QuotaBudget | None = None,
 ) -> list[dict]:
     """
     Fetch player prop lines for a single event. Costs 1 API request.
@@ -261,26 +297,20 @@ def fetch_player_props(
         "fetched_at":  str,
     }
     """
-    try:
-        resp = requests.get(
-            f"{_BASE}/sports/{sport}/events/{event_id}/odds",
-            params={
-                "apiKey":     _key(),
-                "regions":    "us",
-                "markets":    markets,
-                "oddsFormat": "american",
-                "bookmakers": bookmakers,
-            },
-            timeout=15,
-        )
-        resp.raise_for_status()
-    except requests.RequestException as e:
-        print(f"  [odds-api] props request failed (event={event_id}): {e}")
+    resp = _budget_get(
+        f"{_BASE}/sports/{sport}/events/{event_id}/odds",
+        params={
+            "apiKey":     _key(),
+            "regions":    "us",
+            "markets":    markets,
+            "oddsFormat": "american",
+            "bookmakers": bookmakers,
+        },
+        budget=budget,
+        label=f"props/{event_id[:8]}",
+    )
+    if resp is None:
         return []
-
-    remaining = resp.headers.get("x-requests-remaining", "?")
-    used      = resp.headers.get("x-requests-used", "?")
-    print(f"  [odds-api] props event={event_id}  used={used}  remaining={remaining}")
 
     fetched_at = datetime.now(timezone.utc).isoformat()
     results: list[dict] = []
@@ -335,24 +365,26 @@ def fetch_player_props(
     return results
 
 
-def fetch_scores(sport: str = SPORT_NCAAB, days_from: int = 1) -> list[dict]:
+def fetch_scores(
+    sport: str = SPORT_NCAAB,
+    days_from: int = 1,
+    budget: QuotaBudget | None = None,
+) -> list[dict]:
     """
     Fetch recent completed scores. Used to match closing lines to outcomes.
 
     Returns list of {game_id, home_team, away_team, home_score, away_score, completed}.
     """
-    try:
-        resp = requests.get(
-            f"{_BASE}/sports/{sport}/scores",
-            params={
-                "apiKey":      _key(),
-                "daysFrom":    days_from,
-            },
-            timeout=15,
-        )
-        resp.raise_for_status()
-    except requests.RequestException as e:
-        print(f"  [odds-api] scores request failed: {e}")
+    resp = _budget_get(
+        f"{_BASE}/sports/{sport}/scores",
+        params={
+            "apiKey":      _key(),
+            "daysFrom":    days_from,
+        },
+        budget=budget,
+        label=f"scores/{sport}",
+    )
+    if resp is None:
         return []
 
     results = []

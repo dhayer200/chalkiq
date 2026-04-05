@@ -36,6 +36,10 @@ _SPORTS = {
     "womens": ("basketball", "womens-college-basketball"),
     "nba":    ("basketball", "nba"),
     "mlb":    ("baseball",   "mlb"),
+    "epl":    ("soccer",     "eng.1"),
+    "mls":    ("soccer",     "usa.1"),
+    "ufc":    ("mma",        "ufc"),
+    "nhl":    ("hockey",     "nhl"),
 }
 
 def _scoreboard_url(division: str) -> str:

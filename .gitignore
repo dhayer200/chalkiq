@@ -4,12 +4,15 @@ __pycache__/
 .venv/
 *.egg-info/
 
-# Cached game data (fetched at runtime) — ignore date JSONs but keep box scores
-data/raw/mens/*.json
-data/raw/mens/2023/
-data/raw/mens/2024/
-data/raw/mens/2025/
-data/raw/womens/
+# Cached game data (fetched at runtime)
+data/raw/
+data/odds/
+
+# Injury state (runtime-generated)
+data/signals/
+
+# Logs
+logs/
 
 # Streamlit
 .streamlit/secrets.toml
@@ -20,6 +23,7 @@ streamlit.log
 notebooks/
 toy-madness/
 .env
+.env.vercel
 
 # Subscriber database
 data/subscribers.db

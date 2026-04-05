@@ -44,6 +44,11 @@ def _pg_ensure_schema():
             recipient_count INTEGER NOT NULL,
             resend_batch_id TEXT
         );
+        CREATE TABLE IF NOT EXISTS newsletter_content (
+            id SERIAL PRIMARY KEY,
+            generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            content JSONB NOT NULL
+        );
     """)
     conn.commit()
     cur.close()
@@ -78,6 +83,12 @@ CREATE TABLE IF NOT EXISTS newsletter_sends (
     subject TEXT NOT NULL,
     recipient_count INTEGER NOT NULL,
     resend_batch_id TEXT
+);
+
+CREATE TABLE IF NOT EXISTS newsletter_content (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    generated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    content TEXT NOT NULL
 );
 """
 
@@ -257,3 +268,58 @@ def get_active_subscribers(tier: str | None = None) -> list[dict]:
             ).fetchall()
         db.close()
         return [dict(r) for r in rows]
+
+
+def save_newsletter_content(data: dict) -> None:
+    """Save pre-generated newsletter content (called by generate_newsletter_data.py)."""
+    import json
+    content_json = json.dumps(data)
+
+    if _use_postgres():
+        _pg_ensure_schema()
+        conn = _pg_conn()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO newsletter_content (content) VALUES (%s)",
+            (content_json,),
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+    else:
+        db = _sqlite_conn()
+        db.execute(
+            "INSERT INTO newsletter_content (content) VALUES (?)",
+            (content_json,),
+        )
+        db.commit()
+        db.close()
+
+
+def get_latest_newsletter_content() -> dict | None:
+    """Get the most recent newsletter content."""
+    import json
+
+    if _use_postgres():
+        _pg_ensure_schema()
+        conn = _pg_conn()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT content FROM newsletter_content ORDER BY generated_at DESC LIMIT 1"
+        )
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        if row:
+            c = row["content"]
+            return c if isinstance(c, dict) else json.loads(c)
+        return None
+    else:
+        db = _sqlite_conn()
+        row = db.execute(
+            "SELECT content FROM newsletter_content ORDER BY generated_at DESC LIMIT 1"
+        ).fetchone()
+        db.close()
+        if row:
+            return json.loads(row["content"])
+        return None

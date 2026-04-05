@@ -2,25 +2,28 @@
 """
 Poll The Odds API for live moneylines and track CLV + line movement.
 
+Supports multi-sport polling with budget-aware request management.
+
 Run continuously:
-    python scripts/poll_odds.py
+    python scripts/poll_odds.py --divisions mens,nba,mlb
 
 Or once:
-    python scripts/poll_odds.py --once
+    python scripts/poll_odds.py --divisions mens,nba --once
 
 Environment:
     ODDS_API_KEY=your_key  (or set in .env)
 
 Options:
-    --interval N    Poll every N minutes (default: 30)
-    --sport         Sport key (default: basketball_ncaab)
-    --once          Fetch once and exit
-    --division      ESPN division for engine (default: mens)
+    --interval N       Poll every N minutes (default: 30)
+    --divisions        Comma-separated divisions (default: mens)
+    --once             Fetch once and exit
+    --report           Print CLV report and exit
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 from datetime import datetime, timezone
@@ -29,45 +32,38 @@ from pathlib import Path
 # Allow running from project root
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+# Fix TLS cert resolution when venv is copied across machines.
+import certifi
+os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 from src.odds.api      import fetch_odds, fetch_scores, SPORT_NCAAB
-from src.odds.clv      import compute_clv, detect_line_moves, clv_summary
+from src.odds.budget   import QuotaBudget, active_sports_today
+from src.odds.clv      import compute_clv, detect_line_moves
 from src.odds.match    import build_index, match_game
 from src.odds.store    import (
     save_snapshot, save_clv, save_alert,
-    get_opening_line, get_line_history, load_clv_records,
+    get_line_history, load_clv_records,
 )
 from src.ratings.elo   import EloEngine
-from src.utils.data    import fetch_season
-from datetime import date
+from src.slate.generate import load_engine, ODDS_SPORT
 
 
-def build_engine(division: str = "mens") -> EloEngine:
-    from src.utils.data import fetch_season
-    from datetime import date
-
-    configs = {
-        "mens":   ("data/raw/mens",   date(2025, 11, 4)),
-        "womens": ("data/raw/womens", date(2025, 11, 4)),
-    }
-    cache_dir, season_start = configs.get(division, configs["mens"])
-    games  = fetch_season(season_start, date.today(), cache_dir=cache_dir, division=division, verbose=False)
-    engine = EloEngine(k=24.0, home_advantage=100.0)
-    engine.process_games(games)
-    print(f"  [engine] loaded {len(engine.history):,} games  {len(engine.ratings)} teams")
-    return engine
-
-
-def poll_once(engine: EloEngine, sport: str, division: str) -> None:
+def poll_once(
+    engine: EloEngine,
+    sport: str,
+    division: str,
+    budget: QuotaBudget | None = None,
+) -> None:
     index = build_index(engine.names)
     now   = datetime.now(timezone.utc).isoformat()
 
-    print(f"\n[{now}] fetching odds...")
-    odds = fetch_odds(sport=sport)
+    print(f"\n[{now}] fetching odds for {division}...")
+    odds = fetch_odds(sport=sport, budget=budget)
     if not odds:
-        print("  no odds returned")
+        print(f"  no odds returned for {division}")
         return
 
     seen_games: set[str] = set()
@@ -82,12 +78,25 @@ def poll_once(engine: EloEngine, sport: str, division: str) -> None:
         if not espn_home or not espn_away:
             continue  # couldn't match to our engine
 
-        # Get our model's probability
-        model_prob_home = engine.win_prob(espn_home, espn_away, neutral=True)
+        # Get our model's probability.
+        # NCAA tournament games are neutral-site; regular season games are not.
+        # The odds feed doesn't include a neutral flag, so we default to
+        # neutral=False (home advantage applies) for regular season.
+        # March/April NCAA tournament games are assumed neutral.
+        is_tournament = (
+            division in ("mens", "womens")
+            and record.get("commence_time", now)[:7] in (
+                f"{datetime.now().year}-03", f"{datetime.now().year}-04",
+            )
+        )
+        model_prob_home = engine.win_prob(
+            espn_home, espn_away, neutral=is_tournament
+        )
 
         # Enrich record with ESPN IDs and model prob
         enriched = {
             **record,
+            "division":        division,
             "espn_home_id":    espn_home,
             "espn_away_id":    espn_away,
             "model_prob_home": round(model_prob_home, 4),
@@ -103,6 +112,7 @@ def poll_once(engine: EloEngine, sport: str, division: str) -> None:
                 save_alert({
                     "type":       "line_move",
                     "game_id":    game_id,
+                    "division":   division,
                     "home_team":  record["home_team"],
                     "away_team":  record["away_team"],
                     "bookmaker":  bookmaker,
@@ -128,15 +138,21 @@ def poll_once(engine: EloEngine, sport: str, division: str) -> None:
         if game_id not in seen_games:
             seen_games.add(game_id)
 
-    print(f"  processed {len(odds)} odds records for {len(seen_games)} games")
+    print(f"  [{division}] processed {len(odds)} odds records for {len(seen_games)} games")
 
     # Check for CLV opportunities (recently completed games)
-    compute_pending_clv(engine, sport, index)
+    compute_pending_clv(engine, sport, division, index, budget)
 
 
-def compute_pending_clv(engine: EloEngine, sport: str, index: dict) -> None:
+def compute_pending_clv(
+    engine: EloEngine,
+    sport: str,
+    division: str,
+    index: dict,
+    budget: QuotaBudget | None = None,
+) -> None:
     """Check for completed games and compute CLV for them."""
-    scores = fetch_scores(sport=sport, days_from=2)
+    scores = fetch_scores(sport=sport, days_from=2, budget=budget)
     completed = [s for s in scores if s["completed"]]
 
     existing_clv_ids = {r["game_id"] for r in load_clv_records()}
@@ -150,8 +166,6 @@ def compute_pending_clv(engine: EloEngine, sport: str, index: dict) -> None:
         if not espn_home or not espn_away:
             continue
 
-        # Get opening and closing lines from our snapshots
-        # Use DraftKings as reference book
         for bookmaker in ("draftkings", "fanduel", "betmgm"):
             history = get_line_history(game_id, bookmaker)
             if len(history) < 2:
@@ -178,6 +192,7 @@ def compute_pending_clv(engine: EloEngine, sport: str, index: dict) -> None:
             print(f"  [CLV] {clv.summary}")
             save_clv({
                 "game_id":           game_id,
+                "division":          division,
                 "home_team":         s["home_team"],
                 "away_team":         s["away_team"],
                 "bookmaker":         bookmaker,
@@ -235,41 +250,68 @@ def print_clv_report() -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Poll odds and track CLV/LMA")
-    parser.add_argument("--interval", type=int, default=30, help="Poll interval in minutes")
-    parser.add_argument("--sport",    default=SPORT_NCAAB)
-    parser.add_argument("--division", default="mens")
-    parser.add_argument("--once",     action="store_true", help="Fetch once and exit")
-    parser.add_argument("--report",   action="store_true", help="Print CLV report and exit")
+    parser = argparse.ArgumentParser(description="Poll odds and track CLV/LMA (multi-sport)")
+    parser.add_argument("--interval",   type=int, default=30, help="Poll interval in minutes")
+    parser.add_argument("--divisions",  default="mens",
+                        help="Comma-separated divisions: mens,womens,nba,mlb")
+    parser.add_argument("--once",       action="store_true", help="Fetch once and exit")
+    parser.add_argument("--report",     action="store_true", help="Print CLV report and exit")
     args = parser.parse_args()
 
     if args.report:
         print_clv_report()
         return
 
-    print("Building Elo engine...")
-    engine = build_engine(args.division)
+    requested_divisions = [d.strip() for d in args.divisions.split(",")]
+    budget = QuotaBudget()
+
+    # Cache engines per division (rebuilt hourly)
+    engines: dict[str, EloEngine] = {}
+    last_engine_build = datetime.now(timezone.utc)
+
+    def get_engine(division: str) -> EloEngine:
+        if division not in engines:
+            print(f"  Building Elo engine for {division}...")
+            engines[division] = load_engine(division)
+            print(f"  [{division}] {len(engines[division].ratings)} teams rated")
+        return engines[division]
+
+    def poll_all_sports():
+        nonlocal engines, last_engine_build
+
+        # Rebuild engines every hour
+        if (datetime.now(timezone.utc) - last_engine_build).seconds >= 3600:
+            print("  Rebuilding all engines...")
+            engines.clear()
+            last_engine_build = datetime.now(timezone.utc)
+
+        # Only poll sports with games today (ESPN check is free)
+        active = active_sports_today(requested_divisions)
+        if not active:
+            print("  No games today for any requested division")
+            return
+
+        print(f"  Active sports today: {', '.join(active)}")
+        print(f"  {budget.summary()}")
+
+        for division in active:
+            sport = ODDS_SPORT.get(division, SPORT_NCAAB)
+            engine = get_engine(division)
+            poll_once(engine, sport, division, budget)
 
     if args.once:
-        poll_once(engine, args.sport, args.division)
+        poll_all_sports()
         return
 
-    print(f"Polling every {args.interval} minutes. Ctrl+C to stop.")
+    print(f"Polling {args.divisions} every {args.interval} minutes. Ctrl+C to stop.")
     while True:
         try:
-            poll_once(engine, args.sport, args.division)
+            poll_all_sports()
         except Exception as e:
             print(f"  [error] {e}")
 
-        # Rebuild engine periodically to pick up new game results
-        next_time = datetime.now(timezone.utc)
         print(f"  sleeping {args.interval} min...")
         time.sleep(args.interval * 60)
-
-        # Rebuild engine every hour
-        if (datetime.now(timezone.utc) - next_time).seconds >= 3600:
-            print("  rebuilding engine...")
-            engine = build_engine(args.division)
 
 
 if __name__ == "__main__":

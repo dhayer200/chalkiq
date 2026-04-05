@@ -24,6 +24,9 @@ _SPORTS = {
     "womens": ("basketball", "womens-college-basketball"),
     "nba":    ("basketball", "nba"),
     "mlb":    ("baseball",   "mlb"),
+    "epl":    ("soccer",     "eng.1"),
+    "mls":    ("soccer",     "usa.1"),
+    "ufc":    ("mma",        "ufc"),
 }
 
 def _scoreboard_url(division: str) -> str:
@@ -34,6 +37,10 @@ def _scoreboard_url(division: str) -> str:
 _NBA_DIVISIONS = {"nba"}
 # Divisions that use innings (baseball)
 _BASEBALL_DIVISIONS = {"mlb"}
+# Divisions that use 90-minute clock (soccer)
+_SOCCER_DIVISIONS = {"epl", "mls"}
+# Divisions with no game clock (MMA — rounds)
+_MMA_DIVISIONS = {"ufc"}
 
 # Statuses that count as a "live" game we want to show
 _LIVE_STATUSES = {"STATUS_IN_PROGRESS", "STATUS_HALFTIME"}
@@ -75,6 +82,19 @@ def _minutes_remaining(
     For NBA: 4 quarters × 12 min. period 1-4 = quarters, 5+ = OT.
     For MLB: 9 innings. No clock — returns innings remaining as a float.
     """
+    if division in _MMA_DIVISIONS:
+        # UFC: 3 or 5 rounds of 5 min. No meaningful clock from ESPN.
+        max_rounds = 5 if period <= 5 else 3
+        return float(max(0, max_rounds - period) * 5)
+
+    if division in _SOCCER_DIVISIONS:
+        # Soccer: 2 halves of 45 min + stoppage
+        if status_name == "STATUS_HALFTIME":
+            return 45.0
+        if period == 1:
+            return clock_mins + 45.0
+        return clock_mins  # second half or extra time
+
     if division in _BASEBALL_DIVISIONS:
         # MLB: 9 innings, no game clock
         # Return innings remaining (used as a progress indicator, not minutes)

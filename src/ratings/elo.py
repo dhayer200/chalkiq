@@ -71,6 +71,38 @@ SPORT_CONFIGS = {
         "tempo_adjust": False,   # 9 innings standard — no pace normalization
         "season_boundary": "mlb", # Calendar year: season runs late Mar → Oct
     },
+    "epl": {
+        "k": 8.0,               # 38-game season → moderate K
+        "home_advantage": 50.0,  # Strong home advantage in soccer
+        "scale": 400.0,          # High parity in draws, suits wider scale
+        "season_regress": 0.15,  # Rosters fairly stable (transfers, not drafts)
+        "tempo_adjust": False,   # 90 min standard
+        "season_boundary": "epl", # Aug → May
+    },
+    "mls": {
+        "k": 10.0,              # 34-game season
+        "home_advantage": 60.0,  # MLS has very strong home advantage (travel, turf, altitude)
+        "scale": 400.0,
+        "season_regress": 0.20,  # More roster turnover than EPL
+        "tempo_adjust": False,
+        "season_boundary": "mlb", # Calendar year: Feb/Mar → Nov
+    },
+    "ufc": {
+        "k": 40.0,              # Fighters fight 2-3x/year → need high K per bout
+        "home_advantage": 0.0,   # No home advantage in MMA
+        "scale": 400.0,
+        "season_regress": 0.0,   # No seasons — continuous
+        "tempo_adjust": False,
+        "season_boundary": "none",
+    },
+    "nhl": {
+        "k": 8.0,               # 82-game season, similar to NBA but lower scoring → less signal per game
+        "home_advantage": 50.0,  # NHL home advantage ~55% historically (less than NBA)
+        "scale": 400.0,          # High parity — any team can beat any team on a given night
+        "season_regress": 0.25,  # Moderate roster turnover (trades, free agency)
+        "tempo_adjust": False,   # 60-min regulation standard
+        "season_boundary": "ncaa",  # NHL season runs Oct → Jun (same shape as NBA)
+    },
 }
 
 
@@ -144,9 +176,15 @@ class EloEngine:
         except (ValueError, IndexError):
             return
 
-        if self.season_boundary == "mlb":
-            # MLB: season = calendar year. Games in Jan-Feb are spring training
-            # (shouldn't appear), season starts late March.
+        if self.season_boundary == "none":
+            # No seasons (e.g. UFC) — never regress
+            return
+
+        if self.season_boundary == "epl":
+            # EPL: Aug-May. Season year = year of August start.
+            season_year = year if month >= 8 else year - 1
+        elif self.season_boundary == "mlb":
+            # MLB/MLS: calendar year. Season starts Feb/Mar.
             season_year = year
         else:
             # NCAA/NBA: Nov/Dec of year Y → season Y+1; Jan-Apr of year Y → season Y
