@@ -215,7 +215,7 @@ def _generate_with_ai() -> dict:
         try:
             import urllib.request
             req_body = json.dumps({
-                "model": "claude-haiku-4-5-20251001",
+                "model": "claude-haiku-3-5-20241022",
                 "max_tokens": 200,
                 "messages": [{"role": "user", "content": prompt}],
             }).encode()
@@ -232,7 +232,15 @@ def _generate_with_ai() -> dict:
                 resp_data = json.loads(resp.read())
             narrative = resp_data["content"][0]["text"].strip()
         except Exception as e:
+            import urllib.error
+            api_error = ""
+            if isinstance(e, urllib.error.HTTPError):
+                try:
+                    api_error = e.read().decode()
+                except Exception:
+                    pass
             narrative = f"{total_bets} edge(s) across {len(active_sports)} sport(s) today." if total_bets else "No edges today. Model is sitting out."
+            gen_log = (gen_log + f"\nHaiku error: {e} {api_error}").strip()
 
     return {
         "ok": True,
@@ -240,7 +248,7 @@ def _generate_with_ai() -> dict:
         "sports": len(sports),
         "total_bets": total_bets,
         "narrative": narrative,
-        "gen_log": gen_log if not gen_ok else "",
+        "gen_log": gen_log,
     }
 
 
@@ -367,6 +375,6 @@ class handler(BaseHTTPRequestHandler):
     def _json(self, status: int, data: dict):
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Origin", "https://chalkiq.com")
         self.end_headers()
         self.wfile.write(json.dumps(data, default=str).encode())
