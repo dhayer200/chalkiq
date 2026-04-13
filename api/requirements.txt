@@ -1,3 +1,4 @@
 stripe>=7.0
 resend>=0.7
 psycopg2-binary>=2.9
+anthropic>=0.40

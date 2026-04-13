@@ -608,6 +608,10 @@ tbody tr:hover { background: rgba(136, 192, 208, 0.03); }
         </div>
         <div class="section-body">
           <div id="content-date"></div>
+          <div style="margin-bottom:16px">
+            <button class="btn btn-primary" onclick="generateWithAI()" id="btn-generate">Generate with AI</button>
+            <span id="generate-status" style="margin-left:12px;font-size:12px;color:var(--frost1)"></span>
+          </div>
           <div id="preview-subject" style="margin-bottom:12px;font-size:12px;color:var(--frost1)"></div>
           <div class="preview-frame">
             <iframe id="preview-iframe" sandbox></iframe>
@@ -927,6 +931,37 @@ async function loadHistory() {
 }
 
 // ── Send ──────────────────────────────────────────────
+async function generateWithAI() {
+  const btn = document.getElementById('btn-generate');
+  const status = document.getElementById('generate-status');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Generating...';
+  status.textContent = 'Running model + Haiku...';
+
+  try {
+    const data = await apiJSON('?action=generate', { method: 'POST' });
+    if (data.error) {
+      toast(data.error, 'error');
+      status.textContent = data.error;
+    } else {
+      toast(`Generated: ${data.total_bets} bet(s) across ${data.sports} sport(s)`, 'success');
+      status.textContent = `Done — ${data.date}`;
+      // populate narrative into custom message field
+      if (data.narrative) {
+        document.getElementById('edit-message').value = data.narrative;
+      }
+      await loadStats();
+      await loadPreview();
+    }
+  } catch (e) {
+    toast('Generation failed', 'error');
+    status.textContent = 'Failed';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Generate with AI';
+  }
+}
+
 async function sendTest() {
   const email = document.getElementById('test-email').value.trim();
   if (!email) return toast('Enter an email address', 'error');
