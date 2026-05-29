@@ -177,8 +177,20 @@
         Sum of per-game closing line value across 1,559 matched games.
         Negative early-season performance is expected: Elo needs ~20 games per team to separate the field.
       </p>
-      <div class="card rounded-2xl p-5 glow">
+      <div class="card rounded-2xl p-5 glow mb-5">
         <canvas id="clvChart" height="80"></canvas>
+      </div>
+      <div class="card rounded-xl p-6 border-l-2 border-chalk-500/40">
+        <p class="text-sm font-semibold text-white mb-2">What is CLV?</p>
+        <p class="text-slate-400 text-sm leading-relaxed">
+          <span class="text-white font-medium">Closing Line Value (CLV)</span> measures how a model's predicted probability
+          compares to the bookmaker's final line right before a game starts. If the model says a team has a 65% chance
+          of winning and the closing line implies 61%, that's +4% CLV. The closing line is the sharpest number in
+          sports betting -- it reflects all publicly available information after sharp bettors, syndicates, and
+          late injury news have moved the market. A model that consistently beats it has identified real signal,
+          not just gotten lucky on outcomes. It's the sports analytics equivalent of measuring
+          alpha against a forward-looking benchmark rather than a single trade's P&L.
+        </p>
       </div>
     </div>
   </section>
