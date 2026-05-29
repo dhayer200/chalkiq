@@ -22,6 +22,7 @@ from src.live.feed import fetch_other_games
 from src.odds.api import (
     fetch_odds,
     SPORT_NCAAB, SPORT_NBA, SPORT_MLB, SPORT_EPL, SPORT_MLS, SPORT_UFC, SPORT_NHL,
+    SPORT_NCAAW_VB,
 )
 from src.odds.clv import CLVResult, clv_summary
 from src.odds.match import build_index, match_team
@@ -36,26 +37,28 @@ BOOKS = ["draftkings", "fanduel", "betmgm", "caesars"]
 
 # Division → Odds API sport key
 ODDS_SPORT = {
-    "mens":   SPORT_NCAAB,
-    "womens": SPORT_NCAAB,
-    "nba":    SPORT_NBA,
-    "mlb":    SPORT_MLB,
-    "epl":    SPORT_EPL,
-    "mls":    SPORT_MLS,
-    "ufc":    SPORT_UFC,
-    "nhl":    SPORT_NHL,
+    "mens":       SPORT_NCAAB,
+    "womens":     SPORT_NCAAB,
+    "nba":        SPORT_NBA,
+    "mlb":        SPORT_MLB,
+    "epl":        SPORT_EPL,
+    "mls":        SPORT_MLS,
+    "ufc":        SPORT_UFC,
+    "nhl":        SPORT_NHL,
+    "volleyball": SPORT_NCAAW_VB,
 }
 
 # Division display names
 DIVISION_LABELS = {
-    "mens":   "NCAA Men's Basketball",
-    "womens": "NCAA Women's Basketball",
-    "nba":    "NBA",
-    "mlb":    "MLB",
-    "epl":    "English Premier League",
-    "mls":    "MLS",
-    "ufc":    "UFC / MMA",
-    "nhl":    "NHL",
+    "mens":       "NCAA Men's Basketball",
+    "womens":     "NCAA Women's Basketball",
+    "nba":        "NBA",
+    "mlb":        "MLB",
+    "epl":        "English Premier League",
+    "mls":        "MLS",
+    "ufc":        "UFC / MMA",
+    "nhl":        "NHL",
+    "volleyball": "NCAA Women's Volleyball",
 }
 
 

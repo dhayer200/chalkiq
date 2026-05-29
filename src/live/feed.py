@@ -20,13 +20,14 @@ import requests
 _ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports"
 
 _SPORTS = {
-    "mens":   ("basketball", "mens-college-basketball"),
-    "womens": ("basketball", "womens-college-basketball"),
-    "nba":    ("basketball", "nba"),
-    "mlb":    ("baseball",   "mlb"),
-    "epl":    ("soccer",     "eng.1"),
-    "mls":    ("soccer",     "usa.1"),
-    "ufc":    ("mma",        "ufc"),
+    "mens":       ("basketball", "mens-college-basketball"),
+    "womens":     ("basketball", "womens-college-basketball"),
+    "nba":        ("basketball", "nba"),
+    "mlb":        ("baseball",   "mlb"),
+    "epl":        ("soccer",     "eng.1"),
+    "mls":        ("soccer",     "usa.1"),
+    "ufc":        ("mma",        "ufc"),
+    "volleyball": ("volleyball", "womens-college-volleyball"),
 }
 
 def _scoreboard_url(division: str) -> str:

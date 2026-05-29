@@ -58,13 +58,18 @@ def _budget_get(
 
     return resp
 
-SPORT_NCAAB = "basketball_ncaab"
-SPORT_NBA   = "basketball_nba"
-SPORT_MLB   = "baseball_mlb"
-SPORT_EPL   = "soccer_epl"
-SPORT_MLS   = "soccer_usa_mls"
-SPORT_UFC   = "mma_mixed_martial_arts"
-SPORT_NHL   = "icehockey_nhl"
+SPORT_NCAAB          = "basketball_ncaab"
+SPORT_NBA            = "basketball_nba"
+SPORT_MLB            = "baseball_mlb"
+SPORT_EPL            = "soccer_epl"
+SPORT_MLS            = "soccer_usa_mls"
+SPORT_UFC            = "mma_mixed_martial_arts"
+SPORT_NHL            = "icehockey_nhl"
+SPORT_NCAAW_VB       = "volleyball_ncaaw"
+SPORT_ATP_WIMBLEDON  = "tennis_atp_wimbledon"
+SPORT_WTA_WIMBLEDON  = "tennis_wta_wimbledon"
+SPORT_ATP_US_OPEN    = "tennis_atp_us_open"
+SPORT_WTA_US_OPEN    = "tennis_wta_us_open"
 
 
 def _key() -> str:

@@ -32,14 +32,15 @@ _ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports"
 
 # division -> (sport_category, league)
 _SPORTS = {
-    "mens":   ("basketball", "mens-college-basketball"),
-    "womens": ("basketball", "womens-college-basketball"),
-    "nba":    ("basketball", "nba"),
-    "mlb":    ("baseball",   "mlb"),
-    "epl":    ("soccer",     "eng.1"),
-    "mls":    ("soccer",     "usa.1"),
-    "ufc":    ("mma",        "ufc"),
-    "nhl":    ("hockey",     "nhl"),
+    "mens":       ("basketball", "mens-college-basketball"),
+    "womens":     ("basketball", "womens-college-basketball"),
+    "nba":        ("basketball", "nba"),
+    "mlb":        ("baseball",   "mlb"),
+    "epl":        ("soccer",     "eng.1"),
+    "mls":        ("soccer",     "usa.1"),
+    "ufc":        ("mma",        "ufc"),
+    "nhl":        ("hockey",     "nhl"),
+    "volleyball": ("volleyball", "womens-college-volleyball"),
 }
 
 def _scoreboard_url(division: str) -> str:
