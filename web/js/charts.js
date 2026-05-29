@@ -18,10 +18,6 @@
     const labels = points.map((p) => p.date);
     const values = points.map((p) => p.cum_clv);
 
-    // Find where CLV crosses zero for gradient split
-    const maxVal = Math.max(...values);
-    const minVal = Math.min(...values);
-
     new Chart(ctx, {
       type: "line",
       data: {
@@ -69,7 +65,7 @@
             bodyFont: { family: "JetBrains Mono", size: 13 },
             padding: 12,
             callbacks: {
-              label: (ctx) => `CLV: ${ctx.parsed.y > 0 ? "+" : ""}${ctx.parsed.y.toFixed(1)}%`,
+              label: (ctx) => `CLV: ${ctx.parsed.y > 0 ? "+" : ""}${ctx.parsed.y.toFixed(1)} pp`,
             },
           },
         },
@@ -91,7 +87,7 @@
             ticks: {
               color: "#64748b",
               font: { family: "JetBrains Mono", size: 11 },
-              callback: (v) => (v > 0 ? "+" : "") + v.toFixed(0) + "%",
+              callback: (v) => (v > 0 ? "+" : "") + v.toFixed(0) + " pp",
             },
           },
         },

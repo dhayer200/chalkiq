@@ -16,7 +16,7 @@ LOGS="$PROJECT_DIR/logs"
 NO_PULL=false
 
 # Default divisions — add/remove as needed
-DIVISIONS="${DIVISIONS:-mens,nba,mlb,nhl,epl,mls,ufc}"
+DIVISIONS="${DIVISIONS:-mens,womens}"
 
 for arg in "$@"; do
   [[ "$arg" == "--no-pull" ]] && NO_PULL=true

@@ -3,48 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ChalkIQ — Sports Picks Backed by Math | NCAA, NBA, MLB</title>
-  <meta name="description" content="ChalkIQ is a quantitative sports prediction platform with +3.88% closing line value across 1,300+ games. Elo ratings, injury signals, and daily picks for NCAA basketball, NBA, and MLB. Free newsletter.">
-  <meta name="keywords" content="sports betting model, NCAA basketball picks, college basketball predictions, closing line value, CLV, Elo rating sports, quantitative sports model, free sports picks newsletter, NBA picks, MLB picks, sports analytics">
-  <link rel="canonical" href="https://chalkiq.com/">
+  <title>ChalkIQ — College Basketball Prediction Model</title>
+  <meta name="description" content="A college basketball prediction system built on Elo ratings, Monte Carlo simulation, and closing line value. Evaluated across 1,672 NCAAB games. By Deep Hayer.">
+  <meta name="keywords" content="college basketball prediction, Elo rating, closing line value, CLV, sports analytics, NCAAB model, Monte Carlo simulation, walk-forward backtest">
+  <link rel="canonical" href="https://chalkiq.vercel.app/">
 
-  <!-- Open Graph (Facebook, LinkedIn, Discord) -->
   <meta property="og:type" content="website">
-  <meta property="og:url" content="https://chalkiq.com/">
-  <meta property="og:title" content="ChalkIQ — Sports Picks Backed by Math">
-  <meta property="og:description" content="+3.88% closing line value across 1,300+ games. Walk-forward Elo model with injury signals. Daily picks for NCAA, NBA, MLB. Free newsletter.">
-  <meta property="og:image" content="https://chalkiq.com/assets/og-image.png">
-  <meta property="og:image:width" content="1200">
-  <meta property="og:image:height" content="630">
+  <meta property="og:url" content="https://chalkiq.vercel.app/">
+  <meta property="og:title" content="ChalkIQ — College Basketball Prediction Model">
+  <meta property="og:description" content="Elo ratings, Monte Carlo simulation, and CLV tracking across 1,672 NCAAB games. Walk-forward, no look-ahead bias. By Deep Hayer.">
   <meta property="og:site_name" content="ChalkIQ">
-  <meta property="og:locale" content="en_US">
 
-  <!-- Twitter / X Card -->
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:site" content="@chalkiq">
-  <meta name="twitter:creator" content="@chalkiq">
-  <meta name="twitter:title" content="ChalkIQ — Sports Picks Backed by Math">
-  <meta name="twitter:description" content="+3.88% CLV vs closing lines across 1,300+ games. Free daily picks newsletter for NCAA, NBA, MLB.">
-  <meta name="twitter:image" content="https://chalkiq.com/assets/og-image.png">
-
-  <!-- Structured Data (JSON-LD) -->
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "WebSite",
-    "name": "ChalkIQ",
-    "url": "https://chalkiq.com",
-    "description": "Quantitative sports prediction platform with walk-forward Elo ratings, injury signals, and daily picks for NCAA basketball, NBA, and MLB.",
-    "potentialAction": {
-      "@type": "SubscribeAction",
-      "target": "https://chalkiq.com/#subscribe"
-    }
-  }
-  </script>
-
-  <!-- Favicon placeholder -->
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%2322c55e'/><text y='.9em' font-size='80' x='50%' text-anchor='middle' fill='%230a1628' font-weight='900'>C</text></svg>">
-  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%2322c55e'/><text y='.9em' font-size='80' x='50%' text-anchor='middle' fill='%230a1628' font-weight='900'>C</text></svg>">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
   <script>
@@ -52,8 +22,8 @@
       theme: {
         extend: {
           colors: {
-            chalk: { 50:'#f0fdf4', 100:'#dcfce7', 400:'#4ade80', 500:'#22c55e', 600:'#16a34a', 900:'#0a1628', 950:'#060f1d' },
-            slate: { 800:'#1e293b', 850:'#162032', 900:'#0f172a', 950:'#020617' }
+            chalk: { 400:'#4ade80', 500:'#22c55e', 600:'#16a34a' },
+            slate: { 800:'#1e293b', 900:'#0f172a', 950:'#020617' }
           }
         }
       }
@@ -63,421 +33,330 @@
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
     body { font-family: 'Inter', system-ui, sans-serif; }
     .mono { font-family: 'JetBrains Mono', monospace; }
-    .glow { box-shadow: 0 0 60px rgba(34, 197, 94, 0.08); }
-    .stat-glow { box-shadow: 0 0 40px rgba(34, 197, 94, 0.06), inset 0 1px 0 rgba(255,255,255,0.05); }
     .grid-bg { background-image: linear-gradient(rgba(34,197,94,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(34,197,94,0.03) 1px, transparent 1px); background-size: 40px 40px; }
-    .fade-in { animation: fadeIn 0.6s ease-out; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-    .cta-pulse { animation: pulse 3s ease-in-out infinite; }
-    @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.3); } 50% { box-shadow: 0 0 0 12px rgba(34,197,94,0); } }
+    .glow { box-shadow: 0 0 60px rgba(34,197,94,0.06); }
+    .card { background: rgba(15,23,42,0.8); border: 1px solid rgba(30,41,59,0.8); }
   </style>
 </head>
 <body class="bg-slate-950 text-slate-100 antialiased">
 
   <!-- Nav -->
-  <nav class="fixed top-0 w-full z-50 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800/50">
-    <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+  <nav class="fixed top-0 w-full z-50 bg-slate-950/90 backdrop-blur-xl border-b border-slate-800/50">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
       <a href="#" class="flex items-center gap-2">
-        <div class="w-8 h-8 rounded-lg bg-chalk-500 flex items-center justify-center font-black text-slate-950 text-sm">C</div>
-        <span class="font-bold text-lg tracking-tight">ChalkIQ</span>
+        <div class="w-7 h-7 rounded-lg bg-chalk-500 flex items-center justify-center font-black text-slate-950 text-xs">C</div>
+        <span class="font-bold tracking-tight">ChalkIQ</span>
       </a>
-      <div class="hidden sm:flex items-center gap-8 text-sm text-slate-400">
-        <a href="#performance" class="hover:text-white transition">Performance</a>
-        <a href="#methodology" class="hover:text-white transition">Methodology</a>
-        <a href="#rankings" class="hover:text-white transition">Rankings</a>
-        <a href="#subscribe" class="px-4 py-2 bg-chalk-500 text-slate-950 font-semibold rounded-lg hover:bg-chalk-400 transition">Get Picks</a>
+      <div class="flex items-center gap-6 text-sm text-slate-400">
+        <a href="#model" class="hover:text-white transition hidden sm:block">Model</a>
+        <a href="#rankings" class="hover:text-white transition hidden sm:block">Rankings</a>
+        <a href="https://chalk-iq.streamlit.app/" target="_blank" class="hover:text-chalk-400 transition">Dashboard ↗</a>
+        <a href="https://deephayer.com" target="_blank" class="hover:text-white transition hidden sm:block">Blog ↗</a>
       </div>
     </div>
   </nav>
 
   <!-- Hero -->
-  <section class="relative min-h-screen flex items-center grid-bg pt-16">
-    <div class="absolute inset-0 bg-gradient-to-b from-chalk-500/5 via-transparent to-transparent"></div>
-    <div class="max-w-6xl mx-auto px-6 py-24 relative">
-      <div class="max-w-3xl fade-in">
-        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-chalk-500/10 border border-chalk-500/20 text-chalk-400 text-sm font-medium mb-8">
-          <span class="w-2 h-2 rounded-full bg-chalk-500 animate-pulse"></span>
-          Walk-forward &middot; No look-ahead bias
+  <section class="relative grid-bg pt-28 pb-20">
+    <div class="max-w-5xl mx-auto px-6">
+      <div class="max-w-2xl">
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-chalk-500/10 border border-chalk-500/20 text-chalk-400 text-xs font-medium mb-7">
+          <span class="w-1.5 h-1.5 rounded-full bg-chalk-500"></span>
+          2025&ndash;26 season complete &middot; off-season rebuild in progress
         </div>
-        <h1 class="text-4xl sm:text-6xl font-black tracking-tight leading-[1.08] mb-6">
-          We beat the books<br>by 4%. Every. Single. Bet.
+        <h1 class="text-4xl sm:text-5xl font-black tracking-tight leading-[1.1] mb-5">
+          College basketball<br>prediction via Elo
         </h1>
-        <p class="text-lg sm:text-xl text-slate-400 leading-relaxed max-w-2xl mb-6">
-          A NCAA college basketball betting model with a <span class="text-white font-semibold">4% average CLV vs close</span> across <span class="text-white font-semibold">1,315 games</span> with historical odds data backed up by 3 years.
+        <p class="text-slate-400 text-lg leading-relaxed mb-4">
+          A walk-forward prediction system for NCAAB using margin-of-victory Elo ratings,
+          Monte Carlo bracket simulation, and closing line value as the primary
+          evaluation metric. Calibrated on 2024&ndash;25 data, evaluated live through
+          the 2025&ndash;26 season.
         </p>
-        <p class="mono text-lg sm:text-xl text-chalk-400 font-semibold max-w-2xl mb-10">
-          2025&ndash;26 season: +4.71% avg CLV &middot; 60.9% beat-close &middot; 709 games
+        <p class="text-slate-500 text-sm mb-8">
+          By <a href="https://deephayer.com" target="_blank" class="text-slate-300 hover:text-chalk-400 transition">Deep Hayer</a> &middot;
+          <a href="https://deephayer.com/analysis/cbb-2026-postmortem" target="_blank" class="hover:text-chalk-400 transition">Season postmortem ↗</a>
         </p>
-        <div class="flex flex-wrap gap-4">
-          <a href="#subscribe" class="cta-pulse px-8 py-4 bg-chalk-500 text-slate-950 font-bold rounded-xl text-lg hover:bg-chalk-400 transition">
-            Get Free Picks
+        <div class="flex flex-wrap gap-3">
+          <a href="https://chalk-iq.streamlit.app/" target="_blank"
+             class="px-5 py-2.5 bg-chalk-500 text-slate-950 font-bold rounded-lg text-sm hover:bg-chalk-400 transition">
+            Live dashboard ↗
           </a>
-          <a href="#methodology" class="px-8 py-4 border border-slate-700 text-slate-300 font-semibold rounded-xl text-lg hover:border-slate-500 hover:text-white transition">
-            See the methodology
+          <a href="https://github.com/dhayer200/chalkIQ/raw/master/paper/chalkiq.pdf" target="_blank"
+             class="px-5 py-2.5 border border-slate-700 text-slate-300 font-semibold rounded-lg text-sm hover:border-slate-500 hover:text-white transition">
+            Read paper ↗
+          </a>
+          <a href="https://github.com/dhayer200/chalkIQ" target="_blank"
+             class="px-5 py-2.5 border border-slate-700 text-slate-300 font-semibold rounded-lg text-sm hover:border-slate-500 hover:text-white transition">
+            GitHub ↗
           </a>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Stats Bar -->
-  <section id="performance" class="relative border-y border-slate-800/50">
-    <div class="max-w-6xl mx-auto px-6 py-16">
-      <!-- All-time stats -->
-      <p class="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-6">All-time &middot; 1,315 matched games &middot; 2 seasons</p>
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-        <div class="stat-glow rounded-2xl bg-slate-900/80 border border-slate-800/50 p-6 text-center">
-          <p class="mono text-4xl font-bold text-chalk-400">+3.88%</p>
-          <p class="text-sm text-slate-400 mt-2">Avg CLV vs Close</p>
+  <!-- Key Metrics -->
+  <section id="model" class="border-y border-slate-800/50 py-16">
+    <div class="max-w-5xl mx-auto px-6">
+
+      <!-- CLV headline stats -->
+      <p class="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-4">Closing line value &middot; 1,315 matched games &middot; 2 seasons</p>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div class="card rounded-2xl p-6 text-center glow">
+          <p class="mono text-3xl font-bold text-chalk-400">+3.88%</p>
+          <p class="text-xs text-slate-400 mt-2">Avg CLV vs close</p>
+          <p class="text-xs text-slate-600 mt-1">all-time, 2 seasons</p>
         </div>
-        <div class="stat-glow rounded-2xl bg-slate-900/80 border border-slate-800/50 p-6 text-center">
-          <p class="mono text-4xl font-bold text-white">74.7%</p>
-          <p class="text-sm text-slate-400 mt-2">Straight-Up Accuracy</p>
+        <div class="card rounded-2xl p-6 text-center glow">
+          <p class="mono text-3xl font-bold text-chalk-400">+4.71%</p>
+          <p class="text-xs text-slate-400 mt-2">Avg CLV vs close</p>
+          <p class="text-xs text-slate-600 mt-1">2025&ndash;26 season</p>
         </div>
-        <div class="stat-glow rounded-2xl bg-slate-900/80 border border-slate-800/50 p-6 text-center">
-          <p class="mono text-4xl font-bold text-chalk-400">57.3%</p>
-          <p class="text-sm text-slate-400 mt-2">Beat Closing Line</p>
+        <div class="card rounded-2xl p-6 text-center">
+          <p class="mono text-3xl font-bold text-white">57.3%</p>
+          <p class="text-xs text-slate-400 mt-2">Beat closing line</p>
+          <p class="text-xs text-slate-600 mt-1">all-time</p>
         </div>
-        <div class="stat-glow rounded-2xl bg-slate-900/80 border border-slate-800/50 p-6 text-center">
-          <p class="mono text-4xl font-bold text-white">1,315</p>
-          <p class="text-sm text-slate-400 mt-2">Games w/ Odds Data</p>
+        <div class="card rounded-2xl p-6 text-center">
+          <p class="mono text-3xl font-bold text-white">60.9%</p>
+          <p class="text-xs text-slate-400 mt-2">Beat closing line</p>
+          <p class="text-xs text-slate-600 mt-1">2025&ndash;26 season</p>
         </div>
       </div>
 
-      <!-- Current season stats -->
-      <p class="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-6">2025&ndash;26 season &middot; 709 games</p>
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-        <div class="stat-glow rounded-2xl bg-slate-900/80 border border-chalk-500/20 p-6 text-center">
-          <p class="mono text-4xl font-bold text-chalk-400">+4.71%</p>
-          <p class="text-sm text-slate-400 mt-2">Avg CLV This Season</p>
+      <!-- Calibration stats -->
+      <p class="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-4">Calibration &middot; 1,672 NCAAB games evaluated</p>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+        <div class="card rounded-2xl p-6 text-center">
+          <p class="mono text-3xl font-bold text-white">0.189</p>
+          <p class="text-xs text-slate-400 mt-2">Brier score</p>
+          <p class="text-xs text-slate-600 mt-1">baseline 0.250</p>
         </div>
-        <div class="stat-glow rounded-2xl bg-slate-900/80 border border-chalk-500/20 p-6 text-center">
-          <p class="mono text-4xl font-bold text-chalk-400">60.9%</p>
-          <p class="text-sm text-slate-400 mt-2">Beat Close This Season</p>
+        <div class="card rounded-2xl p-6 text-center">
+          <p class="mono text-3xl font-bold text-white">0.556</p>
+          <p class="text-xs text-slate-400 mt-2">Log loss</p>
+          <p class="text-xs text-slate-600 mt-1">baseline 0.693</p>
         </div>
-        <div class="stat-glow rounded-2xl bg-slate-900/80 border border-chalk-500/20 p-6 text-center">
-          <p class="mono text-4xl font-bold text-white">+3.2%</p>
-          <p class="text-sm text-slate-400 mt-2">Median CLV</p>
+        <div class="card rounded-2xl p-6 text-center">
+          <p class="mono text-3xl font-bold text-white">70.9%</p>
+          <p class="text-xs text-slate-400 mt-2">Favourite accuracy</p>
+          <p class="text-xs text-slate-600 mt-1">straight-up</p>
         </div>
-        <div class="stat-glow rounded-2xl bg-slate-900/80 border border-chalk-500/20 p-6 text-center">
-          <p class="mono text-4xl font-bold text-white">58.4%</p>
-          <p class="text-sm text-slate-400 mt-2">Positive-CLV Games</p>
-        </div>
-      </div>
-
-      <!-- Distribution details -->
-      <div class="glow rounded-2xl bg-slate-900/80 border border-slate-800/50 p-8">
-        <h3 class="text-lg font-bold mb-6">Edge Distribution</h3>
-        <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 text-sm">
-          <div>
-            <p class="text-slate-400 mb-1">Positive months</p>
-            <p class="mono text-xl font-bold text-chalk-400">10 of 14 <span class="text-slate-500 text-sm font-normal">(71.4%)</span></p>
-          </div>
-          <div>
-            <p class="text-slate-400 mb-1">Best month</p>
-            <p class="mono text-xl font-bold text-chalk-400">+9.14% <span class="text-slate-500 text-sm font-normal">Mar 2025</span></p>
-          </div>
-          <div>
-            <p class="text-slate-400 mb-1">Worst month</p>
-            <p class="mono text-xl font-bold text-red-400">-8.49% <span class="text-slate-500 text-sm font-normal">Nov 2024</span></p>
-          </div>
-          <div>
-            <p class="text-slate-400 mb-1">Injury-adjusted CLV</p>
-            <p class="mono text-xl font-bold text-chalk-400">+4.60% <span class="text-slate-500 text-sm font-normal">80 games</span></p>
-          </div>
-        </div>
-        <div class="mt-6 pt-6 border-t border-slate-800/50">
-          <p class="text-slate-400 text-sm mb-3">CLV by edge bucket</p>
-          <div class="grid grid-cols-3 gap-4 text-center">
-            <div class="rounded-xl bg-slate-800/50 p-4">
-              <p class="text-xs text-slate-500 mb-1">0&ndash;2% edge</p>
-              <p class="mono text-lg font-bold text-slate-300">+1.1%</p>
-              <p class="text-xs text-slate-500">avg CLV</p>
-            </div>
-            <div class="rounded-xl bg-slate-800/50 p-4">
-              <p class="text-xs text-slate-500 mb-1">2&ndash;5% edge</p>
-              <p class="mono text-lg font-bold text-chalk-400">+3.8%</p>
-              <p class="text-xs text-slate-500">avg CLV</p>
-            </div>
-            <div class="rounded-xl bg-slate-800/50 p-4">
-              <p class="text-xs text-slate-500 mb-1">5%+ edge</p>
-              <p class="mono text-lg font-bold text-chalk-400">+7.2%</p>
-              <p class="text-xs text-slate-500">avg CLV</p>
-            </div>
-          </div>
+        <div class="card rounded-2xl p-6 text-center">
+          <p class="mono text-3xl font-bold text-chalk-400">+43.5%</p>
+          <p class="text-xs text-slate-400 mt-2">Backtest ROI</p>
+          <p class="text-xs text-slate-600 mt-1">in-sample, flat stake</p>
         </div>
       </div>
-    </div>
-  </section>
-
-  <!-- Live Example Pick -->
-  <section class="py-20">
-    <div class="max-w-6xl mx-auto px-6">
-      <h2 class="text-3xl font-bold mb-2">The Machine Breathes</h2>
-      <p class="text-slate-400 mb-10">A real pick from the model. Market line, fair line, close, result.</p>
-      <div class="max-w-2xl mx-auto">
-        <div class="glow rounded-2xl bg-slate-900/80 border border-slate-800/50 overflow-hidden">
-          <!-- Game header -->
-          <div class="px-8 py-5 border-b border-slate-800/50 flex items-center justify-between">
-            <div>
-              <p class="text-xs text-slate-500 uppercase tracking-wider font-semibold">Mar 8, 2026 &middot; Completed</p>
-              <p class="text-lg font-bold mt-1">Houston Cougars vs TCU Horned Frogs</p>
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="px-3 py-1 rounded-full bg-chalk-500/10 border border-chalk-500/20 text-chalk-400 text-xs font-bold">CLV CAPTURED</span>
-            </div>
-          </div>
-          <!-- Pick details -->
-          <div class="p-8">
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-6 text-center mb-8">
-              <div>
-                <p class="text-xs text-slate-500 uppercase tracking-wider mb-2">Model Pick</p>
-                <p class="mono text-xl font-bold text-white">Houston -4.5</p>
-              </div>
-              <div>
-                <p class="text-xs text-slate-500 uppercase tracking-wider mb-2">Market Open</p>
-                <p class="mono text-xl font-bold text-slate-400">-3.5</p>
-              </div>
-              <div>
-                <p class="text-xs text-slate-500 uppercase tracking-wider mb-2">Market Close</p>
-                <p class="mono text-xl font-bold text-white">-5.5</p>
-              </div>
-              <div>
-                <p class="text-xs text-slate-500 uppercase tracking-wider mb-2">CLV Captured</p>
-                <p class="mono text-xl font-bold text-chalk-400">+1.0</p>
-              </div>
-            </div>
-            <div class="flex items-center gap-4 p-4 rounded-xl bg-chalk-500/5 border border-chalk-500/10">
-              <div class="w-10 h-10 rounded-lg bg-chalk-500/10 flex items-center justify-center text-chalk-400 text-lg font-bold">W</div>
-              <div>
-                <p class="text-sm font-semibold text-white">Houston wins 78-64 &middot; Covered</p>
-                <p class="text-xs text-slate-500 mt-0.5">Model edge: injury adjustment (TCU starting PG out) + home-court mismatch in Elo</p>
-              </div>
-            </div>
-          </div>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="card rounded-xl px-5 py-4 text-center">
+          <p class="mono text-xl font-semibold text-slate-300">-1.24%</p>
+          <p class="text-xs text-slate-500 mt-1">Mean CLV (paper)</p>
+        </div>
+        <div class="card rounded-xl px-5 py-4 text-center">
+          <p class="mono text-xl font-semibold text-slate-300">19.4%</p>
+          <p class="text-xs text-slate-500 mt-1">CLV std deviation</p>
+        </div>
+        <div class="card rounded-xl px-5 py-4 text-center">
+          <p class="mono text-xl font-semibold text-slate-300">74.7%</p>
+          <p class="text-xs text-slate-500 mt-1">Straight-up accuracy</p>
+        </div>
+        <div class="card rounded-xl px-5 py-4 text-center">
+          <p class="mono text-xl font-semibold text-slate-300">1,076</p>
+          <p class="text-xs text-slate-500 mt-1">Backtest bets placed</p>
         </div>
       </div>
     </div>
   </section>
 
   <!-- CLV Chart -->
-  <section class="py-20 border-y border-slate-800/50">
-    <div class="max-w-6xl mx-auto px-6">
-      <h2 class="text-3xl font-bold mb-2">Cumulative CLV</h2>
-      <p class="text-slate-400 mb-10">Edge over closing lines, accumulated game-by-game across two seasons.</p>
-      <div class="glow rounded-2xl bg-slate-900/80 border border-slate-800/50 p-6">
-        <canvas id="clvChart" height="100"></canvas>
+  <section class="py-16">
+    <div class="max-w-5xl mx-auto px-6">
+      <h2 class="text-xl font-bold mb-1">Cumulative CLV over the season</h2>
+      <p class="text-slate-400 text-sm mb-6">
+        Sum of per-game closing line value across 1,559 matched games.
+        Negative early-season performance is expected: Elo needs ~20 games per team to separate the field.
+      </p>
+      <div class="card rounded-2xl p-5 glow">
+        <canvas id="clvChart" height="80"></canvas>
       </div>
     </div>
   </section>
 
-  <!-- Methodology & Validation -->
-  <section id="methodology" class="py-20">
-    <div class="max-w-6xl mx-auto px-6">
-      <h2 class="text-3xl font-bold mb-2">Methodology &amp; Validation</h2>
-      <p class="text-slate-400 mb-12">How we test. What the numbers mean. What they don't.</p>
-
-      <div class="grid md:grid-cols-2 gap-8 mb-12">
-        <!-- Walk-forward -->
-        <div class="rounded-2xl bg-slate-900/60 border border-slate-800/50 p-8">
-          <div class="w-12 h-12 rounded-xl bg-chalk-500/10 flex items-center justify-center text-chalk-400 mb-4">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path></svg>
-          </div>
-          <h3 class="text-lg font-bold mb-3">Walk-Forward Testing</h3>
-          <p class="text-slate-400 text-sm leading-relaxed mb-4">
-            Every prediction is made using <strong class="text-white">only data available before tip-off</strong>. The model processes games in chronological order. Elo ratings update after each result. No future information leaks into any prediction.
-          </p>
+  <!-- Methodology -->
+  <section class="border-y border-slate-800/50 py-16">
+    <div class="max-w-5xl mx-auto px-6">
+      <h2 class="text-xl font-bold mb-8">How it works</h2>
+      <div class="grid md:grid-cols-3 gap-5 mb-8">
+        <div class="card rounded-2xl p-7">
+          <p class="mono text-chalk-400 text-xs font-semibold uppercase tracking-wider mb-3">01 &mdash; Elo ratings</p>
+          <p class="text-slate-300 font-semibold mb-2">Margin-of-victory scaling</p>
           <p class="text-slate-400 text-sm leading-relaxed">
-            This is the gold standard for backtesting sports models. Many published systems optimize on the full dataset (look-ahead bias), which inflates accuracy. Ours doesn't.
+            Each team carries a single rating updated after every game. The standard Elo update is
+            multiplied by a margin factor (<span class="mono">ln(|m|+1)</span>) with an autocorrelation
+            correction that prevents blowouts against weak teams from inflating ratings.
+            NCAAB: K=24, scale=300, home advantage=100 pts.
           </p>
         </div>
-
-        <!-- No look-ahead -->
-        <div class="rounded-2xl bg-slate-900/60 border border-slate-800/50 p-8">
-          <div class="w-12 h-12 rounded-xl bg-chalk-500/10 flex items-center justify-center text-chalk-400 mb-4">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
-          </div>
-          <h3 class="text-lg font-bold mb-3">No Look-Ahead Bias</h3>
-          <p class="text-slate-400 text-sm leading-relaxed mb-4">
-            The Elo scale factor (300) was calibrated on Season 1 data and <strong class="text-white">frozen before Season 2 began</strong>. It was not re-tuned to improve Season 2 numbers. What you see is out-of-sample performance.
-          </p>
+        <div class="card rounded-2xl p-7">
+          <p class="mono text-chalk-400 text-xs font-semibold uppercase tracking-wider mb-3">02 &mdash; Backtesting</p>
+          <p class="text-slate-300 font-semibold mb-2">Walk-forward, no look-ahead</p>
           <p class="text-slate-400 text-sm leading-relaxed">
-            Season 2 (2025&ndash;26) is performing <em>better</em> than the calibration set (+4.71% vs +3.10% CLV), which is the opposite of what you'd see from overfitting.
+            Predictions use only data available before tip-off. Ratings update in chronological
+            order; no future game outcomes inform any prediction. The Elo scale factor was
+            calibrated on 2024&ndash;25 data and frozen before the 2025&ndash;26 season began.
           </p>
         </div>
-
-        <!-- What CLV means -->
-        <div class="rounded-2xl bg-slate-900/60 border border-slate-800/50 p-8">
-          <div class="w-12 h-12 rounded-xl bg-chalk-500/10 flex items-center justify-center text-chalk-400 mb-4">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
-          </div>
-          <h3 class="text-lg font-bold mb-3">What CLV Means</h3>
-          <p class="text-slate-400 text-sm leading-relaxed mb-4">
-            <strong class="text-white">Closing Line Value</strong> measures whether our predicted edge beats the market's final price. If we say a team has a 65% win probability and the closing line implies 61%, that's +4% CLV.
-          </p>
+        <div class="card rounded-2xl p-7">
+          <p class="mono text-chalk-400 text-xs font-semibold uppercase tracking-wider mb-3">03 &mdash; Validation</p>
+          <p class="text-slate-300 font-semibold mb-2">Closing line value</p>
           <p class="text-slate-400 text-sm leading-relaxed">
-            The closing line is the sharpest number in sports betting&mdash;it incorporates all available information right before tip-off. Consistently beating it is the single best predictor of long-term profitability.
-          </p>
-        </div>
-
-        <!-- What CLV does NOT mean -->
-        <div class="rounded-2xl bg-slate-900/60 border border-slate-800/50 p-8">
-          <div class="w-12 h-12 rounded-xl bg-red-500/10 flex items-center justify-center text-red-400 mb-4">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-          </div>
-          <h3 class="text-lg font-bold mb-3">What CLV Does <em>Not</em> Mean</h3>
-          <p class="text-slate-400 text-sm leading-relaxed mb-4">
-            Positive CLV does not guarantee profit on any single game, week, or month. Variance is real. November is historically negative for us because Elo needs ~20 games per team to stabilize.
-          </p>
-          <p class="text-slate-400 text-sm leading-relaxed">
-            CLV is a <em>process</em> metric, not a <em>results</em> metric. It tells you whether you're making good bets, not whether you won today. Over hundreds of games, process wins.
+            CLV = model probability minus closing market probability (vig-removed). The closing
+            line aggregates sharp bettors and late information. Mean CLV of &minus;1.24% is
+            consistent with market efficiency; the 19.4% std dev reveals where signal lives.
           </p>
         </div>
       </div>
 
-      <!-- Data coverage note -->
-      <div class="rounded-2xl bg-slate-900/60 border border-slate-800/50 p-8">
-        <h3 class="text-lg font-bold mb-4">Sample Sizes &amp; Data Coverage</h3>
-        <div class="space-y-4 text-sm text-slate-400 leading-relaxed">
-          <div class="flex items-start gap-3">
-            <span class="mono text-chalk-400 font-bold shrink-0 w-16 text-right">1,981</span>
-            <p>Total games evaluated walk-forward by the model across two NCAA seasons (2024&ndash;25, 2025&ndash;26).</p>
-          </div>
-          <div class="flex items-start gap-3">
-            <span class="mono text-chalk-400 font-bold shrink-0 w-16 text-right">1,315</span>
-            <p>Games with matched historical closing odds from DraftKings, FanDuel, BetMGM, and Caesars. CLV analysis uses only these games. The remaining 666 games had no odds data available.</p>
-          </div>
-          <div class="flex items-start gap-3">
-            <span class="mono text-chalk-400 font-bold shrink-0 w-16 text-right">709</span>
-            <p>CLV-matched games in the current 2025&ndash;26 season alone (+4.71% avg CLV, 60.9% beat-close).</p>
-          </div>
-          <div class="flex items-start gap-3">
-            <span class="mono text-chalk-400 font-bold shrink-0 w-16 text-right">80</span>
-            <p>Games where injury detection triggered a probability adjustment. These games show +4.60% CLV, suggesting the market underprices key absences. Small sample&mdash;treat with appropriate caution.</p>
-          </div>
-          <div class="flex items-start gap-3">
-            <span class="mono text-chalk-400 font-bold shrink-0 w-16 text-right">14</span>
-            <p>Months of model operation. 10 of 14 months were CLV-positive (71.4%). Both November periods were negative as expected from the Elo cold-start.</p>
-          </div>
+      <!-- Backtest table -->
+      <div class="card rounded-2xl overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-800/50">
+          <p class="font-semibold">2025&ndash;26 backtest &mdash; monthly breakdown</p>
+          <p class="text-xs text-slate-500 mt-0.5">Walk-forward, flat stake at &minus;110. In-sample; live performance would be lower.</p>
         </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- How It Works -->
-  <section class="py-20 border-y border-slate-800/50">
-    <div class="max-w-6xl mx-auto px-6">
-      <h2 class="text-3xl font-bold mb-12 text-center">How ChalkIQ Works</h2>
-      <div class="grid md:grid-cols-3 gap-8">
-        <div class="rounded-2xl bg-slate-900/60 border border-slate-800/50 p-8">
-          <div class="w-12 h-12 rounded-xl bg-chalk-500/10 flex items-center justify-center text-chalk-400 text-xl font-bold mb-4">1</div>
-          <h3 class="text-lg font-bold mb-2">Calibrated Elo Engine</h3>
-          <p class="text-slate-400 text-sm leading-relaxed">Custom scale factor (300 vs standard 400) calibrated against 1,300+ games with real odds data. Minimizes log loss (0.5161) and maximizes CLV. Margin-of-victory scaling, tempo normalization, season-reset regression.</p>
-        </div>
-        <div class="rounded-2xl bg-slate-900/60 border border-slate-800/50 p-8">
-          <div class="w-12 h-12 rounded-xl bg-chalk-500/10 flex items-center justify-center text-chalk-400 text-xl font-bold mb-4">2</div>
-          <h3 class="text-lg font-bold mb-2">Injury Detection</h3>
-          <p class="text-slate-400 text-sm leading-relaxed">DNP-based injury detection from 1,981 boxscores. When a key player is absent, the model adjusts win probabilities. Injury-adjusted games show +4.60% CLV across 80 games&mdash;the market underprices missing players.</p>
-        </div>
-        <div class="rounded-2xl bg-slate-900/60 border border-slate-800/50 p-8">
-          <div class="w-12 h-12 rounded-xl bg-chalk-500/10 flex items-center justify-center text-chalk-400 text-xl font-bold mb-4">3</div>
-          <h3 class="text-lg font-bold mb-2">Market Comparison</h3>
-          <p class="text-slate-400 text-sm leading-relaxed">Every prediction is compared against opening and closing lines from DraftKings, FanDuel, BetMGM, and Caesars. We only recommend games where the model finds real edge vs the market.</p>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-slate-800/50 text-slate-500 text-xs uppercase tracking-wider">
+                <th class="px-6 py-3 text-left">Month</th>
+                <th class="px-6 py-3 text-right">Bets</th>
+                <th class="px-6 py-3 text-right">Win rate</th>
+                <th class="px-6 py-3 text-right">ROI</th>
+                <th class="px-6 py-3 text-right">Cumul P&amp;L</th>
+              </tr>
+            </thead>
+            <tbody class="mono">
+              <tr class="border-b border-slate-800/30 hover:bg-slate-800/20">
+                <td class="px-6 py-3 text-slate-300" style="font-family:Inter,system-ui">Nov 2025</td>
+                <td class="px-6 py-3 text-right text-slate-400">119</td>
+                <td class="px-6 py-3 text-right text-slate-300">85%</td>
+                <td class="px-6 py-3 text-right text-chalk-400">+62%</td>
+                <td class="px-6 py-3 text-right text-slate-400">+$7,382</td>
+              </tr>
+              <tr class="border-b border-slate-800/30 hover:bg-slate-800/20 bg-slate-800/10">
+                <td class="px-6 py-3 text-slate-300" style="font-family:Inter,system-ui">Dec 2025</td>
+                <td class="px-6 py-3 text-right text-slate-400">187</td>
+                <td class="px-6 py-3 text-right text-slate-300">86%</td>
+                <td class="px-6 py-3 text-right text-chalk-400">+64%</td>
+                <td class="px-6 py-3 text-right text-slate-400">+$19,418</td>
+              </tr>
+              <tr class="border-b border-slate-800/30 hover:bg-slate-800/20">
+                <td class="px-6 py-3 text-slate-300" style="font-family:Inter,system-ui">Jan 2026</td>
+                <td class="px-6 py-3 text-right text-slate-400">351</td>
+                <td class="px-6 py-3 text-right text-slate-300">74%</td>
+                <td class="px-6 py-3 text-right text-chalk-400">+41%</td>
+                <td class="px-6 py-3 text-right text-slate-400">+$33,954</td>
+              </tr>
+              <tr class="border-b border-slate-800/30 hover:bg-slate-800/20 bg-slate-800/10">
+                <td class="px-6 py-3 text-slate-300" style="font-family:Inter,system-ui">Feb 2026</td>
+                <td class="px-6 py-3 text-right text-slate-400">269</td>
+                <td class="px-6 py-3 text-right text-slate-300">65%</td>
+                <td class="px-6 py-3 text-right text-chalk-400">+25%</td>
+                <td class="px-6 py-3 text-right text-slate-400">+$40,654</td>
+              </tr>
+              <tr class="hover:bg-slate-800/20">
+                <td class="px-6 py-3 text-slate-300" style="font-family:Inter,system-ui">Mar 2026</td>
+                <td class="px-6 py-3 text-right text-slate-400">148</td>
+                <td class="px-6 py-3 text-right text-slate-300">75%</td>
+                <td class="px-6 py-3 text-right text-chalk-400">+43%</td>
+                <td class="px-6 py-3 text-right text-slate-400">+$47,045</td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr class="border-t border-slate-700/50 bg-slate-800/20 text-xs text-slate-400">
+                <td class="px-6 py-3 font-semibold text-slate-300" style="font-family:Inter,system-ui">Total</td>
+                <td class="px-6 py-3 text-right mono font-semibold">1,076</td>
+                <td class="px-6 py-3 text-right mono font-semibold text-slate-300">75.2%</td>
+                <td class="px-6 py-3 text-right mono font-semibold text-chalk-400">+43.5%</td>
+                <td class="px-6 py-3 text-right mono font-semibold">+$47,045</td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
       </div>
     </div>
   </section>
 
   <!-- Rankings -->
-  <section id="rankings" class="py-20">
-    <div class="max-w-6xl mx-auto px-6">
-      <h2 class="text-3xl font-bold mb-2">Elo Power Rankings</h2>
-      <p class="text-slate-400 mb-10">Top 25 teams by current Elo rating. Updated after every game.</p>
-      <div class="glow rounded-2xl bg-slate-900/80 border border-slate-800/50 overflow-hidden">
+  <section id="rankings" class="py-16">
+    <div class="max-w-5xl mx-auto px-6">
+      <h2 class="text-xl font-bold mb-1">Elo power rankings</h2>
+      <p class="text-slate-400 text-sm mb-6">
+        Top 25 teams by end-of-season Elo rating. All ratings regress 33% toward 1500 before next season.
+      </p>
+      <div class="card rounded-2xl overflow-hidden glow">
         <table class="w-full text-sm">
           <thead>
-            <tr class="border-b border-slate-800/50 text-slate-400 text-xs uppercase tracking-wider">
-              <th class="px-6 py-4 text-left w-16">Rank</th>
-              <th class="px-6 py-4 text-left">Team</th>
-              <th class="px-6 py-4 text-right">Elo Rating</th>
-              <th class="px-6 py-4 text-right hidden sm:table-cell">vs Average</th>
+            <tr class="border-b border-slate-800/50 text-slate-500 text-xs uppercase tracking-wider">
+              <th class="px-5 py-3 text-left w-12">#</th>
+              <th class="px-5 py-3 text-left">Team</th>
+              <th class="px-5 py-3 text-right">Elo</th>
+              <th class="px-5 py-3 text-right hidden sm:table-cell">vs avg</th>
             </tr>
           </thead>
           <tbody id="rankingsBody" class="mono">
+            <tr><td colspan="4" class="px-5 py-6 text-center text-slate-600 text-xs">Loading...</td></tr>
           </tbody>
         </table>
       </div>
     </div>
   </section>
 
-  <!-- Newsletter CTA -->
-  <section id="subscribe" class="py-24 relative">
-    <div class="absolute inset-0 bg-gradient-to-b from-transparent via-chalk-500/5 to-transparent"></div>
-    <div class="max-w-3xl mx-auto px-6 text-center relative">
-      <h2 class="text-4xl font-bold mb-4">Get the Edge</h2>
-      <p class="text-slate-400 text-lg mb-12">Daily picks delivered to your inbox before tip-off.</p>
-
-      <div class="grid sm:grid-cols-2 gap-6 mb-12">
-        <!-- Free Tier -->
-        <div class="rounded-2xl bg-slate-900/80 border border-slate-800/50 p-8 text-left">
-          <p class="text-sm font-semibold text-chalk-400 uppercase tracking-wider mb-4">Free</p>
-          <p class="text-4xl font-bold mb-1">$0</p>
-          <p class="text-slate-400 text-sm mb-6">Forever</p>
-          <ul class="space-y-3 text-sm text-slate-300 mb-8">
-            <li class="flex items-start gap-2"><span class="text-chalk-400 mt-0.5">&#10003;</span> Top 3 daily picks with model edge</li>
-            <li class="flex items-start gap-2"><span class="text-chalk-400 mt-0.5">&#10003;</span> Elo power rankings</li>
-            <li class="flex items-start gap-2"><span class="text-chalk-400 mt-0.5">&#10003;</span> Weekly model accuracy report</li>
-          </ul>
-          <form id="freeForm" class="space-y-3">
-            <input type="email" id="freeEmail" placeholder="you@email.com" required
-              class="w-full px-4 py-3 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-chalk-500 focus:ring-1 focus:ring-chalk-500 transition">
-            <button type="submit" class="w-full px-4 py-3 bg-chalk-500 text-slate-950 font-bold rounded-lg hover:bg-chalk-400 transition">
-              Get Free Picks
-            </button>
-          </form>
-          <p id="freeMsg" class="text-sm mt-3 hidden"></p>
-        </div>
-
-        <!-- Paid Tier -->
-        <div class="rounded-2xl bg-slate-900/80 border border-chalk-500/30 p-8 text-left relative overflow-hidden">
-          <div class="absolute top-4 right-4 px-2 py-0.5 rounded-full bg-chalk-500/10 text-chalk-400 text-xs font-semibold">Popular</div>
-          <p class="text-sm font-semibold text-chalk-400 uppercase tracking-wider mb-4">Premium</p>
-          <p class="text-4xl font-bold mb-1">$9<span class="text-lg text-slate-400 font-normal">/mo</span></p>
-          <p class="text-slate-400 text-sm mb-6">Cancel anytime</p>
-          <ul class="space-y-3 text-sm text-slate-300 mb-8">
-            <li class="flex items-start gap-2"><span class="text-chalk-400 mt-0.5">&#10003;</span> Full daily slate with all edges</li>
-            <li class="flex items-start gap-2"><span class="text-chalk-400 mt-0.5">&#10003;</span> CLV tracking & line movement</li>
-            <li class="flex items-start gap-2"><span class="text-chalk-400 mt-0.5">&#10003;</span> Injury impact analysis</li>
-            <li class="flex items-start gap-2"><span class="text-chalk-400 mt-0.5">&#10003;</span> Book-by-book line comparison</li>
-          </ul>
-          <form id="paidForm" class="space-y-3">
-            <input type="email" id="paidEmail" placeholder="you@email.com" required
-              class="w-full px-4 py-3 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-chalk-500 focus:ring-1 focus:ring-chalk-500 transition">
-            <button type="submit" class="w-full px-4 py-3 bg-white text-slate-950 font-bold rounded-lg hover:bg-slate-200 transition">
-              Start Premium
-            </button>
-          </form>
-          <p id="paidMsg" class="text-sm mt-3 hidden"></p>
-        </div>
+  <!-- Resources -->
+  <section class="border-t border-slate-800/50 py-16">
+    <div class="max-w-5xl mx-auto px-6">
+      <h2 class="text-xl font-bold mb-6">Read more</h2>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <a href="https://github.com/dhayer200/chalkIQ/raw/master/paper/chalkiq.pdf" target="_blank"
+           class="card rounded-xl p-5 hover:border-chalk-500/30 hover:bg-slate-900/60 transition group">
+          <p class="text-chalk-400 text-xs font-semibold uppercase tracking-wider mb-2">Paper</p>
+          <p class="font-semibold text-sm group-hover:text-chalk-400 transition">Probabilistic Sports Prediction via Elo Ratings and CLV</p>
+          <p class="text-xs text-slate-500 mt-2">PDF &rarr;</p>
+        </a>
+        <a href="https://deephayer.com/analysis/cbb-2026-postmortem" target="_blank"
+           class="card rounded-xl p-5 hover:border-chalk-500/30 hover:bg-slate-900/60 transition group">
+          <p class="text-chalk-400 text-xs font-semibold uppercase tracking-wider mb-2">Blog</p>
+          <p class="font-semibold text-sm group-hover:text-chalk-400 transition">College basketball: 2025-26 model postmortem</p>
+          <p class="text-xs text-slate-500 mt-2">deephayer.com &rarr;</p>
+        </a>
+        <a href="https://chalk-iq.streamlit.app/" target="_blank"
+           class="card rounded-xl p-5 hover:border-chalk-500/30 hover:bg-slate-900/60 transition group">
+          <p class="text-chalk-400 text-xs font-semibold uppercase tracking-wider mb-2">Dashboard</p>
+          <p class="font-semibold text-sm group-hover:text-chalk-400 transition">Live Streamlit app: rankings, bracket, backtest</p>
+          <p class="text-xs text-slate-500 mt-2">chalk-iq.streamlit.app &rarr;</p>
+        </a>
+        <a href="https://github.com/dhayer200/chalkIQ" target="_blank"
+           class="card rounded-xl p-5 hover:border-chalk-500/30 hover:bg-slate-900/60 transition group">
+          <p class="text-chalk-400 text-xs font-semibold uppercase tracking-wider mb-2">Code</p>
+          <p class="font-semibold text-sm group-hover:text-chalk-400 transition">Source on GitHub: Python, Streamlit, ESPN API, Typst</p>
+          <p class="text-xs text-slate-500 mt-2">github.com &rarr;</p>
+        </a>
       </div>
     </div>
   </section>
 
   <!-- Footer -->
-  <footer class="border-t border-slate-800/50 py-12">
-    <div class="max-w-6xl mx-auto px-6">
-      <div class="flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-slate-500">
-        <div class="flex items-center gap-2">
-          <div class="w-6 h-6 rounded bg-chalk-500 flex items-center justify-center font-black text-slate-950 text-xs">C</div>
-          <span>ChalkIQ</span>
-        </div>
-        <p>Quantitative sports analytics. Not financial or gambling advice. Past performance does not guarantee future results.</p>
+  <footer class="border-t border-slate-800/50 py-10">
+    <div class="max-w-5xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
+      <div class="flex items-center gap-2">
+        <div class="w-5 h-5 rounded bg-chalk-500 flex items-center justify-center font-black text-slate-950" style="font-size:9px">C</div>
+        <span>ChalkIQ &mdash; by <a href="https://deephayer.com" target="_blank" class="hover:text-slate-400 transition">Deep Hayer</a></span>
       </div>
+      <p>Expanding to college football and women's volleyball in August 2026.</p>
+      <p>Not gambling advice. Past performance does not guarantee future results.</p>
     </div>
   </footer>
 
-  <!-- Scripts -->
   <script src="js/charts.js"></script>
-  <script src="js/signup.js"></script>
 </body>
 </html>

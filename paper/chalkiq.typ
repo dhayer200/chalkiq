@@ -21,10 +21,10 @@
   predictive edge.
 ]
 
-*ChalkIQ* is a multi-sport probabilistic prediction system generating calibrated
-win probabilities via Elo ratings, real-time injury signals, and live score
-diffusion. We evaluate across 1,672 games (Nov 2024 -- Apr 2026), achieving a
-Brier score of 0.189 and log loss of 0.556 -- improvements of 24% and 20% over
+*ChalkIQ* is a college basketball prediction system generating calibrated win
+probabilities via Elo ratings, real-time injury signals, and live score
+diffusion. We evaluate across 1,672 NCAAB games (Nov 2024 -- Apr 2026), achieving
+a Brier score of 0.189 and log loss of 0.556 -- improvements of 24% and 20% over
 the coin-flip baseline respectively.
 
 = The Elo Model
@@ -53,10 +53,9 @@ After each game, the rating update incorporates both outcome and margin:
 ]
 
 #note[
-  Parameters vary by sport. NCAAB uses $K = 24$ (high roster turnover, volatile
-  results). MLB uses $K = 6$ (even the best team loses 40% of games). Between
-  seasons, ratings regress toward 1500 by a fraction $rho$ reflecting roster
-  continuity: $rho = 0.33$ for NCAAB, $0.25$ for NBA.
+  For NCAAB: $K = 24$ (high roster turnover, volatile season-to-season results).
+  Between seasons, ratings regress toward 1500 by $rho = 0.33$, reflecting
+  the typical 30% roster turnover from graduation and transfers.
 ]
 
 = Closing Line Value
@@ -85,9 +84,9 @@ The primary evaluation metric is not win rate or P&L -- it is Closing Line Value
     stroke: 0.4pt + luma(180),
     align: (left, right),
     table.header([*Metric*], [*Value*]),
-    [Beat closing line], [45.9%],
-    [Mean CLV],          [$-0.78%$],
-    [Std deviation],     [$20.0%$],
+    [Beat closing line], [44.9%],
+    [Mean CLV],          [$-1.24%$],
+    [Std deviation],     [$19.4%$],
     [Range],             [$-80%$ to $+72%$],
     [Brier score],       [0.189 #h(0.3em)_(baseline 0.250)_],
     [Log loss],          [0.556 #h(0.3em)_(baseline 0.693)_],
@@ -96,11 +95,11 @@ The primary evaluation metric is not win rate or P&L -- it is Closing Line Value
 ]
 
 #note[
-  Mean CLV is negative (-0.78%), as efficient market theory predicts: the closing
-  line has absorbed injury reports, sharp money, and late lineup news that a pure
-  Elo model cannot see. The wide standard deviation (20%) reveals where the value
-  actually lives -- not in systematic outperformance, but in large edges on
-  specific games where Elo diverges sharply from the market.
+  Mean CLV is negative (-1.24%), as efficient market theory predicts: the closing
+  line absorbs injury reports, sharp money, and late lineup news that a pure Elo
+  model cannot see. The 19.4% standard deviation reveals where value lives -- not
+  in systematic outperformance, but in specific games where Elo diverges sharply
+  from the market.
 ]
 
 = Live In-Game Model
@@ -148,13 +147,11 @@ games completed _before_ each prediction.
 = Conclusion
 
 A parsimonious one-number-per-team Elo model, calibrated on 1,136 games and
-evaluated across 1,672, produces well-calibrated multi-sport win probabilities.
+evaluated across 1,672 NCAAB games, produces well-calibrated win probabilities.
 Brier score 0.189 and log loss 0.556 represent meaningful improvements over
-baseline. Mean CLV of -0.78% is consistent with market efficiency; the 20%
-standard deviation indicates genuine signal on individual games. The same
-framework -- Elo ratings, CLV measurement, score diffusion -- ports across seven
-sports by changing only the parameters, suggesting the model captures real
-structure in competitive dynamics.
+baseline. Mean CLV of -1.24% is consistent with market efficiency; the 19.4%
+standard deviation indicates genuine signal on individual games where Elo diverges
+sharply from the market.
 
 #v(1em)
 = References
