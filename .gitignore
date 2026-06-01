@@ -30,6 +30,7 @@ data/subscribers.db
 .vercel
 
 # Claude Code
+.claude*
 CLAUDE.md
 .claude-memory.md
 claude-memory.md
