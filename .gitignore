@@ -28,3 +28,9 @@ toy-madness/
 # Subscriber database
 data/subscribers.db
 .vercel
+
+# Claude Code
+CLAUDE.md
+.claude-memory.md
+claude-memory.md
+.claude/
