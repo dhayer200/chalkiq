@@ -59,6 +59,7 @@ def _budget_get(
     return resp
 
 SPORT_NCAAB          = "basketball_ncaab"
+SPORT_NCAAF          = "americanfootball_ncaaf"
 SPORT_NBA            = "basketball_nba"
 SPORT_MLB            = "baseball_mlb"
 SPORT_EPL            = "soccer_epl"

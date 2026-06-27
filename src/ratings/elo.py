@@ -103,13 +103,13 @@ SPORT_CONFIGS = {
         "tempo_adjust": False,   # 60-min regulation standard
         "season_boundary": "ncaa",  # NHL season runs Oct → Jun (same shape as NBA)
     },
-    "volleyball": {
-        "k": 20.0,              # ~30 matches/season, similar volatility to CBB
-        "home_advantage": 60.0,  # Crowd noise measurably affects serve errors
-        "scale": 300.0,          # College parity, similar to CBB
-        "season_regress": 0.30,  # High roster turnover (seniors, transfers)
-        "tempo_adjust": False,   # Set-based scoring, no pace concept
-        "season_boundary": "volleyball",  # Aug-Dec academic fall season
+    "cfb": {
+        "k": 10.0,               # ~12 games/team per season
+        "home_advantage": 140.0,  # ~4 pts; stronger than CBB
+        "scale": 350.0,
+        "season_regress": 0.40,  # High roster/coaching turnover
+        "tempo_adjust": False,
+        "season_boundary": "cfb",  # Aug → Jan bowl season
     },
 }
 
@@ -188,7 +188,10 @@ class EloEngine:
             # No seasons (e.g. UFC) — never regress
             return
 
-        if self.season_boundary in ("epl", "volleyball"):
+        if self.season_boundary == "cfb":
+            # CFB: Aug-Dec of year Y and Jan bowls belong to fall season starting year Y
+            season_year = year if month >= 8 else year - 1
+        elif self.season_boundary in ("epl", "volleyball"):
             # EPL Aug-May / Volleyball Aug-Dec: season year = year of August start.
             season_year = year if month >= 8 else year - 1
         elif self.season_boundary == "mlb":

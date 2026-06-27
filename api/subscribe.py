@@ -9,6 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from api._shared.db import add_subscriber
+from api._shared.email import RESEND_FROM
 
 _EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
@@ -23,17 +24,17 @@ def _send_welcome(email: str, unsub_token: str) -> None:
         import resend
         resend.api_key = RESEND_API_KEY
         resend.Emails.send({
-            "from": "ChalkIQ <onboarding@resend.dev>",
+            "from": RESEND_FROM,
             "to": [email],
             "subject": "Welcome to ChalkIQ",
             "html": f"""
             <div style="font-family:monospace;max-width:560px;margin:0 auto;color:#d8dee9;background:#2e3440;padding:32px;border-radius:8px">
               <h2 style="color:#a3be8c;margin-top:0">Welcome to ChalkIQ</h2>
-              <p>You're in. You'll receive our analytics newsletter with:</p>
+              <p>You're in. You'll receive our college sports newsletter with:</p>
               <ul>
-                <li>Elo power rankings across CBB, NBA, and MLB</li>
-                <li>Model-driven betting edges and CLV analysis</li>
-                <li>Market movers and sharp signals</li>
+                <li>Men's college basketball Elo edges and CLV tracking</li>
+                <li>College football slates (starting fall 2026)</li>
+                <li>Model vs market when we find real edge</li>
               </ul>
               <p style="color:#88c0d0">Stay sharp.</p>
               <hr style="border:none;border-top:1px solid #434c5e;margin:24px 0">

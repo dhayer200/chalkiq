@@ -253,7 +253,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Poll odds and track CLV/LMA (multi-sport)")
     parser.add_argument("--interval",   type=int, default=30, help="Poll interval in minutes")
     parser.add_argument("--divisions",  default="mens",
-                        help="Comma-separated divisions: mens,womens,nba,mlb")
+                        help="Comma-separated divisions: mens (cfb when live)")
     parser.add_argument("--once",       action="store_true", help="Fetch once and exit")
     parser.add_argument("--report",     action="store_true", help="Print CLV report and exit")
     args = parser.parse_args()

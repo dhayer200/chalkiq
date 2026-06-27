@@ -103,16 +103,6 @@ DIVISION_CONFIG = {
         "season_end":   date.today(),
         "avg_total":    140.0,   # avg combined points per game
     },
-    "womens": {
-        "label":        "Women's CBB",
-        "cache_dir":    str(ROOT / "data" / "raw" / "womens"),
-        "emoji":        "🏀",
-        "color":        NORD["purple"],
-        "light":        NORD["bg1"],
-        "season_start": date(2025, 11, 4),
-        "season_end":   date.today(),
-        "avg_total":    130.0,
-    },
 }
 
 N_SIMS = 100_000
@@ -912,19 +902,10 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ── Header + division toggle ───────────────────────────────────────────────────
+# ── Header ─────────────────────────────────────────────────────────────────────
 
-hcol1, hcol2 = st.columns([3, 1])
-with hcol1:
-    st.markdown("## 🎯 ChalkIQ")
-with hcol2:
-    division = st.radio(
-        "Division",
-        options=["mens", "womens"],
-        format_func=lambda d: f"{DIVISION_CONFIG[d]['emoji']} {DIVISION_CONFIG[d]['label']}",
-        horizontal=True,
-        key="division",
-    )
+st.markdown("## 🎯 ChalkIQ")
+division = "mens"
 
 cfg   = DIVISION_CONFIG[division]
 color = cfg["color"]

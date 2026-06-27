@@ -31,7 +31,7 @@ from src.slate.generate import generate_slate, load_engine, DIVISION_LABELS
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate newsletter content from model data")
-    parser.add_argument("--divisions", default="mens,nba,mlb,epl,mls,ufc",
+    parser.add_argument("--divisions", default="mens,cfb",
                         help="Comma-separated divisions")
     args = parser.parse_args()
 

@@ -27,6 +27,9 @@ toy-madness/
 
 # Subscriber database
 data/subscribers.db
+
+# Player effectiveness exports (runtime)
+data/players/
 .vercel
 
 # Claude Code

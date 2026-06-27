@@ -36,7 +36,7 @@ def active_sports_today(
     """
     from src.live.feed import fetch_other_games
 
-    divisions = divisions or ["mens", "womens", "nba", "mlb", "epl", "mls", "ufc"]
+    divisions = divisions or ["mens", "cfb"]
     target = for_date or date.today()
     active: list[str] = []
 

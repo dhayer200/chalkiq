@@ -20,28 +20,16 @@ import requests
 _ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports"
 
 _SPORTS = {
-    "mens":       ("basketball", "mens-college-basketball"),
-    "womens":     ("basketball", "womens-college-basketball"),
-    "nba":        ("basketball", "nba"),
-    "mlb":        ("baseball",   "mlb"),
-    "epl":        ("soccer",     "eng.1"),
-    "mls":        ("soccer",     "usa.1"),
-    "ufc":        ("mma",        "ufc"),
-    "volleyball": ("volleyball", "womens-college-volleyball"),
+    "mens": ("basketball", "mens-college-basketball"),
+    "cfb":  ("football",   "college-football"),
 }
 
 def _scoreboard_url(division: str) -> str:
     cat, league = _SPORTS.get(division, _SPORTS["mens"])
     return f"{_ESPN_BASE}/{cat}/{league}/scoreboard"
 
-# Divisions that use NBA quarter structure (4 × 12 min)
-_NBA_DIVISIONS = {"nba"}
-# Divisions that use innings (baseball)
-_BASEBALL_DIVISIONS = {"mlb"}
-# Divisions that use 90-minute clock (soccer)
-_SOCCER_DIVISIONS = {"epl", "mls"}
-# Divisions with no game clock (MMA — rounds)
-_MMA_DIVISIONS = {"ufc"}
+# Divisions that use NFL/CFB quarter structure (4 × 15 min)
+_FOOTBALL_DIVISIONS = {"cfb"}
 
 # Statuses that count as a "live" game we want to show
 _LIVE_STATUSES = {"STATUS_IN_PROGRESS", "STATUS_HALFTIME"}
@@ -83,32 +71,15 @@ def _minutes_remaining(
     For NBA: 4 quarters × 12 min. period 1-4 = quarters, 5+ = OT.
     For MLB: 9 innings. No clock — returns innings remaining as a float.
     """
-    if division in _MMA_DIVISIONS:
-        # UFC: 3 or 5 rounds of 5 min. No meaningful clock from ESPN.
-        max_rounds = 5 if period <= 5 else 3
-        return float(max(0, max_rounds - period) * 5)
-
-    if division in _SOCCER_DIVISIONS:
-        # Soccer: 2 halves of 45 min + stoppage
+    if division in _FOOTBALL_DIVISIONS:
+        # CFB: 4 quarters × 15 min
+        _QTR = 15.0
         if status_name == "STATUS_HALFTIME":
-            return 45.0
-        if period == 1:
-            return clock_mins + 45.0
-        return clock_mins  # second half or extra time
-
-    if division in _BASEBALL_DIVISIONS:
-        # MLB: 9 innings, no game clock
-        # Return innings remaining (used as a progress indicator, not minutes)
-        remaining = max(0, 9 - period)
-        return float(remaining)
-
-    if division in _NBA_DIVISIONS:
-        # NBA: 4 quarters, each 12 min
+            return 2 * _QTR
         if period <= 4:
             remaining_quarters = 4 - period
-            return clock_mins + remaining_quarters * _QUARTER_MINUTES
-        else:
-            return clock_mins  # OT
+            return clock_mins + remaining_quarters * _QTR
+        return clock_mins  # OT
 
     # CBB: 2 halves × 20 min
     if status_name == "STATUS_HALFTIME":

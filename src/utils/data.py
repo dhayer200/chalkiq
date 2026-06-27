@@ -32,16 +32,12 @@ _ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports"
 
 # division -> (sport_category, league)
 _SPORTS = {
-    "mens":       ("basketball", "mens-college-basketball"),
-    "womens":     ("basketball", "womens-college-basketball"),
-    "nba":        ("basketball", "nba"),
-    "mlb":        ("baseball",   "mlb"),
-    "epl":        ("soccer",     "eng.1"),
-    "mls":        ("soccer",     "usa.1"),
-    "ufc":        ("mma",        "ufc"),
-    "nhl":        ("hockey",     "nhl"),
-    "volleyball": ("volleyball", "womens-college-volleyball"),
+    "mens": ("basketball", "mens-college-basketball"),
+    "cfb":  ("football",   "college-football"),
 }
+
+# ESPN group id 80 = FBS (filter out FCS matchups for cfb division)
+_FBS_GROUP_ID = "80"
 
 def _scoreboard_url(division: str) -> str:
     cat, league = _SPORTS.get(division, _SPORTS["mens"])
@@ -79,6 +75,9 @@ def fetch_day(dt: date, division: str = "mens") -> list[dict]:
         except (ValueError, KeyError):
             continue
 
+        if division == "cfb" and not _is_fbs_game(comp):
+            continue
+
         games.append(
             {
                 "date": dt.isoformat(),
@@ -92,6 +91,24 @@ def fetch_day(dt: date, division: str = "mens") -> list[dict]:
             }
         )
     return games
+
+
+def _is_fbs_game(comp: dict) -> bool:
+    """True when both teams are FBS (group 80)."""
+    groups = comp.get("groups") or []
+    if groups:
+        return any(str(g.get("id")) == _FBS_GROUP_ID for g in groups)
+    # Fallback: require both teams in a major FBS conference
+    fbs_confs = {
+        "acc", "big ten", "big 12", "sec", "pac-12", "big east",
+        "american", "mountain west", "sun belt", "mac", "c-usa", "fbs independents",
+    }
+    for c in comp.get("competitors", []):
+        conf = (c.get("team") or {}).get("conferenceId")
+        name = ((c.get("team") or {}).get("conference") or "").lower()
+        if conf is None and not any(k in name for k in fbs_confs):
+            return False
+    return True
 
 
 def fetch_season(

@@ -1,0 +1,57 @@
+---
+description: Kapare SDLC — follow deep-onboarding.md for all ChalkIQ development
+alwaysApply: true
+---
+
+# Kapare SDLC (ChalkIQ)
+
+**Canonical playbook:** [/Users/mbp/brain/projects/deep-onboarding.md](/Users/mbp/brain/projects/deep-onboarding.md)
+
+Read it when starting work, planning features, or before claiming a task is done. ChalkIQ-specific commands and paths: `docs/DEVELOPMENT.md` · ticket template: `docs/agentic/tickets/CHALK-000-example.md`
+
+## Workflow
+
+Use **6-step lite** (T0–T1, simple T2) or **full 13-step Kapare** (T2 with risk, all T3–T4) per deep-onboarding. Always declare **tier (T0–T4)** before implementing.
+
+```text
+ 1 Slicer → 2 StoryWeaver → 3 Challenger → 4 Planner → 5 Test Architect (T3+)
+ 7 Builder → 8 Test Green → 9 Verifier → 10 Bugbot (T3+) → 11 Dockeeper → 12 Integrator → 13 Shipper
+```
+
+**Loopback:** If step 8, 9, or 10 fails → return to step 7 (Builder). If Challenger rejects stories → return to step 2.
+
+## ChalkIQ context
+
+- **App:** Sports prediction — Python, Vercel landing + API, autonomous GitHub Actions pipeline
+- **Live:** https://chalkiq.com · https://chalk-iq.streamlit.app/ (Streamlit secondary)
+- **Scope:** Men's CBB + CFB only — see `docs/CFB_STRATEGY.md`, `docs/AUTOMATION.md`
+- **Tickets:** `docs/agentic/tickets/CHALK-NNN-short-name.md`
+- **Plans:** `docs/agentic/work/CHALK-NNN/plan.md` (T2+ risk, all T3+)
+
+## Tier quick reference
+
+| Tier | Examples in ChalkIQ | Tests | Pipeline |
+|------|---------------------|-------|----------|
+| T0 | README, comments | None | 6-step lite |
+| T1 | Landing page styling | None | 6-step lite + pre-ship |
+| T2 | Admin UI, subscribe form | Smoke optional | 6-step lite + pre-ship |
+| T3 | Elo, slate, CLV, backtest, player ratings | **TDD required** | Full 13-step + Bugbot |
+| T4 | Stripe, Postgres, auth, PII | TDD + security-review | Full 13-step |
+
+## Verify before "done"
+
+```bash
+bash scripts/pre-ship.sh
+```
+
+T3+: confirm new/updated tests exist under `tests/` and pass.
+
+## Human gates (never skip)
+
+Do **not** commit, push, open PR, merge, or deploy unless the user explicitly asks.
+
+## Agent behavior
+
+- Propose tier and current Kapare step at the start of non-trivial tasks
+- On T3+ diffs, run Bugbot before claiming ship-ready
+- On T4 diffs, run security-review before claiming ship-ready

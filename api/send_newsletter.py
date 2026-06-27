@@ -13,6 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from api._shared.db import get_active_subscribers, get_latest_newsletter_content
+from api._shared.email import RESEND_FROM
 
 CRON_SECRET = os.environ.get("CRON_SECRET", "")
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
@@ -184,7 +185,7 @@ class handler(BaseHTTPRequestHandler):
                 personalized_html = html.replace("{unsub_url}", unsub_url)
                 try:
                     resend.Emails.send({
-                        "from": "ChalkIQ <onboarding@resend.dev>",
+                        "from": RESEND_FROM,
                         "to": sub["email"],
                         "subject": subject,
                         "html": personalized_html,

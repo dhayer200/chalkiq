@@ -1,0 +1,18 @@
+---
+description: Run pre-ship before claiming any task is done
+alwaysApply: true
+---
+
+# Pre-ship required
+
+Before saying a task is complete, ready to merge, or ship-ready:
+
+```bash
+bash scripts/pre-ship.sh
+```
+
+Must pass. If it fails, fix and re-run (Kapare step 9 — Verifier).
+
+Do not skip because the change "looks small." Tier T1+ still runs pre-ship.
+
+See [/Users/mbp/brain/projects/deep-onboarding.md](/Users/mbp/brain/projects/deep-onboarding.md) · ChalkIQ: `docs/DEVELOPMENT.md`

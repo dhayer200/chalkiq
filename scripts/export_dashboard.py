@@ -36,16 +36,10 @@ from src.bracket.simulator import round_advancement_odds
 
 SEASONS: dict[str, dict[int, tuple[date, date]]] = {
     "mens": {2026: (date(2025, 11, 4), date.today())},
-    "womens": {2026: (date(2025, 11, 4), date.today())},
-    "mlb": {2026: (date(2026, 2, 20), date.today())},
-    "nba": {2026: (date(2025, 10, 21), date.today())},
 }
 
 CACHE_DIRS: dict[str, str] = {
     "mens": "data/raw/mens",
-    "womens": "data/raw/womens",
-    "mlb": "data/raw/mlb",
-    "nba": "data/raw/nba",
 }
 
 DIVISION_LABELS: dict[str, str] = {

@@ -1,1 +1,347 @@
-{"cumulative_clv": [{"date": "2024-11-04", "cum_clv": -27.09}, {"date": "2024-11-04", "cum_clv": -202.18}, {"date": "2024-11-06", "cum_clv": -426.23}, {"date": "2024-11-08", "cum_clv": -596.69}, {"date": "2024-11-11", "cum_clv": -729.72}, {"date": "2024-11-13", "cum_clv": -922.77}, {"date": "2024-11-14", "cum_clv": -955.52}, {"date": "2024-11-15", "cum_clv": -982.07}, {"date": "2024-11-18", "cum_clv": -973.81}, {"date": "2024-11-22", "cum_clv": -975.93}, {"date": "2024-11-26", "cum_clv": -969.83}, {"date": "2024-11-29", "cum_clv": -996.8}, {"date": "2024-12-02", "cum_clv": -961.96}, {"date": "2024-12-03", "cum_clv": -976.86}, {"date": "2024-12-04", "cum_clv": -877.86}, {"date": "2024-12-08", "cum_clv": -819.1}, {"date": "2024-12-10", "cum_clv": -866.31}, {"date": "2024-12-13", "cum_clv": -903.86}, {"date": "2024-12-16", "cum_clv": -972.89}, {"date": "2024-12-16", "cum_clv": -1027.81}, {"date": "2024-12-18", "cum_clv": -1029.19}, {"date": "2024-12-19", "cum_clv": -985.51}, {"date": "2024-12-21", "cum_clv": -982.38}, {"date": "2024-12-29", "cum_clv": -931.52}, {"date": "2025-01-02", "cum_clv": -783.86}, {"date": "2025-01-05", "cum_clv": -589.95}, {"date": "2025-01-09", "cum_clv": -552.1}, {"date": "2025-01-12", "cum_clv": -468.11}, {"date": "2025-01-13", "cum_clv": -333.79}, {"date": "2025-01-13", "cum_clv": -356.97}, {"date": "2025-01-15", "cum_clv": -327.78}, {"date": "2025-01-17", "cum_clv": -237.38}, {"date": "2025-01-18", "cum_clv": -207.38}, {"date": "2025-01-20", "cum_clv": -173.24}, {"date": "2025-01-20", "cum_clv": -122.63}, {"date": "2025-01-22", "cum_clv": -69.73}, {"date": "2025-01-25", "cum_clv": -9.06}, {"date": "2025-01-28", "cum_clv": -49.03}, {"date": "2025-01-30", "cum_clv": 14.33}, {"date": "2025-02-01", "cum_clv": 54.29}, {"date": "2025-02-04", "cum_clv": 86.59}, {"date": "2025-02-07", "cum_clv": 139.91}, {"date": "2025-02-11", "cum_clv": 246.74}, {"date": "2025-02-12", "cum_clv": 254.07}, {"date": "2025-02-14", "cum_clv": 336.25}, {"date": "2025-02-14", "cum_clv": 505.64}, {"date": "2025-02-16", "cum_clv": 547.36}, {"date": "2025-02-18", "cum_clv": 595.44}, {"date": "2025-02-24", "cum_clv": 650.21}, {"date": "2025-02-26", "cum_clv": 719.91}, {"date": "2025-03-01", "cum_clv": 819.09}, {"date": "2025-03-02", "cum_clv": 865.72}, {"date": "2025-03-05", "cum_clv": 899.72}, {"date": "2025-03-08", "cum_clv": 879.21}, {"date": "2025-03-11", "cum_clv": 874.61}, {"date": "2025-03-14", "cum_clv": 1026.97}, {"date": "2025-03-15", "cum_clv": 1235.66}, {"date": "2025-03-20", "cum_clv": 1425.96}, {"date": "2025-03-21", "cum_clv": 1444.45}, {"date": "2025-03-23", "cum_clv": 1608.88}, {"date": "2025-03-29", "cum_clv": 1718.71}, {"date": "2025-11-05", "cum_clv": 1711.15}, {"date": "2025-11-08", "cum_clv": 1633.86}, {"date": "2025-11-09", "cum_clv": 1580.2}, {"date": "2025-11-11", "cum_clv": 1465.67}, {"date": "2025-11-14", "cum_clv": 1450.42}, {"date": "2025-11-17", "cum_clv": 1436.19}, {"date": "2025-11-20", "cum_clv": 1355.32}, {"date": "2025-11-24", "cum_clv": 1362.13}, {"date": "2025-11-26", "cum_clv": 1529.95}, {"date": "2025-11-28", "cum_clv": 1607.93}, {"date": "2025-12-01", "cum_clv": 1516.9}, {"date": "2025-12-03", "cum_clv": 1625.35}, {"date": "2025-12-04", "cum_clv": 1623.44}, {"date": "2025-12-06", "cum_clv": 1649.92}, {"date": "2025-12-09", "cum_clv": 1591.89}, {"date": "2025-12-13", "cum_clv": 1668.94}, {"date": "2025-12-16", "cum_clv": 1777.19}, {"date": "2025-12-20", "cum_clv": 1781.74}, {"date": "2025-12-23", "cum_clv": 1751.13}, {"date": "2025-12-29", "cum_clv": 1733.42}, {"date": "2025-12-30", "cum_clv": 1652.25}, {"date": "2026-01-01", "cum_clv": 1709.88}, {"date": "2026-01-01", "cum_clv": 1719.34}, {"date": "2026-01-01", "cum_clv": 1788.01}, {"date": "2026-01-03", "cum_clv": 1852.99}, {"date": "2026-01-06", "cum_clv": 1912.07}, {"date": "2026-01-07", "cum_clv": 1945.41}, {"date": "2026-01-09", "cum_clv": 2040.96}, {"date": "2026-01-10", "cum_clv": 2092.28}, {"date": "2026-01-12", "cum_clv": 2124.12}, {"date": "2026-01-12", "cum_clv": 2207.41}, {"date": "2026-01-14", "cum_clv": 2268.69}, {"date": "2026-01-14", "cum_clv": 2297.15}, {"date": "2026-01-17", "cum_clv": 2348.06}, {"date": "2026-01-18", "cum_clv": 2281.02}, {"date": "2026-01-19", "cum_clv": 2387.46}, {"date": "2026-01-19", "cum_clv": 2547.65}, {"date": "2026-01-20", "cum_clv": 2628.42}, {"date": "2026-01-22", "cum_clv": 2716.46}, {"date": "2026-01-22", "cum_clv": 2832.13}, {"date": "2026-01-22", "cum_clv": 2907.47}, {"date": "2026-01-22", "cum_clv": 3015.2}, {"date": "2026-01-22", "cum_clv": 3119.51}, {"date": "2026-01-24", "cum_clv": 3235.54}, {"date": "2026-01-27", "cum_clv": 3265.64}, {"date": "2026-01-30", "cum_clv": 3311.2}, {"date": "2026-02-03", "cum_clv": 3347.19}, {"date": "2026-02-05", "cum_clv": 3403.43}, {"date": "2026-02-07", "cum_clv": 3526.25}, {"date": "2026-02-10", "cum_clv": 3543.99}, {"date": "2026-02-12", "cum_clv": 3624.97}, {"date": "2026-02-12", "cum_clv": 3745.93}, {"date": "2026-02-12", "cum_clv": 3873.12}, {"date": "2026-02-12", "cum_clv": 3991.91}, {"date": "2026-02-12", "cum_clv": 4172.39}, {"date": "2026-02-12", "cum_clv": 4304.11}, {"date": "2026-02-14", "cum_clv": 4353.41}, {"date": "2026-02-17", "cum_clv": 4295.77}, {"date": "2026-02-18", "cum_clv": 4273.73}, {"date": "2026-02-19", "cum_clv": 4359.11}, {"date": "2026-02-19", "cum_clv": 4417.65}, {"date": "2026-02-19", "cum_clv": 4577.62}, {"date": "2026-02-19", "cum_clv": 4642.09}, {"date": "2026-02-19", "cum_clv": 4755.15}, {"date": "2026-02-21", "cum_clv": 4850.65}, {"date": "2026-02-24", "cum_clv": 4917.96}, {"date": "2026-02-27", "cum_clv": 4978.96}, {"date": "2026-02-28", "cum_clv": 4970.95}, {"date": "2026-03-03", "cum_clv": 5069.96}, {"date": "2026-03-05", "cum_clv": 5091.74}, {"date": "2026-03-07", "cum_clv": 5062.19}, {"date": "2026-03-09", "cum_clv": 5097.34}], "rankings": [{"rank": 1, "name": "Michigan Wolverines", "elo": 1892}, {"rank": 2, "name": "Duke Blue Devils", "elo": 1888}, {"rank": 3, "name": "Florida Gators", "elo": 1859}, {"rank": 4, "name": "Arizona Wildcats", "elo": 1857}, {"rank": 5, "name": "Gonzaga Bulldogs", "elo": 1776}, {"rank": 6, "name": "Houston Cougars", "elo": 1765}, {"rank": 7, "name": "Illinois Fighting Illini", "elo": 1751}, {"rank": 8, "name": "UConn Huskies", "elo": 1750}, {"rank": 9, "name": "Michigan State Spartans", "elo": 1740}, {"rank": 10, "name": "St. John's Red Storm", "elo": 1729}, {"rank": 11, "name": "Miami (OH) RedHawks", "elo": 1706}, {"rank": 12, "name": "Arkansas Razorbacks", "elo": 1706}, {"rank": 13, "name": "Virginia Cavaliers", "elo": 1688}, {"rank": 14, "name": "Vanderbilt Commodores", "elo": 1685}, {"rank": 15, "name": "Iowa State Cyclones", "elo": 1685}, {"rank": 16, "name": "Texas Tech Red Raiders", "elo": 1671}, {"rank": 17, "name": "Alabama Crimson Tide", "elo": 1665}, {"rank": 18, "name": "Kansas Jayhawks", "elo": 1654}, {"rank": 19, "name": "Purdue Boilermakers", "elo": 1653}, {"rank": 20, "name": "Nebraska Cornhuskers", "elo": 1642}, {"rank": 21, "name": "Wisconsin Badgers", "elo": 1640}, {"rank": 22, "name": "Tennessee Volunteers", "elo": 1639}, {"rank": 23, "name": "North Carolina Tar Heels", "elo": 1638}, {"rank": 24, "name": "Kentucky Wildcats", "elo": 1632}, {"rank": 25, "name": "Louisville Cardinals", "elo": 1629}]}
+{
+  "cumulative_clv": [
+    {
+      "date": "2026-03-06",
+      "cum_clv": -192.63
+    },
+    {
+      "date": "2026-03-07",
+      "cum_clv": -685.53
+    },
+    {
+      "date": "2026-03-23",
+      "cum_clv": -783.78
+    },
+    {
+      "date": "2026-03-24",
+      "cum_clv": -856.37
+    },
+    {
+      "date": "2026-03-25",
+      "cum_clv": -863.62
+    },
+    {
+      "date": "2026-03-26",
+      "cum_clv": -914.49
+    },
+    {
+      "date": "2026-03-27",
+      "cum_clv": -951.85
+    },
+    {
+      "date": "2026-03-28",
+      "cum_clv": -1206.5
+    },
+    {
+      "date": "2026-03-29",
+      "cum_clv": -1148.99
+    },
+    {
+      "date": "2026-03-30",
+      "cum_clv": -1103.67
+    },
+    {
+      "date": "2026-03-31",
+      "cum_clv": -923.82
+    },
+    {
+      "date": "2026-04-01",
+      "cum_clv": -887.77
+    },
+    {
+      "date": "2026-04-02",
+      "cum_clv": -560.57
+    },
+    {
+      "date": "2026-04-03",
+      "cum_clv": -638.48
+    },
+    {
+      "date": "2026-04-04",
+      "cum_clv": -630.54
+    },
+    {
+      "date": "2026-04-05",
+      "cum_clv": -300.67
+    },
+    {
+      "date": "2026-04-08",
+      "cum_clv": -444.65
+    },
+    {
+      "date": "2026-04-14",
+      "cum_clv": -397.8
+    },
+    {
+      "date": "2026-04-15",
+      "cum_clv": -254.65
+    },
+    {
+      "date": "2026-04-16",
+      "cum_clv": -60.0
+    },
+    {
+      "date": "2026-04-17",
+      "cum_clv": -98.97
+    },
+    {
+      "date": "2026-04-18",
+      "cum_clv": -41.84
+    },
+    {
+      "date": "2026-04-22",
+      "cum_clv": 65.83
+    },
+    {
+      "date": "2026-04-23",
+      "cum_clv": -75.93
+    },
+    {
+      "date": "2026-04-24",
+      "cum_clv": -142.37
+    },
+    {
+      "date": "2026-04-25",
+      "cum_clv": 142.34
+    },
+    {
+      "date": "2026-04-27",
+      "cum_clv": 216.74
+    },
+    {
+      "date": "2026-04-28",
+      "cum_clv": 214.19
+    },
+    {
+      "date": "2026-04-29",
+      "cum_clv": 206.47
+    },
+    {
+      "date": "2026-04-30",
+      "cum_clv": 325.09
+    },
+    {
+      "date": "2026-05-01",
+      "cum_clv": 181.54
+    },
+    {
+      "date": "2026-05-02",
+      "cum_clv": 589.94
+    },
+    {
+      "date": "2026-05-05",
+      "cum_clv": 646.58
+    },
+    {
+      "date": "2026-05-06",
+      "cum_clv": 585.03
+    },
+    {
+      "date": "2026-05-08",
+      "cum_clv": 612.43
+    },
+    {
+      "date": "2026-05-09",
+      "cum_clv": 647.27
+    },
+    {
+      "date": "2026-05-10",
+      "cum_clv": 662.47
+    },
+    {
+      "date": "2026-05-11",
+      "cum_clv": 659.08
+    },
+    {
+      "date": "2026-05-12",
+      "cum_clv": 779.66
+    },
+    {
+      "date": "2026-05-13",
+      "cum_clv": 798.3
+    },
+    {
+      "date": "2026-05-14",
+      "cum_clv": 937.45
+    },
+    {
+      "date": "2026-05-15",
+      "cum_clv": 942.28
+    },
+    {
+      "date": "2026-05-16",
+      "cum_clv": 1017.96
+    },
+    {
+      "date": "2026-05-18",
+      "cum_clv": 1105.54
+    },
+    {
+      "date": "2026-05-19",
+      "cum_clv": 994.53
+    },
+    {
+      "date": "2026-05-20",
+      "cum_clv": 1275.94
+    },
+    {
+      "date": "2026-05-21",
+      "cum_clv": 1507.71
+    },
+    {
+      "date": "2026-05-22",
+      "cum_clv": 1559.62
+    },
+    {
+      "date": "2026-05-23",
+      "cum_clv": 1625.24
+    },
+    {
+      "date": "2026-05-24",
+      "cum_clv": 1532.86
+    },
+    {
+      "date": "2026-05-26",
+      "cum_clv": 1917.44
+    },
+    {
+      "date": "2026-05-27",
+      "cum_clv": 2142.78
+    },
+    {
+      "date": "2026-05-28",
+      "cum_clv": 2174.19
+    },
+    {
+      "date": "2026-05-29",
+      "cum_clv": 2300.66
+    }
+  ],
+  "rankings": [
+    {
+      "rank": 1,
+      "name": "Michigan Wolverines",
+      "elo": 1925
+    },
+    {
+      "rank": 2,
+      "name": "Duke Blue Devils",
+      "elo": 1884
+    },
+    {
+      "rank": 3,
+      "name": "Arizona Wildcats",
+      "elo": 1860
+    },
+    {
+      "rank": 4,
+      "name": "UConn Huskies",
+      "elo": 1782
+    },
+    {
+      "rank": 5,
+      "name": "Florida Gators",
+      "elo": 1773
+    },
+    {
+      "rank": 6,
+      "name": "Illinois Fighting Illini",
+      "elo": 1744
+    },
+    {
+      "rank": 7,
+      "name": "St. John's Red Storm",
+      "elo": 1741
+    },
+    {
+      "rank": 8,
+      "name": "Purdue Boilermakers",
+      "elo": 1737
+    },
+    {
+      "rank": 9,
+      "name": "Gonzaga Bulldogs",
+      "elo": 1727
+    },
+    {
+      "rank": 10,
+      "name": "Houston Cougars",
+      "elo": 1727
+    },
+    {
+      "rank": 11,
+      "name": "Arkansas Razorbacks",
+      "elo": 1723
+    },
+    {
+      "rank": 12,
+      "name": "Iowa State Cyclones",
+      "elo": 1707
+    },
+    {
+      "rank": 13,
+      "name": "Tennessee Volunteers",
+      "elo": 1696
+    },
+    {
+      "rank": 14,
+      "name": "Virginia Cavaliers",
+      "elo": 1693
+    },
+    {
+      "rank": 15,
+      "name": "Michigan State Spartans",
+      "elo": 1693
+    },
+    {
+      "rank": 16,
+      "name": "Vanderbilt Commodores",
+      "elo": 1692
+    },
+    {
+      "rank": 17,
+      "name": "Alabama Crimson Tide",
+      "elo": 1667
+    },
+    {
+      "rank": 18,
+      "name": "Miami (OH) RedHawks",
+      "elo": 1635
+    },
+    {
+      "rank": 19,
+      "name": "Kansas Jayhawks",
+      "elo": 1631
+    },
+    {
+      "rank": 20,
+      "name": "Texas Longhorns",
+      "elo": 1620
+    },
+    {
+      "rank": 21,
+      "name": "Wisconsin Badgers",
+      "elo": 1609
+    },
+    {
+      "rank": 22,
+      "name": "Saint Louis Billikens",
+      "elo": 1606
+    },
+    {
+      "rank": 23,
+      "name": "North Carolina Tar Heels",
+      "elo": 1606
+    },
+    {
+      "rank": 24,
+      "name": "Nebraska Cornhuskers",
+      "elo": 1605
+    },
+    {
+      "rank": 25,
+      "name": "Texas Tech Red Raiders",
+      "elo": 1602
+    }
+  ]
+}

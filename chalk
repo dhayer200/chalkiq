@@ -240,7 +240,7 @@ BANNER = f"""
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="chalk",
-        description="ChalkIQ — sports analytics CLI (NCAA, MLB, NBA)",
+        description="ChalkIQ — college sports analytics CLI (men's CBB, CFB coming)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"""
 {BOLD}Commands:{RESET}
@@ -261,15 +261,11 @@ def main() -> int:
   {CYAN}status{RESET}         System health check
 
 {DIM}Examples:{RESET}
-  chalk slate                            # today's CBB games
-  chalk slate --division mlb             # today's MLB games
-  chalk slate --division nba             # today's NBA games
+  chalk slate                            # today's men's CBB games
   chalk slate --yesterday                # yesterday's results
   chalk slate --week                     # next 7 days
   chalk slate --date 2026-03-15          # specific date
-  chalk slate --days -3                  # last 3 days + today
   chalk bracket --sport cbb --gender men # NCAA men's bracket
-  chalk bracket --sport cbb --gender wom # NCAA women's bracket
   chalk player "Cameron Boozer"
   chalk leaders --top 20 --sort ppg
   chalk team "Duke"
@@ -281,7 +277,7 @@ def main() -> int:
     p = sub.add_parser("slate", help="Game slate (past, present, future)")
     p.add_argument("--min-edge", type=float, default=None)
     p.add_argument("--top", type=int, default=None)
-    p.add_argument("--division", default=None, choices=["mens", "womens", "mlb", "nba"])
+    p.add_argument("--division", default=None, choices=["mens"])
     p.add_argument("--no-fetch", action="store_true")
     p.add_argument("--date", type=str, default=None, help="Specific date (YYYY-MM-DD)")
     p.add_argument("--yesterday", action="store_true")
@@ -292,10 +288,10 @@ def main() -> int:
 
     # bracket
     p = sub.add_parser("bracket", help="Tournament bracket with Elo predictions")
-    p.add_argument("--sport", default="cbb", choices=["cbb", "mlb", "nba"],
+    p.add_argument("--sport", default="cbb", choices=["cbb"],
                     help="Sport (default: cbb)")
-    p.add_argument("--gender", default="men", choices=["men", "women"],
-                    help="Gender for college sports (default: men)")
+    p.add_argument("--gender", default="men", choices=["men"],
+                    help="Gender (default: men)")
     p.set_defaults(func=cmd_bracket)
 
     # player
@@ -344,7 +340,7 @@ def main() -> int:
 
     # boxscores
     p = sub.add_parser("boxscores", help="Fetch latest boxscores")
-    p.add_argument("--division", default=None, choices=["mens", "womens", "mlb", "nba"])
+    p.add_argument("--division", default=None, choices=["mens"])
     p.set_defaults(func=cmd_boxscores)
 
     # clv-backfill
@@ -356,8 +352,8 @@ def main() -> int:
 
     # dashboard
     p = sub.add_parser("dashboard", help="Export dashboard JSON")
-    p.add_argument("--division", action="append", choices=["mens", "womens", "mlb", "nba"],
-                    default=None, help="Division(s) to export (default: all)")
+    p.add_argument("--division", action="append", choices=["mens"],
+                    default=None, help="Division to export (default: mens)")
     p.set_defaults(func=cmd_dashboard)
 
     # status

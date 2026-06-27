@@ -21,8 +21,8 @@ from pathlib import Path
 from src.live.feed import fetch_other_games
 from src.odds.api import (
     fetch_odds,
-    SPORT_NCAAB, SPORT_NBA, SPORT_MLB, SPORT_EPL, SPORT_MLS, SPORT_UFC, SPORT_NHL,
-    SPORT_NCAAW_VB,
+    SPORT_NCAAB,
+    SPORT_NCAAF,
 )
 from src.odds.clv import CLVResult, clv_summary
 from src.odds.match import build_index, match_team
@@ -35,30 +35,15 @@ _ROOT = Path(__file__).resolve().parents[2]
 
 BOOKS = ["draftkings", "fanduel", "betmgm", "caesars"]
 
-# Division → Odds API sport key
+# Division → Odds API sport key (active: mens only; cfb added at launch)
 ODDS_SPORT = {
-    "mens":       SPORT_NCAAB,
-    "womens":     SPORT_NCAAB,
-    "nba":        SPORT_NBA,
-    "mlb":        SPORT_MLB,
-    "epl":        SPORT_EPL,
-    "mls":        SPORT_MLS,
-    "ufc":        SPORT_UFC,
-    "nhl":        SPORT_NHL,
-    "volleyball": SPORT_NCAAW_VB,
+    "mens": SPORT_NCAAB,
+    "cfb":  SPORT_NCAAF,
 }
 
-# Division display names
 DIVISION_LABELS = {
-    "mens":       "NCAA Men's Basketball",
-    "womens":     "NCAA Women's Basketball",
-    "nba":        "NBA",
-    "mlb":        "MLB",
-    "epl":        "English Premier League",
-    "mls":        "MLS",
-    "ufc":        "UFC / MMA",
-    "nhl":        "NHL",
-    "volleyball": "NCAA Women's Volleyball",
+    "mens": "NCAA Men's Basketball",
+    "cfb":  "NCAA Football (FBS)",
 }
 
 
@@ -68,24 +53,13 @@ def load_engine(division: str) -> EloEngine:
     """Build an Elo engine for any supported division."""
     today = date.today()
 
-    if division == "mlb" or division == "mls":
-        # Calendar-year seasons: MLB Mar-Oct, MLS Feb-Nov
-        yr = today.year if today.month >= 2 else today.year - 1
-        season_start = date(yr, 2, 1)
-    elif division in ("nba", "nhl"):
-        # NBA/NHL: Oct → Jun
-        yr = today.year if today.month >= 10 else today.year - 1
-        season_start = date(yr, 10, 1)
-    elif division == "epl":
-        # EPL: Aug → May. Season year = year of August start.
+    if division == "cfb":
         yr = today.year if today.month >= 8 else today.year - 1
-        season_start = date(yr, 8, 1)
-    elif division == "ufc":
-        # UFC: no seasons — load last 2 years of fight data
-        season_start = date(today.year - 2, 1, 1)
+        season_start = date(yr, 8, 20)
     else:
-        # NCAA: Nov → Apr
-        season_start = date(2025, 11, 4)
+        # Men's CBB: Nov → Apr
+        yr = today.year if today.month >= 10 else today.year - 1
+        season_start = date(yr, 11, 4)
 
     cache_dir = _ROOT / "data" / "raw" / division
     games = fetch_season(

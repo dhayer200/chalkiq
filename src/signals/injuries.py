@@ -33,13 +33,8 @@ _ESPN_TEAMS_TMPL = (
 
 # (category, league) tuples for ESPN API paths
 _SPORTS = {
-    "mens":   ("basketball", "mens-college-basketball"),
-    "womens": ("basketball", "womens-college-basketball"),
-    "nba":    ("basketball", "nba"),
-    "mlb":    ("baseball",   "mlb"),
-    "epl":    ("soccer",     "eng.1"),
-    "mls":    ("soccer",     "usa.1"),
-    "ufc":    ("mma",        "ufc"),
+    "mens": ("basketball", "mens-college-basketball"),
+    "cfb":  ("football",   "college-football"),
 }
 
 # Statuses that mean a player is likely missing the game

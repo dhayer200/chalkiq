@@ -1,0 +1,27 @@
+---
+description: T3+ domain work requires failing tests before implementation (TDD)
+globs: src/**/*.py,scripts/**/*.py,api/**/*.py,tests/**/*.py
+---
+
+# Tier testing (TDD)
+
+Per [/Users/mbp/brain/projects/deep-onboarding.md](/Users/mbp/brain/projects/deep-onboarding.md):
+
+**Tier 3+ (domain logic):** Write **failing tests first**, then implement. Kapare steps 5 → 7 → 8.
+
+ChalkIQ T3 modules (non-exhaustive):
+- `src/ratings/elo.py`
+- `src/slate/generate.py`
+- `src/backtest/engine.py`
+- `src/odds/clv.py`
+- `src/players/effectiveness.py`
+- `src/automation/backfill.py`
+
+```bash
+.venv/bin/pytest tests/ -v          # all tests
+.venv/bin/pytest tests/test_elo.py  # single file
+```
+
+**Tier 4 (auth, PII, payments):** TDD + security-review subagent before PR.
+
+**Tier 0–2:** Tests optional unless Challenger flags risk in the ticket.

@@ -1,0 +1,38 @@
+name: Pre-season prep
+
+on:
+  schedule:
+    # Daily in July–August: aggressive CFB backfill before kickoff
+    - cron: "0 6 1-31 7,8 *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  prep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: actions/cache@v4
+        with:
+          path: |
+            data/raw
+            data/odds
+            data/signals
+            data/players
+          key: chalkiq-data-v2
+          restore-keys: chalkiq-data-v2
+      - name: Pre-season backfill + briefing
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          SMS_BRIEFING_TO: "5128508472"
+          SMS_CARRIER: "att"
+        run: python scripts/daily_collect.py --skip-odds
