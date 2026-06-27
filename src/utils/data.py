@@ -94,10 +94,16 @@ def fetch_day(dt: date, division: str = "mens") -> list[dict]:
 
 
 def _is_fbs_game(comp: dict) -> bool:
-    """True when both teams are FBS (group 80)."""
+    """True when competition is FBS (group 80)."""
     groups = comp.get("groups") or []
     if groups:
-        return any(str(g.get("id")) == _FBS_GROUP_ID for g in groups)
+        for g in groups:
+            if isinstance(g, dict):
+                if str(g.get("id")) == _FBS_GROUP_ID:
+                    return True
+            elif str(g) == _FBS_GROUP_ID:
+                return True
+        return False
     # Fallback: require both teams in a major FBS conference
     fbs_confs = {
         "acc", "big ten", "big 12", "sec", "pac-12", "big east",
